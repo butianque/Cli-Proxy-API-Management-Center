@@ -18,47 +18,108 @@
   width: 100%;
 }
 
-/* ---------- 页头 ---------- */
+/* ---------- 页头（对齐 ConfigHeader 语汇） ---------- */
 
 .pageHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: $spacing-md;
+  gap: 16px 24px;
   flex-wrap: wrap;
 }
 
-.headerText {
+.headerCopy {
   display: flex;
   flex-direction: column;
-  gap: $spacing-xs;
+  gap: 7px;
   min-width: 0;
 }
 
 .title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 28px;
+  font-size: clamp(26px, 3.2vw, 30px);
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 
-.description {
+.meta {
   margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1.5;
+  font-family: $font-mono;
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+
+  /* 终端游标：与全站页头 meta 行同记号 */
+  &::before {
+    content: '▍';
+    color: var(--viz-success);
+    font-size: 13px;
+    line-height: 1;
+    align-self: center;
+    margin-right: 1px;
+  }
+}
+
+.metaDot {
+  color: var(--text-quaternary);
+  user-select: none;
+}
+
+.metaMuted {
+  color: var(--text-secondary);
+}
+
+.metaOk {
+  color: var(--viz-success);
 }
 
 .headerActions {
   display: flex;
   align-items: center;
-  gap: $spacing-sm;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
 
-  :global(.btn > span) {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+/* 次按钮：安静的文字链接（与 ConfigHeader.ghostAction 同形） */
+.ghostAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  cursor: pointer;
+  background: none;
+  color: var(--text-secondary);
+  border-radius: $radius-full;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1;
+  transition:
+    color $transition-fast,
+    background-color $transition-fast;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+
+  &:hover:not(:disabled) {
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--bg-tertiary) 55%, transparent);
   }
 }
 
@@ -148,6 +209,54 @@
   flex-direction: column;
   gap: $spacing-lg;
   min-width: 0;
+}
+
+/* ---------- 已配置平台（L4） ---------- */
+
+.platformRows {
+  display: flex;
+  flex-direction: column;
+}
+
+.platformRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.platformRowText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.platformRowName {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.platformRowMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.platformRowActions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 /* ---------- 渠道表 ---------- */
@@ -460,7 +569,19 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .actionPill {
+  .actionPill,
+  .ghostAction {
     transition: none;
+  }
+}
+
+@include mobile {
+  .pageHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .headerActions {
+    justify-content: flex-start;
   }
 }

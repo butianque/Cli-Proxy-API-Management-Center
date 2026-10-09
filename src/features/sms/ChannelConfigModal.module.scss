@@ -1,0 +1,235 @@
+@use '../../styles/mixins' as *;
+
+/* ============================================================
+ * 渠道配置弹窗 —— 三步式：选平台 → 选模式 → 填连接信息。
+ * 选择项做成「卡片式单选」，选中态用主色描边 + 实心圆点表达层级，
+ * 颜色只由选中态推导，不做纯装饰。
+ * ============================================================ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionLabel {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- ① 平台选择 ---------- */
+
+.platformList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.platformCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color $transition-fast,
+    background-color $transition-fast;
+
+  &:hover:not(:disabled) {
+    border-color: var(--border-hover);
+    background: var(--bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+}
+
+.platformCardActive {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+}
+
+.platformRadio {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-hover);
+  flex-shrink: 0;
+  position: relative;
+  transition: border-color $transition-fast;
+}
+
+.platformCardActive .platformRadio {
+  border-color: var(--primary-color);
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: 50%;
+    background: var(--primary-color);
+  }
+}
+
+.platformText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.platformName {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.platformTag {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  border-radius: 5px;
+  padding: 1px 6px;
+  background: color-mix(in srgb, var(--bg-tertiary) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.platformSummary {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ---------- ② 连接模式 ---------- */
+
+.modeRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
+}
+
+.modeCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 13px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color $transition-fast,
+    background-color $transition-fast;
+
+  &:hover:not(:disabled) {
+    border-color: var(--border-hover);
+    background: var(--bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+}
+
+.modeCardActive {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+}
+
+.modeTitle {
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.modeHint {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+/* ---------- ④ 测试连接 ---------- */
+
+.testRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+
+  :global(.btn > span) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+
+.testResult {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.testOk {
+  color: var(--viz-success);
+}
+
+.testFail {
+  color: var(--viz-failure);
+}
+
+.testHint {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+/* ---------- footer ---------- */
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .platformCard,
+  .modeCard,
+  .platformRadio {
+    transition: none;
+  }
+}

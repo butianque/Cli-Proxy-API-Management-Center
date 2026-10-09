@@ -9,7 +9,14 @@
  * 0.13 元、两次真实取号 0.33 / 0.44 元），以便视觉上贴近真实量级。
  */
 
-import type { ChannelHealth, PhoneLedgerEntry, SmsChannel, SmsStatus } from './types';
+import type {
+  ChannelHealth,
+  ConfiguredPlatform,
+  PhoneLedgerEntry,
+  SmsChannel,
+  SmsPlatform,
+  SmsStatus,
+} from './types';
 
 /** 由单价、库存、暂停状态推导健康度，供颜色联动使用。 */
 export function deriveChannelHealth(channel: {
@@ -76,4 +83,43 @@ export function getMockSmsStatus(): SmsStatus {
     ledger: mockLedger,
     updatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * 平台清单（L1）：可选的接码平台。
+ *
+ * 本轮只有豪猪一个真实平台 + 一个「自定义」兜底。未来加平台只需往这里加一项，
+ * 弹窗的「选择平台」区会自动出现。
+ */
+export const SMS_PLATFORMS: SmsPlatform[] = [
+  {
+    id: 'haozhuma',
+    name: '豪猪接码',
+    summary: '已对接，支持账号登录 / API 两种连接方式',
+    preset: true,
+    modes: ['account', 'api'],
+    defaultEndpoint: 'https://api.haozhuma.cn',
+  },
+  {
+    id: 'custom',
+    name: '自定义',
+    summary: '接入其他接码平台，自行填写 API 地址与凭据',
+    preset: false,
+    modes: ['api'],
+  },
+];
+
+/** 返回一份 mock 的「已配置渠道」（L4）。 */
+export function getMockConfiguredPlatforms(): ConfiguredPlatform[] {
+  return [
+    {
+      platformId: 'haozhuma',
+      platformName: '豪猪接码',
+      mode: 'account',
+      endpoint: 'https://api.haozhuma.cn',
+      account: 'linhua888',
+      enabled: true,
+      connected: true,
+    },
+  ];
 }

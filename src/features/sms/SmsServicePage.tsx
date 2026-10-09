@@ -1,19 +1,19 @@
 /**
- * 接码服务页：取号渠道与号码账本的总览。
+ * 接码服务页：聚合渠道的配置与运行总览。
  *
  * ⚠️ 第一版为**结构预览**：数据来自 ./mockData.ts，不发起任何真实请求。
- * 接入真实数据时，把 `getMockSmsStatus()` 换成 src/services/api/sms.ts 的调用，
- * 其余渲染逻辑不变（组件只消费 ./types.ts 的领域类型）。
+ * 接入真实数据时，把 `getMockSmsStatus()` / `getMockConfiguredPlatforms()` 换成
+ * src/services/api/sms.ts 的调用，其余渲染逻辑不变（组件只消费 ./types.ts 的领域类型）。
  *
- * 版面约定（遵循仓库 UI 原则）：
+ * 版面约定（遵循仓库 UI 原则 + 对齐 `ConfigHeader` 语汇）：
+ * - 页头与「配置面板」同范式：`align-items: flex-end` 两端对齐 + `▍` mono meta + ghost 药丸按钮；
+ * - 页头主开关负责服务启停，未配置渠道时禁用并引导去配置；
  * - 视觉与指标靠拢：渠道健康点 + 单价 + 库存同排一行，扫一眼即知好坏；
- * - 颜色只由数据推导（健康度 / 上限），不做纯装饰色块；
- * - 护栏是「省钱的唯一手段」，与推荐渠道联动展示。
+ * - 颜色只由数据推导（健康度 / 上限），不做纯装饰色块。
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
@@ -21,13 +21,15 @@ import {
   IconAlertTriangle,
   IconCheckCircle2,
   IconDollarSign,
-  IconRefreshCw,
+  IconPlus,
+  IconSettings,
   IconShield,
   IconTimer,
 } from '@/components/ui/icons';
 import { formatDateTimeValue } from '@/utils/format';
-import { getMockSmsStatus } from './mockData';
-import type { ChannelHealth, PhoneLedgerEntry, SmsChannel } from './types';
+import { getMockConfiguredPlatforms, getMockSmsStatus } from './mockData';
+import { ChannelConfigModal } from './ChannelConfigModal';
+import type { ChannelHealth, ConfiguredPlatform, PhoneLedgerEntry, SmsChannel } from './types';
 import styles from './SmsServicePage.module.scss';
 
 const healthClass: Record<ChannelHealth, string> = {
@@ -50,6 +52,14 @@ export function SmsServicePage() {
   const { t } = useTranslation();
   // 第一版：同步取用占位数据。真实接入后改为 useState + 异步加载。
   const status = useMemo(() => getMockSmsStatus(), []);
+  const [platforms, setPlatforms] = useState<ConfiguredPlatform[]>(() =>
+    getMockConfiguredPlatforms()
+  );
+  const [running, setRunning] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<ConfiguredPlatform | null>(null);
+
+  const canStart = platforms.length > 0;
 
   const cheapestChannel = useMemo(
     () =>
@@ -70,43 +80,123 @@ export function SmsServicePage() {
     [status.channels, status.priceCeilingCny]
   );
 
+  const handleSavePlatform = (value: ConfiguredPlatform) => {
+    setPlatforms((prev) => {
+      const index = prev.findIndex((item) => item.platformId === value.platformId);
+      if (index === -1) return [...prev, value];
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+    setModalOpen(false);
+    setEditing(null);
+  };
+
+  const openConfig = (platform: ConfiguredPlatform | null) => {
+    setEditing(platform);
+    setModalOpen(true);
+  };
+
   return (
     <div className={styles.page}>
-      <div className={styles.pageHeader}>
-        <div className={styles.headerText}>
+      <header className={styles.pageHeader}>
+        <div className={styles.headerCopy}>
           <h1 className={styles.title}>{t('sms_service.title')}</h1>
-          <p className={styles.description}>{t('sms_service.description')}</p>
+          <p className={styles.meta}>
+            <span className={running ? styles.metaOk : styles.metaMuted}>
+              {running ? t('sms_service.header_running') : t('sms_service.header_stopped')}
+            </span>
+            <span className={styles.metaDot}>·</span>
+            <span className={styles.metaMuted}>
+              {t('sms_service.header_platforms', { count: platforms.length })}
+            </span>
+            <span className={styles.metaDot}>·</span>
+            <span className={styles.metaMuted}>
+              {t('sms_service.header_channels', { count: status.availableChannels })}
+            </span>
+          </p>
         </div>
         <div className={styles.headerActions}>
-          <Button variant="secondary" size="sm" disabled>
-            <IconRefreshCw size={15} />
-            {t('sms_service.refresh')}
-          </Button>
+          <ToggleSwitch
+            checked={running}
+            onChange={setRunning}
+            disabled={!canStart}
+            labelPosition="left"
+            label={t('sms_service.service_switch')}
+            ariaLabel={t('sms_service.service_switch')}
+          />
+          <button type="button" className={styles.ghostAction} onClick={() => openConfig(null)}>
+            <IconSettings size={14} />
+            {t('sms_service.configure_channels')}
+          </button>
         </div>
-      </div>
+      </header>
 
       <div className={styles.previewNotice} role="note">
         <IconAlertTriangle size={15} />
         <span>{t('sms_service.preview_notice')}</span>
       </div>
 
+      {/* 已配置渠道：L4。未配置时给空态引导去「渠道配置」。 */}
+      <Card
+        title={
+          <span className={styles.cardTitle}>
+            <IconSettings size={17} />
+            {t('sms_service.configured_title')}
+          </span>
+        }
+        extra={
+          <button type="button" className={styles.ghostAction} onClick={() => openConfig(null)}>
+            <IconPlus size={14} />
+            {t('sms_service.configure_add')}
+          </button>
+        }
+      >
+        {platforms.length === 0 ? (
+          <EmptyState
+            title={t('sms_service.configured_empty')}
+            description={t('sms_service.configured_empty_desc')}
+          />
+        ) : (
+          <div className={styles.platformRows}>
+            {platforms.map((item) => (
+              <div key={item.platformId} className={styles.platformRow}>
+                <span
+                  className={`${styles.healthDot} ${
+                    item.connected ? styles.healthGood : styles.healthCritical
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className={styles.platformRowText}>
+                  <span className={styles.platformRowName}>{item.platformName}</span>
+                  <span className={styles.platformRowMeta}>
+                    {item.mode === 'api'
+                      ? t('sms_service.config_mode_api')
+                      : t('sms_service.config_mode_account')}
+                    <span className={styles.ledgerDot} aria-hidden="true" />
+                    <span className={styles.mono}>{item.account}</span>
+                    <span className={styles.ledgerDot} aria-hidden="true" />
+                    {item.connected
+                      ? t('sms_service.platform_connected')
+                      : t('sms_service.platform_disconnected')}
+                  </span>
+                </span>
+                <div className={styles.platformRowActions}>
+                  <button
+                    type="button"
+                    className={styles.actionPill}
+                    onClick={() => openConfig(item)}
+                  >
+                    {t('sms_service.configure_edit')}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
       <div className={styles.statusBar}>
-        <div className={styles.statPill}>
-          <span className={styles.statLabel}>{t('sms_service.stat_status')}</span>
-          <span
-            className={`${styles.statValue} ${
-              status.enabled ? styles.statValueGood : styles.statValueWarn
-            }`}
-          >
-            {status.enabled ? t('sms_service.enabled') : t('sms_service.disabled')}
-          </span>
-        </div>
-        <div className={styles.statPill}>
-          <span className={styles.statLabel}>{t('sms_service.stat_unlock')}</span>
-          <span className={styles.statValue}>
-            {status.unlocked ? t('sms_service.unlocked') : t('sms_service.locked')}
-          </span>
-        </div>
         <div className={styles.statPill}>
           <span className={styles.statLabel}>{t('sms_service.stat_balance')}</span>
           <span className={styles.statValue}>{formatCny(status.balanceCny)}</span>
@@ -129,7 +219,7 @@ export function SmsServicePage() {
       </div>
 
       <div className={styles.grid}>
-        {/* 左栏（宽）：渠道表 —— 取号供给的主视图 */}
+        {/* 左栏（宽）：取号渠道表 + 号码账本 */}
         <div className={styles.column}>
           <Card
             title={
@@ -196,7 +286,6 @@ export function SmsServicePage() {
             )}
           </Card>
 
-          {/* 号码账本：哪个账号用了哪个号码 */}
           <Card
             title={
               <span className={styles.cardTitle}>
@@ -236,7 +325,7 @@ export function SmsServicePage() {
           </Card>
         </div>
 
-        {/* 右栏（窄）：护栏 + 推荐渠道 —— 省钱的唯一手段 */}
+        {/* 右栏（窄）：护栏 + 推荐渠道 */}
         <div className={styles.column}>
           <Card
             title={
@@ -327,6 +416,16 @@ export function SmsServicePage() {
       <div className={styles.statLabel}>
         {t('sms_service.updated_at', { time: formatDateTimeValue(status.updatedAt) })}
       </div>
+
+      <ChannelConfigModal
+        open={modalOpen}
+        initial={editing}
+        onClose={() => {
+          setModalOpen(false);
+          setEditing(null);
+        }}
+        onSubmit={handleSavePlatform}
+      />
     </div>
   );
 }
