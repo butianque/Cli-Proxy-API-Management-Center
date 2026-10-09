@@ -62,8 +62,12 @@ export function SmsServicePage() {
     [status.channels]
   );
 
-  const overCeiling = status.channels.filter(
-    (channel) => !channel.paused && channel.priceCny > status.priceCeilingCny
+  const overCeiling = useMemo(
+    () =>
+      status.channels.filter(
+        (channel) => !channel.paused && channel.priceCny > status.priceCeilingCny
+      ),
+    [status.channels, status.priceCeilingCny]
   );
 
   return (
@@ -211,7 +215,7 @@ export function SmsServicePage() {
             ) : (
               <div className={styles.ledger}>
                 {status.ledger.map((entry) => (
-                  <div key={entry.phone} className={styles.ledgerRow}>
+                  <div key={`${entry.phone}@${entry.takenAt}`} className={styles.ledgerRow}>
                     <span className={styles.ledgerPhone}>{entry.phone}</span>
                     <span className={`${styles.tag} ${ledgerStatusClass[entry.status]}`}>
                       {t(`sms_service.ledger_status_${entry.status}`)}
