@@ -34,6 +34,12 @@ import {
   validateVisualServer,
 } from '@/features/config/visualConfigServer';
 
+import {
+  areApiKeyPoolsEqual,
+  parseApiKeyPools,
+  serializeApiKeyPoolsForYaml,
+} from '@/features/config/keyPools';
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
@@ -1286,6 +1292,12 @@ function getNextDirtyFields(
       arePluginStoreAuthRulesEqual(nextValues.pluginStoreAuth, baselineValues.pluginStoreAuth)
     );
   }
+  if (Object.prototype.hasOwnProperty.call(patch, 'apiKeyPools')) {
+    updateDirty(
+      'apiKeyPools',
+      areApiKeyPoolsEqual(nextValues.apiKeyPools, baselineValues.apiKeyPools)
+    );
+  }
 
   if (Object.prototype.hasOwnProperty.call(patch, 'payloadDefaultRules')) {
     updateDirty(
@@ -1458,6 +1470,7 @@ function parseVisualValuesFromYaml(yamlContent: string): VisualConfigValues {
 
     authDir: typeof v8Oauth?.['auth-dir'] === 'string' ? v8Oauth?.['auth-dir'] : '',
     apiKeysText: parseApiKeysText(asRecord(parsed.access)?.['api-keys']),
+    apiKeyPools: parseApiKeyPools(asRecord(parsed.access)?.['key-pools']),
     pluginsEnabled: Boolean(plugins?.enabled),
     pluginStoreSources: parseStringList(plugins?.['store-sources']),
     pluginStoreAuth: parsePluginStoreAuthRules(plugins?.['store-auth']),
@@ -1735,15 +1748,25 @@ export function useVisualConfig() {
         }
 
         if (dirtyFields.has('authDir')) setStringInDoc(doc, ['oauth', 'auth-dir'], values.authDir);
-        if (dirtyFields.has('apiKeysText')) {
+        if (dirtyFields.has('apiKeysText') || dirtyFields.has('apiKeyPools')) {
           const apiKeys = values.apiKeysText
             .split('\n')
             .map((key) => key.trim())
             .filter(Boolean);
-          if (apiKeys.length > 0) {
-            doc.setIn(['access', 'api-keys'], apiKeys);
-          } else if (docHas(doc, ['access', 'api-keys'])) {
-            doc.deleteIn(['access', 'api-keys']);
+          if (dirtyFields.has('apiKeysText')) {
+            if (apiKeys.length > 0) {
+              doc.setIn(['access', 'api-keys'], apiKeys);
+            } else if (docHas(doc, ['access', 'api-keys'])) {
+              doc.deleteIn(['access', 'api-keys']);
+            }
+          }
+          // Re-prune whenever the key list changes, so a removed key never
+          // leaves an orphaned scoping entry behind.
+          const keyPools = serializeApiKeyPoolsForYaml(values.apiKeyPools, apiKeys);
+          if (Object.keys(keyPools).length > 0) {
+            doc.setIn(['access', 'key-pools'], keyPools);
+          } else if (docHas(doc, ['access', 'key-pools'])) {
+            doc.deleteIn(['access', 'key-pools']);
           }
         }
 

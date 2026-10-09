@@ -4,6 +4,15 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { useAuthStore, useNotificationStore } from '@/stores';
 import { apiKeyNameFingerprint, readApiKeyNames, saveApiKeyName } from '../../apiKeyNames';
+import {
+  KEY_POOL_OPTIONS,
+  areApiKeyPoolsEqual,
+  candidateKeyPoolValues,
+  removeApiKeyPools,
+  renameApiKeyPools,
+  withApiKeyPools,
+  type ApiKeyPools,
+} from '../../keyPools';
 import { copyToClipboard } from '@/utils/clipboard';
 import { makeClientId } from '@/types/visualConfig';
 import { generateSecureApiKey } from '@/utils/apiKey';
@@ -14,8 +23,9 @@ import styles from './Blocks.module.scss';
 
 interface ApiKeysCardEditorProps {
   value: string;
+  pools: ApiKeyPools;
   disabled?: boolean;
-  onChange: (nextValue: string) => void;
+  onChange: (patch: { apiKeysText: string; apiKeyPools: ApiKeyPools }) => void;
 }
 
 export const ApiKeysCardEditor = memo(function ApiKeysCardEditor(props: ApiKeysCardEditorProps) {
@@ -25,6 +35,7 @@ export const ApiKeysCardEditor = memo(function ApiKeysCardEditor(props: ApiKeysC
 
 function ScopedApiKeysCardEditor({
   value,
+  pools,
   disabled,
   onChange,
   apiBase,
@@ -60,15 +71,26 @@ function ScopedApiKeysCardEditor({
   const nameHintId = `${nameInputId}-hint`;
   const apiKeyHintId = `${apiKeyInputId}-hint`;
   const apiKeyErrorId = `${apiKeyInputId}-error`;
+  const poolsLabelId = useId();
+  const poolsHintId = `${poolsLabelId}-hint`;
   const [modalOpen, setModalOpen] = useState(false);
   const [editingApiKeyId, setEditingApiKeyId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
+  const [draftPools, setDraftPools] = useState<string[]>([]);
+  const [poolValue, setPoolValue] = useState('');
   const [formError, setFormError] = useState('');
+
+  const poolLabel = (pool: string) => {
+    const option = KEY_POOL_OPTIONS.find((candidate) => candidate.value === pool);
+    return option ? t(option.labelKey) : pool;
+  };
 
   const openAddModal = () => {
     setNameValue('');
     setEditingApiKeyId(null);
     setInputValue('');
+    setDraftPools([]);
+    setPoolValue('');
     setFormError('');
     setModalOpen(true);
   };
@@ -80,6 +102,8 @@ function ScopedApiKeysCardEditor({
     setNameValue(latestNames[nameFingerprints[editingIndex]] ?? '');
     setEditingApiKeyId(apiKeyId);
     setInputValue(apiKeys[editingIndex] ?? '');
+    setDraftPools(pools[apiKeys[editingIndex] ?? ''] ?? []);
+    setPoolValue('');
     setFormError('');
     setModalOpen(true);
   };
@@ -87,19 +111,34 @@ function ScopedApiKeysCardEditor({
   const closeModal = () => {
     setModalOpen(false);
     setInputValue('');
+    setDraftPools([]);
+    setPoolValue('');
     setEditingApiKeyId(null);
     setFormError('');
   };
 
-  const updateApiKeys = (nextKeys: string[]) => {
-    onChange(nextKeys.join('\n'));
+  const toggleDraftPool = (pool: string) => {
+    setDraftPools((current) =>
+      current.includes(pool) ? current.filter((item) => item !== pool) : [...current, pool]
+    );
+  };
+
+  const addCustomPool = () => {
+    const trimmed = poolValue.trim();
+    if (!trimmed) return;
+    setDraftPools((current) => (current.includes(trimmed) ? current : [...current, trimmed]));
+    setPoolValue('');
   };
 
   const handleDelete = (apiKeyId: string) => {
     const index = renderApiKeyIds.findIndex((id) => id === apiKeyId);
     if (index < 0) return;
+    const removedKey = apiKeys[index] ?? '';
     setApiKeyIds(renderApiKeyIds.filter((id) => id !== apiKeyId));
-    updateApiKeys(apiKeys.filter((_, i) => i !== index));
+    onChange({
+      apiKeysText: apiKeys.filter((_, i) => i !== index).join('\n'),
+      apiKeyPools: removeApiKeyPools(pools, removedKey),
+    });
   };
 
   const handleSave = () => {
@@ -129,7 +168,18 @@ function ScopedApiKeysCardEditor({
     if (editingApiKeyId === null) {
       setApiKeyIds([...renderApiKeyIds, makeClientId()]);
     }
-    if (nextKeys.join('\n') !== apiKeys.join('\n')) updateApiKeys(nextKeys);
+
+    // Editing the key itself moves its pool scope; the old entry must not linger.
+    let nextPools =
+      editingApiKeyId === null
+        ? pools
+        : renameApiKeyPools(pools, apiKeys[editingIndex] ?? '', trimmed);
+    nextPools = withApiKeyPools(nextPools, trimmed, draftPools);
+
+    const keysChanged = nextKeys.join('\n') !== apiKeys.join('\n');
+    if (keysChanged || !areApiKeyPoolsEqual(nextPools, pools)) {
+      onChange({ apiKeysText: nextKeys.join('\n'), apiKeyPools: nextPools });
+    }
     closeModal();
   };
 
@@ -159,44 +209,60 @@ function ScopedApiKeysCardEditor({
         <div className={styles.emptyState}>{t('config_management.visual.api_keys.empty')}</div>
       ) : (
         <div className="item-list" style={{ marginTop: 4 }}>
-          {apiKeys.map((key, index) => (
-            <div key={renderApiKeyIds[index] ?? `${key}-${index}`} className="item-row">
-              <div className="item-meta">
-                <div className="pill">#{index + 1}</div>
-                <div className="item-title">
-                  {names[nameFingerprints[index]] ??
-                    t('config_management.visual.api_keys.input_label')}
+          {apiKeys.map((key, index) => {
+            const keyPools = pools[key] ?? [];
+            return (
+              <div key={renderApiKeyIds[index] ?? `${key}-${index}`} className="item-row">
+                <div className="item-meta">
+                  <div className="pill">#{index + 1}</div>
+                  <div className="item-title">
+                    {names[nameFingerprints[index]] ??
+                      t('config_management.visual.api_keys.input_label')}
+                  </div>
+                  <div className="item-subtitle">{maskApiKey(String(key || ''))}</div>
+                  <div className={styles.poolBadges}>
+                    {keyPools.length > 0 ? (
+                      keyPools.map((pool) => (
+                        <span key={pool} className="pill">
+                          {poolLabel(pool)}
+                        </span>
+                      ))
+                    ) : (
+                      <span className={styles.poolBadgesNone}>
+                        {t('config_management.visual.api_keys.pools_empty')}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="item-subtitle">{maskApiKey(String(key || ''))}</div>
+                <div className="item-actions">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleCopy(key)}
+                    disabled={disabled}
+                  >
+                    {t('common.copy')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => openEditModal(renderApiKeyIds[index] ?? '')}
+                    disabled={disabled}
+                  >
+                    {t('config_management.visual.common.edit')}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDelete(renderApiKeyIds[index] ?? '')}
+                    disabled={disabled}
+                  >
+                    {t('config_management.visual.common.delete')}
+                  </Button>
+                </div>
               </div>
-              <div className="item-actions">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => handleCopy(key)}
-                  disabled={disabled}
-                >
-                  {t('common.copy')}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => openEditModal(renderApiKeyIds[index] ?? '')}
-                  disabled={disabled}
-                >
-                  {t('config_management.visual.common.edit')}
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => handleDelete(renderApiKeyIds[index] ?? '')}
-                  disabled={disabled}
-                >
-                  {t('config_management.visual.common.delete')}
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -272,6 +338,61 @@ function ScopedApiKeysCardEditor({
               {formError}
             </div>
           )}
+        </div>
+        <div
+          className="form-group"
+          role="group"
+          aria-labelledby={poolsLabelId}
+          aria-describedby={poolsHintId}
+        >
+          <span id={poolsLabelId} className={styles.poolGroupLabel}>
+            {t('config_management.visual.api_keys.pools_label')}
+          </span>
+          <div className={styles.poolOptions}>
+            {candidateKeyPoolValues(draftPools).map((pool) => {
+              const option = KEY_POOL_OPTIONS.find((candidate) => candidate.value === pool);
+              return (
+                <label key={pool} className={styles.poolOption}>
+                  <input
+                    type="checkbox"
+                    checked={draftPools.includes(pool)}
+                    disabled={disabled}
+                    onChange={() => toggleDraftPool(pool)}
+                  />
+                  <span>{option ? t(option.labelKey) : pool}</span>
+                  {option ? <code className={styles.poolOptionValue}>{pool}</code> : null}
+                </label>
+              );
+            })}
+          </div>
+          <div className={styles.poolCustomRow}>
+            <input
+              className="input"
+              value={poolValue}
+              placeholder={t('config_management.visual.api_keys.pools_custom_placeholder')}
+              aria-label={t('config_management.visual.api_keys.pools_custom_placeholder')}
+              onChange={(event) => setPoolValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  addCustomPool();
+                }
+              }}
+              disabled={disabled}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={addCustomPool}
+              disabled={disabled || !poolValue.trim()}
+            >
+              {t('config_management.visual.api_keys.pools_add')}
+            </Button>
+          </div>
+          <div id={poolsHintId} className="hint">
+            {t('config_management.visual.api_keys.pools_hint')}
+          </div>
         </div>
       </Modal>
     </div>

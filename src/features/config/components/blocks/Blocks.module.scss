@@ -151,6 +151,59 @@
   }
 }
 
+/* ---------- API 密钥：凭证池选择 ---------- */
+
+.poolGroupLabel {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.poolOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.poolOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+
+  input {
+    cursor: pointer;
+  }
+}
+
+.poolOptionValue {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.poolCustomRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  :global(.input) {
+    flex: 1;
+  }
+}
+
+.poolBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.poolBadgesNone {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 /* 强度参考条：四段承载档位，颜色承载严重度。
    段的填充走 scaleX（只碰 transform），键入时逐字重算也不掉帧。 */
 
