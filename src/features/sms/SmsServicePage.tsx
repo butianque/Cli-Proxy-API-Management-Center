@@ -59,7 +59,7 @@ export function SmsServicePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ConfiguredPlatform | null>(null);
 
-  const canStart = platforms.length > 0;
+  const canStart = platforms.some((item) => item.enabled);
 
   const cheapestChannel = useMemo(
     () =>

@@ -11,7 +11,7 @@
  * 不做任何网络请求，「测试连接」返回模拟结果。
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -41,15 +41,22 @@ export function ChannelConfigModal({ open, onClose, initial, onSubmit }: Channel
   const [account, setAccount] = useState('');
   const [secret, setSecret] = useState('');
   const [test, setTest] = useState<TestState>('idle');
+  // 提交尝试过才显示必填错误，避免一打开就满屏红字（pristine 表单不该报错）。
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const testTimerRef = useRef<number | null>(null);
 
   const platform = useMemo(
     () => SMS_PLATFORMS.find((item) => item.id === platformId) ?? SMS_PLATFORMS[0],
     [platformId]
   );
 
+  // 任何字段变化都让上一次「测试连接」结果失效（避免改了账号仍显示已连接）。
+  const resetTest = () => setTest('idle');
+
   // 打开时把 initial 回填进表单；无 initial 则用平台默认。
   useEffect(() => {
     if (!open) return;
+    setSubmitAttempted(false);
     if (initial) {
       setPlatformId(initial.platformId);
       setMode(initial.mode);
@@ -69,6 +76,13 @@ export function ChannelConfigModal({ open, onClose, initial, onSubmit }: Channel
     setTest('idle');
   }, [open, initial]);
 
+  // 卸载/关闭时清掉测试连接定时器，避免悬空 setState。
+  useEffect(() => {
+    return () => {
+      if (testTimerRef.current !== null) window.clearTimeout(testTimerRef.current);
+    };
+  }, []);
+
   // 平台切换：模式收敛到该平台支持的第一种，字段随之重置（「选择后下方内容改变」）。
   const handlePlatformChange = (next: SmsPlatform) => {
     setPlatformId(next.id);
@@ -77,14 +91,18 @@ export function ChannelConfigModal({ open, onClose, initial, onSubmit }: Channel
     setEndpoint(nextMode === 'api' ? (next.defaultEndpoint ?? '') : '');
     setAccount('');
     setSecret('');
-    setTest('idle');
+    setSubmitAttempted(false);
+    resetTest();
   };
 
   // 模式切换：清掉不适用的字段，避免把 A 模式的值带到 B 模式。
   const handleModeChange = (next: ConnectionMode) => {
     setMode(next);
     setEndpoint(next === 'api' ? (platform.defaultEndpoint ?? '') : '');
-    setTest('idle');
+    setAccount('');
+    setSecret('');
+    setSubmitAttempted(false);
+    resetTest();
   };
 
   const needsEndpoint = mode === 'api';
@@ -92,15 +110,25 @@ export function ChannelConfigModal({ open, onClose, initial, onSubmit }: Channel
   const accountMissing = account.trim() === '';
   const secretMissing = secret.trim() === '';
   const canSubmit = !endpointMissing && !accountMissing && !secretMissing;
+  // 只在「提交尝试过」后展示必填错误。
+  const showErrors = submitAttempted;
 
   const handleTest = () => {
+    if (!canSubmit) return;
     setTest('testing');
     // 本轮 mock：延迟后固定返回成功；不做任何网络请求。
-    window.setTimeout(() => setTest('ok'), 600);
+    if (testTimerRef.current !== null) window.clearTimeout(testTimerRef.current);
+    testTimerRef.current = window.setTimeout(() => {
+      setTest('ok');
+      testTimerRef.current = null;
+    }, 600);
   };
 
   const handleSubmit = () => {
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      setSubmitAttempted(true);
+      return;
+    }
     onSubmit({
       platformId: platform.id,
       platformName: platform.name,
@@ -123,7 +151,7 @@ export function ChannelConfigModal({ open, onClose, initial, onSubmit }: Channel
           <Button variant="secondary" size="sm" onClick={onClose}>
             {t('sms_service.config_cancel')}
           </Button>
-          <Button variant="primary" size="sm" onClick={handleSubmit} disabled={!canSubmit}>
+          <Button variant="primary" size="sm" onClick={handleSubmit}>
             {t('sms_service.config_save')}
           </Button>
         </div>
@@ -201,9 +229,12 @@ export function ChannelConfigModal({ open, onClose, initial, onSubmit }: Channel
               label={t('sms_service.config_field_endpoint')}
               placeholder="https://api.example.com"
               value={endpoint}
-              onChange={(event) => setEndpoint(event.target.value)}
+              onChange={(event) => {
+                setEndpoint(event.target.value);
+                resetTest();
+              }}
               hint={t('sms_service.config_field_endpoint_hint')}
-              error={endpointMissing ? t('sms_service.config_required') : undefined}
+              error={showErrors && endpointMissing ? t('sms_service.config_required') : undefined}
             />
           )}
           <Input
@@ -214,8 +245,11 @@ export function ChannelConfigModal({ open, onClose, initial, onSubmit }: Channel
             }
             placeholder={needsEndpoint ? 'api_user' : t('sms_service.config_field_account_ph')}
             value={account}
-            onChange={(event) => setAccount(event.target.value)}
-            error={accountMissing ? t('sms_service.config_required') : undefined}
+            onChange={(event) => {
+              setAccount(event.target.value);
+              resetTest();
+            }}
+            error={showErrors && accountMissing ? t('sms_service.config_required') : undefined}
           />
           <Input
             label={
@@ -226,9 +260,12 @@ export function ChannelConfigModal({ open, onClose, initial, onSubmit }: Channel
             type="password"
             placeholder="••••••••"
             value={secret}
-            onChange={(event) => setSecret(event.target.value)}
+            onChange={(event) => {
+              setSecret(event.target.value);
+              resetTest();
+            }}
             hint={needsEndpoint ? undefined : t('sms_service.config_field_secret_hint')}
-            error={secretMissing ? t('sms_service.config_required') : undefined}
+            error={showErrors && secretMissing ? t('sms_service.config_required') : undefined}
           />
         </section>
 
