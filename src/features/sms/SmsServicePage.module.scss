@@ -1,0 +1,466 @@
+@use '../../styles/mixins' as *;
+
+/* ============================================================
+ * 接码服务页 — 布局遵循「指标与渠道靠拢、视觉约一半、颜色随健康度」。
+ *
+ * 版面自上而下：
+ *  1. 页头（标题 + 说明 + 刷新）
+ *  2. 状态带（启用 / 解锁 / 余额 / 会话花费 / 单价上限）
+ *  3. 两栏主区（宽：渠道表 1.6fr ｜ 窄：护栏 + 账本）
+ *
+ * 颜色只由数据推导：健康度 → 绿/黄/红，不做纯装饰色块。
+ * ============================================================ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+  width: 100%;
+}
+
+/* ---------- 页头 ---------- */
+
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+}
+
+.headerText {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.description {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+
+  :global(.btn > span) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+
+/* 预览提醒：明确告知本页数据为占位 mock，避免误读为真实余额。 */
+.previewNotice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px dashed color-mix(in srgb, var(--primary-color) 42%, var(--border-color));
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--primary-color) 7%, transparent);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+
+  svg {
+    flex-shrink: 0;
+  }
+}
+
+/* ---------- 状态带 ---------- */
+
+.statusBar {
+  display: flex;
+  align-items: stretch;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.statPill {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 132px;
+  min-width: 118px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+}
+
+.statLabel {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.statValue {
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+/* 状态类数值用颜色表达好坏（非装饰）。 */
+.statValueGood {
+  color: var(--success-color);
+}
+
+.statValueWarn {
+  color: var(--warning-color);
+}
+
+/* ---------- 主区两栏 ---------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: $spacing-lg;
+  align-items: start;
+
+  @include tablet {
+    grid-template-columns: 1fr;
+  }
+
+  @include mobile {
+    grid-template-columns: 1fr;
+  }
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+  min-width: 0;
+}
+
+/* ---------- 渠道表 ---------- */
+
+.channelTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.channelTable th {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.channelTable th:first-child {
+  padding-left: 0;
+}
+
+.channelTable td {
+  padding: 9px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+
+.channelTable td:first-child {
+  padding-left: 0;
+}
+
+.channelTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.channelName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* 健康点：颜色即结论（绿=便宜有货 / 黄=偏贵或偏少 / 红=暂停或无货）。 */
+.healthDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.healthGood {
+  background: var(--success-color);
+  box-shadow: 0 0 6px rgba($success-color, 0.45);
+}
+
+.healthWarning {
+  background: var(--warning-color);
+  box-shadow: 0 0 6px rgba($warning-color, 0.4);
+}
+
+.healthCritical {
+  background: var(--text-tertiary);
+}
+
+.mono {
+  font-family: $font-mono;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.rowMuted td {
+  color: var(--text-tertiary);
+  opacity: 0.75;
+}
+
+.channelActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* 安静描边药丸按钮：与额度卡动作同族，hover 才着色。 */
+.actionPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-full;
+  background: none;
+  padding: 4px 11px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  transition:
+    border-color $transition-fast,
+    background-color $transition-fast,
+    color $transition-fast;
+
+  &:hover {
+    border-color: var(--border-hover, var(--primary-color));
+    background: color-mix(in srgb, var(--bg-tertiary) 55%, transparent);
+    color: var(--text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+}
+
+.tag {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.tagGood {
+  background: rgba($success-color, 0.1);
+  border: 1px solid rgba($success-color, 0.22);
+  color: var(--success-color);
+}
+
+.tagWarning {
+  background: rgba($warning-color, 0.1);
+  border: 1px solid rgba($warning-color, 0.22);
+  color: var(--warning-color);
+}
+
+.tagMuted {
+  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-color) 45%, transparent);
+  color: var(--text-tertiary);
+}
+
+/* ---------- 护栏面板 ---------- */
+
+.guardrailRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  min-height: 52px;
+  padding: 11px $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+
+  & + & {
+    margin-top: $spacing-sm;
+  }
+}
+
+.guardrailText {
+  min-width: 0;
+}
+
+.guardrailLabel {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.guardrailHint {
+  margin-top: 3px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* 便宜渠道推荐：图与数靠拢成一体，联动「暂停贵渠道」的省钱结论。 */
+.recommendBox {
+  margin-top: $spacing-md;
+  padding: 11px $spacing-md;
+  border: 1px solid rgba($success-color, 0.24);
+  border-radius: $radius-md;
+  background: rgba($success-color, 0.06);
+}
+
+.recommendLabel {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.recommendValue {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.recommendName {
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.recommendPrice {
+  color: var(--success-color);
+  font-family: $font-mono;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.recommendHint {
+  margin-top: 3px;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* ---------- 号码账本 ---------- */
+
+.ledger {
+  display: flex;
+  flex-direction: column;
+}
+
+.ledgerRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px $spacing-sm;
+  padding: 9px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.ledgerPhone {
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledgerMeta {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  flex-wrap: wrap;
+}
+
+.ledgerDot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text-tertiary) 55%, transparent);
+  flex-shrink: 0;
+}
+
+/* ---------- 卡片标题 ---------- */
+
+.cardTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- 提示列表 ---------- */
+
+.list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+
+  li::marker {
+    color: var(--text-tertiary);
+  }
+}
+
+/* ---------- 空态 ---------- */
+
+.empty {
+  padding: $spacing-lg;
+  border: 1px dashed var(--border-color);
+  border-radius: $radius-md;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .actionPill {
+    transition: none;
+  }
+}
