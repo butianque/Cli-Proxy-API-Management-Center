@@ -30,7 +30,12 @@ export interface ChannelConfigModalProps {
   open: boolean;
   onClose: () => void;
   /** 已配置情况（用于回填「已存」角标与占位提示）。 */
-  existing?: { accountPresent: boolean; cookiePresent: boolean; accountHint: string } | null;
+  existing?: {
+    accountPresent: boolean;
+    cookiePresent: boolean;
+    webPresent: boolean;
+    accountHint: string;
+  } | null;
   /** 保存成功后回调（父组件据此刷新状态）。 */
   onSaved: () => void;
 }
@@ -41,6 +46,13 @@ type TestState =
   | { kind: 'ok'; balance?: number }
   | { kind: 'fail'; message: string }
   | { kind: 'unavailable'; message: string };
+
+/** 自动获取 CK 的状态。 */
+type WebLoginState =
+  | { kind: 'idle' }
+  | { kind: 'busy' }
+  | { kind: 'ok'; channels: number }
+  | { kind: 'fail'; message: string };
 
 /** Cookie 长度粗略校验：豪猪 PHPSESSID 形如 32 位 hex，这里只做「看着像」的软校验。 */
 const looksLikeCookie = (value: string) => value.trim().length >= 16;
@@ -57,7 +69,10 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
   const [endpoint, setEndpoint] = useState('');
   const [cookie, setCookie] = useState('');
   const [clearCookie, setClearCookie] = useState(false);
+  const [webUser, setWebUser] = useState('');
+  const [webPass, setWebPass] = useState('');
   const [test, setTest] = useState<TestState>({ kind: 'idle' });
+  const [webLogin, setWebLogin] = useState<WebLoginState>({ kind: 'idle' });
   const [saving, setSaving] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -80,7 +95,10 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
     setEndpoint('');
     setCookie('');
     setClearCookie(false);
+    setWebUser('');
+    setWebPass('');
     setTest({ kind: 'idle' });
+    setWebLogin({ kind: 'idle' });
     setSubmitAttempted(false);
     setSaveError(null);
   }, [open]);
@@ -94,6 +112,7 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
 
   const resetTest = () => {
     setTest({ kind: 'idle' });
+    setWebLogin({ kind: 'idle' });
     setSaveError(null);
   };
 
@@ -182,6 +201,30 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
         kind: 'fail',
         message: (error as { message?: string })?.message ?? t('sms_service.config_test_fail'),
       });
+    }
+  };
+
+  /**
+   * 自动获取 CK：后端取验证码 → 解点选顺序 → 提交登录 → 存 CK。
+   * 登录失败不落库；账号/密码留空则复用已存值。
+   */
+  const handleWebLogin = async () => {
+    setWebLogin({ kind: 'busy' });
+    setSaveError(null);
+    try {
+      const result = await smsApi.webLogin(
+        apiBase,
+        { username: webUser.trim(), password: webPass.trim() },
+        passphrase
+      );
+      if (result.ok) {
+        setWebLogin({ kind: 'ok', channels: result.channels });
+      } else {
+        setWebLogin({ kind: 'fail', message: result.message });
+      }
+    } finally {
+      // 无论成败都刷新一次，父组件能反映最新凭据状态。
+      onSaved();
     }
   };
 
@@ -299,6 +342,29 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
                 <span className={styles.credBadge}>{t('sms_service.config_stored')}</span>
               )}
             </div>
+            <div className={styles.credGrid}>
+              <Input
+                label={t('sms_service.config_field_web_user')}
+                placeholder="linhua888"
+                value={webUser}
+                onChange={(event) => {
+                  setWebUser(event.target.value);
+                  resetTest();
+                }}
+                hint={t('sms_service.config_field_web_hint')}
+              />
+              <Input
+                label={t('sms_service.config_field_web_pass')}
+                type="password"
+                placeholder="••••••••"
+                value={webPass}
+                onChange={(event) => {
+                  setWebPass(event.target.value);
+                  resetTest();
+                }}
+                hint={existing?.webPresent ? t('sms_service.config_keep_blank') : undefined}
+              />
+            </div>
             <Input
               label={t('sms_service.config_field_cookie')}
               placeholder="PHPSESSID=..."
@@ -328,6 +394,34 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
                 {t('sms_service.config_clear_cookie')}
               </label>
             )}
+            <div className={styles.webLoginRow}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleWebLogin}
+                disabled={webLogin.kind === 'busy' || gatePhase === 'locked'}
+              >
+                <IconRefreshCw size={14} />
+                {webLogin.kind === 'busy'
+                  ? t('sms_service.config_web_login_busy')
+                  : t('sms_service.config_web_login')}
+              </Button>
+              {webLogin.kind === 'ok' && (
+                <span className={`${styles.testResult} ${styles.testOk}`}>
+                  <IconCheckCircle2 size={15} />
+                  {t('sms_service.config_web_login_ok', { count: webLogin.channels })}
+                </span>
+              )}
+              {webLogin.kind === 'fail' && (
+                <span className={`${styles.testResult} ${styles.testFail}`}>
+                  <IconAlertTriangle size={15} />
+                  {webLogin.message}
+                </span>
+              )}
+              {webLogin.kind !== 'busy' && (
+                <span className={styles.testNote}>{t('sms_service.config_web_login_note')}</span>
+              )}
+            </div>
           </div>
         </section>
 

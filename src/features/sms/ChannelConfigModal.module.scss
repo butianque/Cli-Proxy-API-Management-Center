@@ -185,6 +185,24 @@
   user-select: none;
 }
 
+/* 自动获取 CK：一行按钮 + 结果，跟随 CK 卡片流动 */
+
+.webLoginRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+
+  :global(.btn > span) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+}
+
 /* ---------- ③ 测试连接 ---------- */
 
 .testRow {

@@ -62,6 +62,7 @@ export function SmsServicePage() {
   const [status, setStatus] = useState(mock);
   const [creds, setCreds] = useState<PlatformCredentials | null>(null);
   const [storeLocked, setStoreLocked] = useState(false);
+  const [webPresent, setWebPresent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [running, setRunning] = useState(true);
@@ -80,6 +81,7 @@ export function SmsServicePage() {
       const storeLocked = raw.store_available === false;
       const accountPresent = raw.api_present === true;
       const cookiePresent = raw.cookie_present === true;
+      const webPresent = raw.web_present === true;
       let statusKind: PlatformCredentials['status'] = 'unchecked';
       let statusReason: string | undefined;
       if (storeLocked) {
@@ -95,6 +97,7 @@ export function SmsServicePage() {
         statusReason = raw.balance_error;
       }
       setStoreLocked(storeLocked);
+      setWebPresent(webPresent);
       setCreds({
         platformId: 'haozhuma',
         platformName: '豪猪接码',
@@ -519,6 +522,7 @@ export function SmsServicePage() {
             ? {
                 accountPresent: creds.account.present,
                 cookiePresent: creds.session.present,
+                webPresent,
                 accountHint: '',
               }
             : null

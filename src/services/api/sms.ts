@@ -42,6 +42,8 @@ export interface SmsStatusResponse {
   api_present?: boolean;
   /** CK（网页会话）secret 是否已存在（默认 "haozhuma-ck"）。 */
   cookie_present?: boolean;
+  /** 网页登录账号（linhua888）是否已随账密 secret 存好。 */
+  web_present?: boolean;
   project?: string;
   provider?: string;
   budget?: { max_total_cny?: number; max_per_number_cny?: number };
@@ -151,6 +153,34 @@ export const smsApi = {
       return { ok: true };
     } catch (error) {
       return toCredentialWriteResult(error, 'failed to store the session cookie');
+    }
+  },
+
+  /**
+   * 自动登录网页后台换取会话 Cookie（CK）。
+   *
+   * 后端自己取验证码、解点选顺序、提交登录，成功后把 CK 写入密钥库；
+   * 登录失败**不会**落库任何东西。空账号/密码字段复用已存值。
+   */
+  async webLogin(
+    apiBase: string,
+    input: { username?: string; password?: string },
+    passphrase: string
+  ): Promise<{ ok: true; channels: number } | { ok: false; message: string }> {
+    try {
+      const result = await apiClient.post<{ channels?: number }>(
+        smsPluginURL('/web-login', apiBase),
+        withPassphrase(input, passphrase),
+        { baseURL: '' }
+      );
+      return { ok: true, channels: typeof result?.channels === 'number' ? result.channels : 0 };
+    } catch (error) {
+      const data = (error as { data?: unknown })?.data as { error?: string } | undefined;
+      const message =
+        typeof data?.error === 'string' && data.error
+          ? data.error
+          : 'failed to sign in to the web surface';
+      return { ok: false, message };
     }
   },
 };
