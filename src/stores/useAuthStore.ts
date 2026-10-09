@@ -13,6 +13,7 @@ import { LegacyBackendError, probeLegacyBackend } from '@/services/api/legacyBac
 import { useConfigStore } from './useConfigStore';
 import { useModelsStore } from './useModelsStore';
 import { useQuotaStore } from './useQuotaStore';
+import { useSecretGateStore } from './useSecretGateStore';
 import { detectApiBaseFromLocation, normalizeApiBase } from '@/utils/connection';
 
 interface AuthStoreState extends AuthState {
@@ -165,6 +166,10 @@ export const useAuthStore = create<AuthStoreState>()(
           connectionStatus: 'disconnected',
         });
         localStorage.removeItem('isLoggedIn');
+        // The secret gate shares the CPA session's lifetime: logging out (manual
+        // or idle-timeout) always returns it to the unasked state, clearing the
+        // in-memory passphrase so the next login re-verifies.
+        useSecretGateStore.getState().reset();
       },
 
       // 检查认证状态

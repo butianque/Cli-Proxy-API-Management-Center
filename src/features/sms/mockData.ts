@@ -1,22 +1,14 @@
 /**
- * 接码服务：占位数据（mock）。
+ * 接码服务：平台清单 与 未接线部分的占位数据（mock）。
  *
- * ⚠️ 本文件是**临时脚手架**：页面第一版只做结构与视觉，数据全部来自这里，
- * 不发起任何真实请求。接入真实数据时删除本文件，改由
- * src/services/api/sms.ts 归一化后端响应。
+ * ⚠️ 本文件里**渠道表 / 号码账本仍为占位**（那两块尚未接后端，属下一轮）；
+ * 凭据（账密表 / CK 表）与服务状态已改为真实后端，见 src/services/api/sms.ts。
  *
  * mock 数值取自 2026-10-10 的**真实实测**（豪猪 API 余额 2.42 元、最低渠道
  * 0.13 元、两次真实取号 0.33 / 0.44 元），以便视觉上贴近真实量级。
  */
 
-import type {
-  ChannelHealth,
-  ConfiguredPlatform,
-  PhoneLedgerEntry,
-  SmsChannel,
-  SmsPlatform,
-  SmsStatus,
-} from './types';
+import type { ChannelHealth, PhoneLedgerEntry, SmsChannel, SmsStatus, SmsPlatform } from './types';
 
 /** 由单价、库存、暂停状态推导健康度，供颜色联动使用。 */
 export function deriveChannelHealth(channel: {
@@ -65,12 +57,13 @@ const mockLedger: PhoneLedgerEntry[] = [
   },
 ];
 
-/** 返回一份 mock 的服务状态快照。 */
+/**
+ * 返回一份**占位**的运行时快照（渠道 / 账本尚未接后端）。
+ * 凭据是否已连接由真实 `/sms/status` 决定，不在此处。
+ */
 export function getMockSmsStatus(): SmsStatus {
   return {
     enabled: true,
-    unlocked: true,
-    defaultChannel: '讯飞',
     balanceCny: 2.42,
     sessionSpendCny: 1.05,
     priceCeilingCny: 0.5,
@@ -95,9 +88,8 @@ export const SMS_PLATFORMS: SmsPlatform[] = [
   {
     id: 'haozhuma',
     name: '豪猪接码',
-    summary: '已对接，支持账号登录 / API 两种连接方式',
+    summary: '已对接：账密表取号，CK 表管渠道',
     preset: true,
-    modes: ['account', 'api'],
     defaultEndpoint: 'https://api.haozhuma.cn',
   },
   {
@@ -105,21 +97,5 @@ export const SMS_PLATFORMS: SmsPlatform[] = [
     name: '自定义',
     summary: '接入其他接码平台，自行填写 API 地址与凭据',
     preset: false,
-    modes: ['api'],
   },
 ];
-
-/** 返回一份 mock 的「已配置渠道」（L4）。 */
-export function getMockConfiguredPlatforms(): ConfiguredPlatform[] {
-  return [
-    {
-      platformId: 'haozhuma',
-      platformName: '豪猪接码',
-      mode: 'account',
-      endpoint: 'https://api.haozhuma.cn',
-      account: 'linhua888',
-      enabled: true,
-      connected: true,
-    },
-  ];
-}

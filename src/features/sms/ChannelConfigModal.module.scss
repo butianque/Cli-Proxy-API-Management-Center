@@ -121,66 +121,71 @@
   line-height: 1.45;
 }
 
-/* ---------- ② 连接模式 ---------- */
+/* ---------- ② 凭据：两张表 ---------- */
 
-.modeRow {
+.credCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+}
+
+.credHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.credTitle {
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.credRole {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+.credBadge {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  margin-left: auto;
+  border-radius: 5px;
+  padding: 1px 7px;
+  background: color-mix(in srgb, var(--viz-success) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--viz-success) 32%, transparent);
+  color: var(--viz-success);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.credGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
 
   @include mobile {
     grid-template-columns: 1fr;
   }
 }
 
-.modeCard {
+.clearRow {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 11px 13px;
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  background: var(--bg-primary);
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
   cursor: pointer;
-  text-align: left;
-  transition:
-    border-color $transition-fast,
-    background-color $transition-fast;
-
-  &:hover:not(:disabled) {
-    border-color: var(--border-hover);
-    background: var(--bg-hover);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--primary-color);
-    outline-offset: 2px;
-  }
-
-  &:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
-  }
+  user-select: none;
 }
 
-.modeCardActive {
-  border-color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 6%, transparent);
-}
-
-.modeTitle {
-  color: var(--text-primary);
-  font-size: 13.5px;
-  font-weight: 650;
-}
-
-.modeHint {
-  color: var(--text-tertiary);
-  font-size: 11.5px;
-  line-height: 1.4;
-}
-
-/* ---------- ④ 测试连接 ---------- */
+/* ---------- ③ 测试连接 ---------- */
 
 .testRow {
   display: flex;
@@ -213,9 +218,23 @@
   color: var(--viz-failure);
 }
 
-.testHint {
+.testWarn {
+  color: var(--amber-text);
+}
+
+.testNote {
   color: var(--text-tertiary);
   font-size: 11.5px;
+}
+
+.gateWarn {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--amber-text);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* ---------- footer ---------- */
@@ -228,7 +247,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .platformCard,
-  .modeCard,
   .platformRadio {
     transition: none;
   }
