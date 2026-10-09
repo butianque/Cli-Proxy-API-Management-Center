@@ -1877,6 +1877,8 @@
     "configured_title": "已設定管道",
     "configured_empty": "尚未設定管道",
     "configured_empty_desc": "請先新增並設定管道，再啟動服務。",
+    "configured_locked": "憑證已鎖定",
+    "configured_locked_desc": "金鑰庫已鎖定，無法顯示已存憑證。驗證主密碼後可讀取。",
     "config_modal_title": "管道設定",
     "config_step_platform": "① 選擇平台",
     "config_step_credentials": "③ 連線資訊",

@@ -1809,6 +1809,8 @@
     "configured_title": "Kênh đã cấu hình",
     "configured_empty": "Chưa cấu hình kênh",
     "configured_empty_desc": "Hãy thêm và cấu hình kênh trước khi khởi động dịch vụ.",
+    "configured_locked": "Thông tin xác thực đã khóa",
+    "configured_locked_desc": "Kho mã hóa đang khóa nên không thể hiển thị thông tin đã lưu. Hãy xác minh mật khẩu chính để đọc.",
     "config_modal_title": "Cấu hình kênh",
     "config_step_platform": "① Chọn nền tảng",
     "config_step_credentials": "③ Thông tin kết nối",

@@ -1852,6 +1852,8 @@
     "configured_title": "설정된 채널",
     "configured_empty": "설정된 채널 없음",
     "configured_empty_desc": "서비스를 시작하기 전에 채널을 추가하고 설정하세요.",
+    "configured_locked": "자격 증명 잠김",
+    "configured_locked_desc": "보관소가 잠겨 있어 저장된 자격 증명을 표시할 수 없습니다. 마스터 암호를 확인하세요.",
     "config_modal_title": "채널 설정",
     "config_step_platform": "① 플랫폼 선택",
     "config_step_credentials": "③ 연결 정보",

@@ -61,6 +61,7 @@ export function SmsServicePage() {
   const mock = useMemo(() => getMockSmsStatus(), []);
   const [status, setStatus] = useState(mock);
   const [creds, setCreds] = useState<PlatformCredentials | null>(null);
+  const [storeLocked, setStoreLocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [running, setRunning] = useState(true);
@@ -72,11 +73,19 @@ export function SmsServicePage() {
     setLoadError(null);
     try {
       const raw = await smsApi.getStatus(apiBase);
+      // While the store is locked the plugin cannot read the credential names, so
+      // api_present/cookie_present come back false even though they exist. Report
+      // that as "locked" instead of "not configured", or the page would imply the
+      // operator never configured anything.
+      const storeLocked = raw.store_available === false;
       const accountPresent = raw.api_present === true;
       const cookiePresent = raw.cookie_present === true;
       let statusKind: PlatformCredentials['status'] = 'unchecked';
       let statusReason: string | undefined;
-      if (typeof raw.balance_cny === 'number') {
+      if (storeLocked) {
+        statusKind = 'unavailable';
+        statusReason = raw.error;
+      } else if (typeof raw.balance_cny === 'number') {
         statusKind = 'connected';
       } else if (raw.status === 'unavailable') {
         statusKind = 'unavailable';
@@ -85,6 +94,7 @@ export function SmsServicePage() {
         statusKind = 'failed';
         statusReason = raw.balance_error;
       }
+      setStoreLocked(storeLocked);
       setCreds({
         platformId: 'haozhuma',
         platformName: '豪猪接码',
@@ -94,9 +104,11 @@ export function SmsServicePage() {
         statusReason,
       });
       // 真实余额 / 花费 / 护栏（有就用真实的，没有保留占位量级）。
+      // 锁定时不回显余额：加密数据不可访问期间不应泄露任何凭据相关读数。
       setStatus((prev) => ({
         ...prev,
-        balanceCny: typeof raw.balance_cny === 'number' ? raw.balance_cny : prev.balanceCny,
+        balanceCny:
+          !storeLocked && typeof raw.balance_cny === 'number' ? raw.balance_cny : prev.balanceCny,
         balanceError: raw.balance_error,
         sessionSpendCny: typeof raw.spent_cny === 'number' ? raw.spent_cny : prev.sessionSpendCny,
         priceCeilingCny: raw.budget?.max_per_number_cny ?? prev.priceCeilingCny,
@@ -111,7 +123,9 @@ export function SmsServicePage() {
 
   useEffect(() => {
     void loadStatus();
-  }, [loadStatus]);
+    // Re-read when the gate changes state: locking or unlocking the base store
+    // flips what the backend can report about the credentials.
+  }, [loadStatus, gatePhase]);
 
   const channels: SmsChannel[] = status.channels;
 
@@ -133,8 +147,9 @@ export function SmsServicePage() {
   );
 
   const anyCredential = Boolean(creds?.account.present || creds?.session.present);
-  const canStart = anyCredential;
-  const locked = gatePhase === 'locked';
+  // 锁定（门或密钥库）时凭据不可读，不能据此判定「未配置」或允许启动。
+  const locked = gatePhase === 'locked' || storeLocked;
+  const canStart = anyCredential && !storeLocked;
 
   const statusLabel = (() => {
     if (!creds) return t('sms_service.status_unknown');
@@ -213,7 +228,12 @@ export function SmsServicePage() {
           </button>
         }
       >
-        {!creds || (!creds.account.present && !creds.session.present) ? (
+        {storeLocked ? (
+          <EmptyState
+            title={t('sms_service.configured_locked')}
+            description={t('sms_service.configured_locked_desc')}
+          />
+        ) : !creds || (!creds.account.present && !creds.session.present) ? (
           <EmptyState
             title={t('sms_service.configured_empty')}
             description={t('sms_service.configured_empty_desc')}
@@ -272,7 +292,7 @@ export function SmsServicePage() {
         <div className={styles.statPill}>
           <span className={styles.statLabel}>{t('sms_service.stat_balance')}</span>
           <span className={styles.statValue}>
-            {status.balanceCny === null ? '—' : formatCny(status.balanceCny)}
+            {status.balanceCny === null || locked ? '—' : formatCny(status.balanceCny)}
           </span>
         </div>
         <div className={styles.statPill}>

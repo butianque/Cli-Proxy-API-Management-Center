@@ -1852,6 +1852,8 @@
     "configured_title": "Configured channels",
     "configured_empty": "No channel configured",
     "configured_empty_desc": "Add a channel before starting the service.",
+    "configured_locked": "Credentials locked",
+    "configured_locked_desc": "The encrypted store is locked, so stored credentials cannot be shown. Verify the master passphrase to read them.",
     "config_modal_title": "Channel configuration",
     "config_step_platform": "① Select platform",
     "config_step_credentials": "③ Connection details",

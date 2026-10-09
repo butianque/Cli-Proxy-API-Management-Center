@@ -1851,6 +1851,8 @@
     "configured_title": "已配置渠道",
     "configured_empty": "尚未配置渠道",
     "configured_empty_desc": "请先添加并配置渠道，再启动服务。",
+    "configured_locked": "凭据已锁定",
+    "configured_locked_desc": "加密库已锁定，无法显示已存凭据。验证主密码后可读取。",
     "config_modal_title": "渠道配置",
     "config_step_platform": "① 选择平台",
     "config_step_credentials": "③ 连接信息",
