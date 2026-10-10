@@ -90,9 +90,11 @@ export const useSecretGateStore = create<SecretGateState>()(
         try {
           await unlock(passphrase);
         } catch (error) {
+          // The operator may have skipped or logged out while the round-trip was
+          // in flight; their choice wins. Only a still-open dialog returns to
+          // `idle` (with the error shown in place) so they can retry.
+          if (get().phase !== 'verifying') return false;
           const data = (error as { data?: { error?: string } })?.data;
-          // A failed attempt must not lock the gate: the dialog stays open so
-          // the operator can retry in place. Only skipping or closing locks it.
           set({
             phase: 'idle',
             errorKey: data?.error ?? 'verify_failed',
@@ -100,6 +102,10 @@ export const useSecretGateStore = create<SecretGateState>()(
           });
           return false;
         }
+        // Same rule on success: if the gate already moved on (skip / reset), do
+        // not force it open. The backend is unlocked either way, but the page
+        // keeps credentials hidden until a session actually verifies.
+        if (get().phase !== 'verifying') return false;
         set({
           phase: 'unlocked',
           errorKey: null,
@@ -118,11 +124,15 @@ export const useSecretGateStore = create<SecretGateState>()(
         set({ lastActivityAt: Date.now() });
       },
 
+      // 登出 = 门回到「未询问」：连「库是否可用 / 是否装了主密码」也要清掉。
+      // 否则登录页会拿着上一次会话的 storeAvailable/passphraseSet 把弹窗又弹出来。
       reset: () =>
         set({
           phase: 'idle',
           errorKey: null,
           passphrase: '',
+          passphraseSet: false,
+          storeAvailable: false,
           lastActivityAt: Date.now(),
         }),
 

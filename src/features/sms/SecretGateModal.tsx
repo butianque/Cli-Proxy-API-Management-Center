@@ -43,6 +43,16 @@ export function SecretGateModal() {
     probedRef.current = false;
   }, [isAuthenticated]);
 
+  // The dialog is mounted for the whole app lifetime, so its local input and
+  // error must be cleared when the gate leaves the asking states — otherwise a
+  // stale "wrong password" (or typed value) leaks into the next session.
+  useEffect(() => {
+    if (phase !== 'idle' && phase !== 'verifying') {
+      setValue('');
+      setErrorKey(null);
+    }
+  }, [phase]);
+
   // 登录后拉一次密钥库状态：决定「要不要问」以及问的措辞。
   // 必须等 isAuthenticated：登录页在会话恢复期间可能短暂有 apiBase，但 apiClient
   // 尚未拿到管理密钥，此时探测会 401，进而把门误判为锁定。
@@ -68,7 +78,19 @@ export function SecretGateModal() {
     };
   }, [phase, isAuthenticated, apiBase, refreshStoreState, skip]);
 
-  const open = phase === 'idle' && storeAvailable && passphraseSet;
+  // The gate is answerable only inside an authenticated session. The probe above
+  // already waits for `isAuthenticated`; the render guard must too, or a stale
+  // storeAvailable/passphraseSet from a previous session would stack the dialog
+  // on top of the login page before anyone has signed in.
+  //
+  // `verifying` keeps the dialog up: the submit is an async round-trip, and
+  // closing on click would blank the form mid-flight (and let a stray click hit
+  // whatever is underneath). A failed attempt returns to `idle` with an error.
+  const open =
+    (phase === 'idle' || phase === 'verifying') &&
+    isAuthenticated &&
+    storeAvailable &&
+    passphraseSet;
 
   const handleSubmit = async () => {
     if (!value.trim()) {

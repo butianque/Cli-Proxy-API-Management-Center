@@ -16,11 +16,13 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { IconShield } from '@/components/ui/icons';
 import { smsApi } from '@/services/api/sms';
+import { useAuthStore } from '@/stores/useAuthStore';
 import { useSecretGateStore } from '@/stores/useSecretGateStore';
 import styles from './SecretLockedBanner.module.scss';
 
 export function SecretLockedBanner() {
   const { t } = useTranslation();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const phase = useSecretGateStore((state) => state.phase);
   const passphraseSet = useSecretGateStore((state) => state.passphraseSet);
   const storeAvailable = useSecretGateStore((state) => state.storeAvailable);
@@ -31,8 +33,8 @@ export function SecretLockedBanner() {
   const [submitting, setSubmitting] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
 
-  // 只在「已锁定且确有必要验证」时显示。
-  if (phase !== 'locked' || !storeAvailable || !passphraseSet) return null;
+  // 只在「已登录、已锁定、且确有必要验证」时显示。
+  if (!isAuthenticated || phase !== 'locked' || !storeAvailable || !passphraseSet) return null;
 
   const handleSubmit = async () => {
     if (!value.trim()) return;
