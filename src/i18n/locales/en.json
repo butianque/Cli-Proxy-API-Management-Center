@@ -1492,6 +1492,7 @@
         "input_hint": "Changes take effect after saving the configuration. Upstream provider keys are managed separately.",
         "error_empty": "Please enter an API key",
         "error_invalid": "API key contains invalid characters",
+        "error_duplicate": "That API key is already in the list",
         "pools_label": "Credential pools (limit this key's credentials)",
         "pools_empty": "All credentials",
         "pools_hint": "No pool selected = unrestricted, the key may use every credential. Takes effect after saving the configuration.",

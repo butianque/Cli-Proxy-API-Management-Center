@@ -3,6 +3,7 @@ import { parse as parseYaml } from 'yaml';
 import {
   areApiKeyPoolsEqual,
   candidateKeyPoolValues,
+  isDuplicateApiKey,
   parseApiKeyPools,
   removeApiKeyPools,
   renameApiKeyPools,
@@ -70,11 +71,24 @@ describe('api key pool mutations', () => {
 
   test('areApiKeyPoolsEqual is order-insensitive per key but key-sensitive', () => {
     expect(areApiKeyPoolsEqual({ 'sk-a': ['loomy'] }, { 'sk-a': ['loomy'] })).toBe(true);
+    // A pool list is a set: the same members in another order are the same scope.
+    // (Comparing by index made "untick a pool, tick it again" mark the field dirty.)
+    expect(
+      areApiKeyPoolsEqual({ 'sk-a': ['loomy', 'zcode-zai'] }, { 'sk-a': ['zcode-zai', 'loomy'] })
+    ).toBe(true);
     expect(areApiKeyPoolsEqual({ 'sk-a': ['loomy', 'zcode-zai'] }, { 'sk-a': ['zcode-zai'] })).toBe(
       false
     );
     expect(areApiKeyPoolsEqual({ 'sk-a': ['loomy'] }, { 'sk-b': ['loomy'] })).toBe(false);
     expect(areApiKeyPoolsEqual(undefined, {})).toBe(true);
+  });
+
+  test('isDuplicateApiKey skips the entry being edited', () => {
+    const apiKeys = ['sk-a', 'sk-b'];
+    expect(isDuplicateApiKey(apiKeys, 'sk-b', -1)).toBe(true);
+    expect(isDuplicateApiKey(apiKeys, 'sk-a', 0)).toBe(false);
+    expect(isDuplicateApiKey(apiKeys, 'sk-b', 0)).toBe(true);
+    expect(isDuplicateApiKey(apiKeys, 'sk-c', -1)).toBe(false);
   });
 
   test('candidateKeyPoolValues lists known pools first, then custom ones', () => {

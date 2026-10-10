@@ -1281,6 +1281,7 @@
         "input_hint": "Chỉ sửa nội dung file cấu hình cục bộ, không đồng bộ sang giao diện Quản lý API Key",
         "error_empty": "Vui lòng nhập API key",
         "error_invalid": "API key chứa ký tự không hợp lệ",
+        "error_duplicate": "API key này đã có trong danh sách",
         "pools_label": "Pool thông tin xác thực (giới hạn thông tin xác thực của khóa này)",
         "pools_empty": "Tất cả thông tin xác thực",
         "pools_hint": "Không chọn pool nào = không giới hạn, khóa có thể dùng mọi thông tin xác thực. Có hiệu lực sau khi lưu cấu hình.",

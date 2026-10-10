@@ -8,6 +8,7 @@ import {
   KEY_POOL_OPTIONS,
   areApiKeyPoolsEqual,
   candidateKeyPoolValues,
+  isDuplicateApiKey,
   removeApiKeyPools,
   renameApiKeyPools,
   withApiKeyPools,
@@ -155,6 +156,12 @@ function ScopedApiKeysCardEditor({
     const editingIndex = editingApiKeyId
       ? renderApiKeyIds.findIndex((id) => id === editingApiKeyId)
       : -1;
+    // One entry per key: the pool scope is keyed by the key value, so a duplicate
+    // would share it (and a rename onto an existing value would overwrite it).
+    if (isDuplicateApiKey(apiKeys, trimmed, editingIndex)) {
+      setFormError(t('config_management.visual.api_keys.error_duplicate'));
+      return;
+    }
     const nextKeys =
       editingApiKeyId === null
         ? [...apiKeys, trimmed]

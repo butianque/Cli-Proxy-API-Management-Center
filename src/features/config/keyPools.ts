@@ -17,11 +17,20 @@ export const KEY_POOL_OPTIONS: ReadonlyArray<{ value: string; labelKey: string }
   { value: 'zcode-zai', labelKey: 'config_management.visual.api_keys.pool_zcode_zai' },
 ];
 
+/**
+ * Set equality, not sequence equality. A pool list is a **set** of pool ids — the
+ * backend reads it as one, and the order is whatever the user happened to build —
+ * so reordering the same members is not a change. Comparing by index instead made
+ * "untick a pool, tick it again" flag the field dirty and rewrite the YAML order.
+ */
 const areStringArraysEqual = (left: readonly string[], right: readonly string[]): boolean => {
   if (left === right) return true;
   if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index] !== right[index]) return false;
+  const remaining = new Set(right);
+  for (const item of left) {
+    // delete() doubles as the membership test: a member may only be consumed once,
+    // so a duplicate on the left fails against a non-duplicated right.
+    if (!remaining.delete(item)) return false;
   }
   return true;
 };
@@ -108,6 +117,20 @@ export function renameApiKeyPools(pools: ApiKeyPools, from: string, to: string):
   result[to] = result[from];
   delete result[from];
   return result;
+}
+
+/**
+ * Whether `candidate` is already used by another entry. Pool scoping is keyed by
+ * the API key value, so a duplicate would give two rows one shared scope (editing
+ * one edits both, deleting one drops the other's scope), and renaming a key onto
+ * an existing value would overwrite that key's scope.
+ */
+export function isDuplicateApiKey(
+  apiKeys: readonly string[],
+  candidate: string,
+  ignoreIndex: number
+): boolean {
+  return apiKeys.some((key, index) => index !== ignoreIndex && key === candidate);
 }
 
 /** Selectable pool ids: the known options first, then any custom ones in use. */

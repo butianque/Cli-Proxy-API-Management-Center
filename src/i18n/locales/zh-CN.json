@@ -1490,6 +1490,7 @@
         "input_hint": "保存配置后生效。上游提供商密钥独立管理，不受此处修改影响。",
         "error_empty": "请输入 API 密钥",
         "error_invalid": "API 密钥包含无效字符",
+        "error_duplicate": "该 API 密钥已在列表中",
         "pools_label": "凭证池（限定该密钥可用的凭证）",
         "pools_empty": "全部凭证",
         "pools_hint": "不勾选任何池 = 不限定，该密钥可使用全部凭证。保存配置后生效。",
