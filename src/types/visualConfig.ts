@@ -160,7 +160,6 @@ export type VisualConfigValues = {
   tlsCert: string;
   tlsKey: string;
   rmAllowRemote: boolean;
-  rmSecretKey: string;
   rmDisableControlPanel: boolean;
   rmDisableAutoUpdatePanel: boolean;
   rmPanelRepo: string;
@@ -267,7 +266,6 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   tlsCert: '',
   tlsKey: '',
   rmAllowRemote: false,
-  rmSecretKey: '',
   rmDisableControlPanel: false,
   rmDisableAutoUpdatePanel: false,
   rmPanelRepo: '',

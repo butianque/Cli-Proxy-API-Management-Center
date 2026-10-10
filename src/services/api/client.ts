@@ -16,6 +16,20 @@ import {
 import { computeApiUrl } from '@/utils/connection';
 import { parseApiErrorResponse } from './apiError';
 
+/**
+ * 携带主密码的路由：401 只表示「主密码不符」，不表示会话失效。
+ *
+ * 这些路由的 401 与「管理密钥无效」的 401 同码但语义不同，而管理密钥无效在
+ * 已登录状态下不可能出现（登录本身就会校验），故按路径放行是安全的：
+ * 既避免填错主密码被登出，也不会掩盖真正的会话失效。
+ */
+const PASSPHRASE_ROUTES = ['/secrets/verify', '/secrets/unlock', '/secrets/passphrase'];
+
+function isPassphraseRoute(url: string | undefined): boolean {
+  if (!url) return false;
+  return PASSPHRASE_ROUTES.some((route) => url.split('?')[0].endsWith(route));
+}
+
 class ApiClient {
   private instance: AxiosInstance;
   private apiBase: string = '';
@@ -174,8 +188,10 @@ class ApiClient {
       apiError.details = responseData;
       apiError.data = responseData;
 
-      // 401 未授权 - 触发登出事件
-      if (error.response?.status === 401) {
+      // 401 未授权 - 触发登出事件。例外：携带主密码的三条路由，401 表示「主密码
+      // 不符」而不是「会话失效」，属于可就地更正的输入错误，绝不能让操作者登出
+      // （旧主密码填错只应提示重填，而不是把人踢回登录页）。
+      if (error.response?.status === 401 && !isPassphraseRoute(error.config?.url)) {
         window.dispatchEvent(new Event('unauthorized'));
       }
 

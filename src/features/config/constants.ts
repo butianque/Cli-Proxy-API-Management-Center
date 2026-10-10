@@ -16,7 +16,7 @@ import type { VisualSectionId } from './searchIndex';
 /** 编辑模式：可视化表单 or YAML 源码。 */
 export type ConfigEditorMode = 'visual' | 'source';
 
-/** 顶部 tabs：'common'（常用，原简单模式的继任者）+ 7 个正典分区。 */
+/** 顶部 tabs：'common'（常用，原简单模式的继任者）+ 8 个正典分区。 */
 export type ConfigTabId = 'common' | VisualSectionId;
 
 export const CONFIG_SECTION_IDS = [
@@ -27,11 +27,12 @@ export const CONFIG_SECTION_IDS = [
   'streaming',
   'advanced',
   'payload',
+  'security',
 ] as const satisfies readonly VisualSectionId[];
 
 export const CONFIG_TAB_IDS: readonly ConfigTabId[] = ['common', ...CONFIG_SECTION_IDS];
 
-/** 分区序号（01–07）。常用 tab 是别名视图，不占序号。 */
+/** 分区序号（01–08）。常用 tab 是别名视图，不占序号。 */
 export const SECTION_INDEX_LABELS: Record<VisualSectionId, string> = {
   connectivity: '01',
   network: '02',
@@ -40,6 +41,7 @@ export const SECTION_INDEX_LABELS: Record<VisualSectionId, string> = {
   streaming: '05',
   advanced: '06',
   payload: '07',
+  security: '08',
 };
 
 export const CONFIG_TAB_ICONS: Record<ConfigTabId, ComponentType<IconProps>> = {
@@ -51,6 +53,7 @@ export const CONFIG_TAB_ICONS: Record<ConfigTabId, ComponentType<IconProps>> = {
   streaming: IconSatellite,
   advanced: IconShield,
   payload: IconCode,
+  security: IconShield,
 };
 
 /** 常用 tab 的 8 个字段（原简单模式），渲染源与正典分区共享（fields/sharedFields.tsx）。 */
@@ -99,6 +102,7 @@ export const SECTION_VALIDATION_FIELDS: Record<VisualSectionId, readonly VisualC
       'codexLiveMediaRelayICEServers',
     ],
     payload: [],
+    security: [],
   };
 
 /**
@@ -155,7 +159,6 @@ export const FIELD_VALUE_KEYS: Record<string, readonly string[]> = {
   rmAllowRemote: ['rmAllowRemote'],
   rmDisableControlPanel: ['rmDisableControlPanel'],
   rmDisableAutoUpdatePanel: ['rmDisableAutoUpdatePanel'],
-  rmSecretKey: ['rmSecretKey'],
   rmPanelRepo: ['rmPanelRepo'],
   // ── network ───────────────────────────────────────────────────────────────
   proxyUrl: ['proxyUrl'],

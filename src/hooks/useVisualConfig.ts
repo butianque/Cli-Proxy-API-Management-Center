@@ -1241,7 +1241,6 @@ function getNextDirtyFields(
       'tlsCert',
       'tlsKey',
       'rmAllowRemote',
-      'rmSecretKey',
       'rmDisableControlPanel',
       'rmPanelRepo',
       'authDir',
@@ -1459,8 +1458,6 @@ function parseVisualValuesFromYaml(yamlContent: string): VisualConfigValues {
     tlsKey: typeof tls?.key === 'string' ? tls.key : '',
 
     rmAllowRemote: Boolean(remoteManagement?.['allow-remote']),
-    rmSecretKey:
-      typeof remoteManagement?.['secret-key'] === 'string' ? remoteManagement['secret-key'] : '',
     rmDisableControlPanel: Boolean(remoteManagement?.['disable-control-panel']),
     rmDisableAutoUpdatePanel: Boolean(remoteManagement?.['disable-auto-update-panel']),
     rmPanelRepo:
@@ -1715,7 +1712,6 @@ export function useVisualConfig() {
 
         const remoteManagementDirty =
           dirtyFields.has('rmAllowRemote') ||
-          dirtyFields.has('rmSecretKey') ||
           dirtyFields.has('rmDisableControlPanel') ||
           dirtyFields.has('rmDisableAutoUpdatePanel') ||
           dirtyFields.has('rmPanelRepo');
@@ -1723,9 +1719,6 @@ export function useVisualConfig() {
           ensureMapInDoc(doc, ['management']);
           if (dirtyFields.has('rmAllowRemote')) {
             setBooleanInDoc(doc, ['management', 'allow-remote'], values.rmAllowRemote);
-          }
-          if (dirtyFields.has('rmSecretKey')) {
-            setStringInDoc(doc, ['management', 'secret-key'], values.rmSecretKey);
           }
           if (dirtyFields.has('rmDisableControlPanel')) {
             setBooleanInDoc(

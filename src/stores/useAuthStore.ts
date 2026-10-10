@@ -27,6 +27,8 @@ interface AuthStoreState extends AuthState {
   restoreSession: () => Promise<boolean>;
   updateServerVersion: (version: string | null, buildDate?: string | null) => void;
   updateServerPluginSupport: (supportsPlugin: boolean) => void;
+  /** 更换管理密钥成功后，同步内存中的密钥，让当前会话继续可用。 */
+  updateManagementKey: (managementKey: string) => void;
 }
 
 let restoreSessionPromise: Promise<boolean> | null = null;
@@ -231,6 +233,13 @@ export const useAuthStore = create<AuthStoreState>()(
 
       updateServerPluginSupport: (supportsPlugin) => {
         set({ supportsPlugin });
+      },
+
+      // 换密钥后当前会话仍带着旧密钥，下一次请求就会 401 被登出；这里把
+      // apiClient 与 store 一起换到新密钥（记住密码时 partialize 会一并持久化）。
+      updateManagementKey: (managementKey) => {
+        apiClient.setConfig({ apiBase: get().apiBase, managementKey });
+        set({ managementKey });
       },
     }),
     {

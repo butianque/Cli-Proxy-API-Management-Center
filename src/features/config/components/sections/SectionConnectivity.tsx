@@ -181,16 +181,6 @@ export function SectionConnectivity({
               </FieldAnchor>
             </FieldGrid>
             <FieldGrid>
-              <FieldAnchor fieldId="rmSecretKey">
-                <Input
-                  label={t('config_management.visual.sections.remote.secret_key')}
-                  type="password"
-                  placeholder={t('config_management.visual.sections.remote.secret_key_placeholder')}
-                  value={values.rmSecretKey}
-                  onChange={(e) => onChange({ rmSecretKey: e.target.value })}
-                  disabled={disabled}
-                />
-              </FieldAnchor>
               <FieldAnchor fieldId="rmPanelRepo">
                 <Input
                   label={t('config_management.visual.sections.remote.panel_repo')}

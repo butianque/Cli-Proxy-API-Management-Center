@@ -44,6 +44,7 @@ import { SectionLogging } from './components/sections/SectionLogging';
 import { SectionNetwork } from './components/sections/SectionNetwork';
 import { SectionPayload } from './components/sections/SectionPayload';
 import { SectionQuota } from './components/sections/SectionQuota';
+import { SectionSecurity } from './components/sections/SectionSecurity';
 import { SectionStreaming } from './components/sections/SectionStreaming';
 import styles from './ConfigPage.module.scss';
 
@@ -296,6 +297,8 @@ export function ConfigPage() {
             hasPayloadValidationErrors={visualHasPayloadValidationErrors}
           />
         );
+      case 'security':
+        return <SectionSecurity {...sectionProps} />;
     }
   };
 

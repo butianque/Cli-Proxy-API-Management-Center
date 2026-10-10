@@ -146,6 +146,23 @@ export const smsApi = {
     return apiClient.post<SecretStoreStatus>('/secrets/lock', {});
   },
 
+  /**
+   * 更换主密码。
+   *
+   * 后端要求「先解锁、再更换」（锁定态直接更换会被拒绝），所以这里把两步合成
+   * 一次调用，调用方无法把顺序弄错。当前主密码不对会以 401 抛出——那是「主密码
+   * 不符」而非会话失效，由调用方就地提示。
+   */
+  async setPassphrase(current: string, next: string): Promise<SecretStoreStatus> {
+    await apiClient.post('/secrets/unlock', { passphrase: current });
+    return apiClient.post<SecretStoreStatus>('/secrets/passphrase', { current, next });
+  },
+
+  /** 全新密钥库首次安装主密码（已安装的库会被拒绝，不会静默覆盖）。 */
+  async initializeStore(passphrase: string): Promise<SecretStoreStatus> {
+    return apiClient.post<SecretStoreStatus>('/secrets/initialize', { passphrase });
+  },
+
   /** 读取插件接码状态（会真实联网取余额）。 */
   async getStatus(apiBase: string): Promise<SmsStatusResponse> {
     return apiClient.get<SmsStatusResponse>(smsPluginURL('/status', apiBase), {

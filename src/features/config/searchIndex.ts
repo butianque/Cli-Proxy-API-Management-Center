@@ -9,7 +9,14 @@
 // extra entry anywhere fails CI.
 
 export type VisualSectionId =
-  'connectivity' | 'network' | 'logging' | 'quota' | 'streaming' | 'advanced' | 'payload';
+  | 'connectivity'
+  | 'network'
+  | 'logging'
+  | 'quota'
+  | 'streaming'
+  | 'advanced'
+  | 'payload'
+  | 'security';
 
 export interface ConfigFieldSearchEntry {
   /** Stable anchor id; matches FieldAnchor's `fieldId` and the rendered DOM id. */
@@ -359,12 +366,6 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
     sectionId: 'connectivity',
     labelKey: L('sections.remote.disable_auto_update_panel'),
     yamlKeys: ['management', 'disable-auto-update-panel'],
-  },
-  {
-    fieldId: 'rmSecretKey',
-    sectionId: 'connectivity',
-    labelKey: L('sections.remote.secret_key'),
-    yamlKeys: ['management', 'secret-key'],
   },
   {
     fieldId: 'rmPanelRepo',

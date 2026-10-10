@@ -131,7 +131,7 @@ describe('countTotalErrors', () => {
 
 describe('resolveDirtyTabs', () => {
   test('maps dirty value keys to their canonical sections', () => {
-    const tabs = resolveDirtyTabs(new Set(['rmSecretKey', 'streaming.bootstrapRetries']));
+    const tabs = resolveDirtyTabs(new Set(['rmPanelRepo', 'streaming.bootstrapRetries']));
     expect(tabs.has('connectivity')).toBe(true);
     expect(tabs.has('streaming')).toBe(true);
     expect(tabs.has('common')).toBe(false);

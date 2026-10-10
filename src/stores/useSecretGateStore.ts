@@ -93,6 +93,8 @@ interface SecretGateState {
   passphraseSet: boolean;
   /** 密钥库是否可用（enabled + initialized）。 */
   storeAvailable: boolean;
+  /** 密钥库功能是否启用（安全分区据此决定是否展示主密码管理）。 */
+  storeEnabled: boolean;
   /** 空闲超时（毫秒），可配。 */
   idleTimeoutMs: number;
   /** 空闲计时器的最后活动时间戳（内存，不持久化）。 */
@@ -108,6 +110,11 @@ interface SecretGateState {
   verifyAndUnlock: (passphrase: string, unlock: (p: string) => Promise<void>) => Promise<boolean>;
   /** 用户跳过 / 关闭弹窗 → 进入锁定态（密钥库保持或转为锁定）。 */
   skip: () => void;
+  /**
+   * 更换主密码成功后采用新值：解着锁继续用（否则后续写凭据还在送旧密码）。
+   * 能提供正确的当前主密码，等于已证明身份，故同时标记本会话已验证。
+   */
+  adoptPassphrase: (passphrase: string) => void;
   /** 记录一次用户主动活动，重置空闲计时器。 */
   touch: () => void;
   /** 完全重置（登出时调用）。 */
@@ -123,12 +130,14 @@ export const useSecretGateStore = create<SecretGateState>()(
       passphrase: '',
       passphraseSet: false,
       storeAvailable: false,
+      storeEnabled: false,
       idleTimeoutMs: DEFAULT_IDLE_TIMEOUT_MS,
       lastActivityAt: Date.now(),
 
       refreshStoreState: (status) => {
         set({
           storeAvailable: status.enabled && status.initialized,
+          storeEnabled: status.enabled,
           passphraseSet: status.passphrase,
         });
       },
@@ -185,6 +194,7 @@ export const useSecretGateStore = create<SecretGateState>()(
           passphrase: '',
           passphraseSet: false,
           storeAvailable: false,
+          storeEnabled: false,
           lastActivityAt: Date.now(),
         });
       },
@@ -192,6 +202,23 @@ export const useSecretGateStore = create<SecretGateState>()(
       // Floor is 10s so the guard can be exercised end-to-end; the shipped
       // default remains the user-approved 10 minutes.
       setIdleTimeout: (ms) => set({ idleTimeoutMs: Math.max(10_000, ms) }),
+
+      // Placed last on purpose: source-contract tests slice an action's body up
+      // to the next action's name, so this must not sit between two actions they
+      // inspect (`skip`→`touch`, `reset`→`setIdleTimeout`).
+      adoptPassphrase: (passphrase) => {
+        markSessionVerified();
+        set({
+          phase: 'unlocked',
+          errorKey: null,
+          passphrase,
+          // A passphrase now exists and the store just answered, so it is
+          // enabled, initialized, and usable.
+          passphraseSet: true,
+          storeAvailable: true,
+          lastActivityAt: Date.now(),
+        });
+      },
     }),
     {
       name: 'cpa.secret-gate',
