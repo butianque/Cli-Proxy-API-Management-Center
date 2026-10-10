@@ -174,29 +174,42 @@ describe('logging out ends the session for the store as well', () => {
   });
 });
 
-describe('idle expiry is measured from real activity, not from page load', () => {
+describe('idle expiry is shared across tabs and keeps the newest activity', () => {
   const idleGuard = readFileSync(
     new URL('../src/features/sms/SecretGateIdleGuard.tsx', import.meta.url),
     'utf8'
   );
+  const idleActivity = readFileSync(
+    new URL('../src/features/sms/idleActivity.ts', import.meta.url),
+    'utf8'
+  );
 
-  test('the activity clock survives a reload', () => {
-    // `lastActivityAt` is in-memory state, so a reload resets it to "now". If the
-    // check used only that, "load the page, then touch nothing" could never time
-    // out: every refresh would restart the full window. The clock therefore
-    // lives in sessionStorage, which means "this tab's session".
-    expect(idleGuard).toContain("const LAST_ACTIVITY_KEY = 'cpa.secret-gate.lastActivity'");
-    expect(idleGuard).toContain('window.sessionStorage.setItem(LAST_ACTIVITY_KEY');
-    expect(idleGuard).toContain('window.sessionStorage.getItem(LAST_ACTIVITY_KEY)');
+  test('the activity clock is origin-wide, not per tab', () => {
+    // `lastActivityAt` is in-memory state, so a reload resets it to "now" — that
+    // alone made "load the page, then touch nothing" impossible to time out.
+    // sessionStorage is not the answer either: it is per tab, so two panels
+    // cannot see each other's activity. localStorage is shared per origin.
+    expect(idleActivity).toContain("SHARED_ACTIVITY_KEY = 'cpa.secret-gate.lastActivity'");
+    expect(idleActivity).toContain('window.localStorage.setItem(SHARED_ACTIVITY_KEY');
+    expect(idleActivity).toContain('window.localStorage.getItem(SHARED_ACTIVITY_KEY)');
+    // No code may read or write sessionStorage: it is per tab. (The rationale is
+    // named in a comment, so match the calls, not the word.)
+    expect(idleActivity).not.toContain('sessionStorage.');
+    expect(idleGuard).not.toContain('sessionStorage.');
   });
 
-  test('the earliest activity wins, so an untouched tab expires on load', () => {
-    // min(): a stale persisted stamp must not be overwritten by the fresh
-    // in-memory one, otherwise reopening an abandoned tab buys another window.
-    expect(idleGuard).toContain('Math.min(inMemory, persisted)');
+  test('the newest activity wins, so one active tab keeps the session alive', () => {
+    // max(), not min(): min() would let an idle tab's stale stamp log out a tab
+    // the operator is actively using. "Idle" means no tab has been touched.
+    expect(idleGuard).toContain('Math.max(inMemory, shared)');
   });
 
   test('activity is recorded when it happens', () => {
-    expect(idleGuard).toContain('writeLastActivity(now)');
+    expect(idleGuard).toContain('writeSharedActivity(now)');
+  });
+
+  test('ending a session clears the shared clock', () => {
+    // Otherwise the next session inherits the previous session's stamp.
+    expect(gateStore).toContain('clearSharedActivity()');
   });
 });

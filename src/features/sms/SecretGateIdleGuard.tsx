@@ -1,26 +1,32 @@
 /**
  * 空闲守卫（SecretGateIdleGuard）。
  *
- * 用户 2026-10-10 拍板：**空闲 10 分钟 → 直接登出**（并锁定后端密钥库）。
+ * 用户 2026-10-10 拍板的语义：
+ *
+ * > **用户长时间没有操作 → 自动强行登出账号 + 清空会话 + 锁库。**
+ * > **不管开了多少标签页，只管前端交互。**
  *
  * - 只把**用户主动操作**算作活动（鼠标移动/按下、滚屏、按键、点击、切页）；
  * - 后台轮询/自动刷新**不算**（否则永远不会超时）；
  * - 面板内任何主动操作都重置计时器（活动事件节流，避免 mousemove 高频触发）；
- * - 超时 → 既有 `logout()`（回登录页；`logout()` 内部会 `POST /secrets/lock` 真锁）；
- * - **已验证态与锁定态都计时**：只要已登录，停手满超时即登出（用户 2026-10-10 明确）。
+ * - 超时 → `logout()`（回登录页 + 清会话 + `POST /secrets/lock` 锁库）；
+ * - **已验证态与锁定态都计时**：只要已登录，停手满超时即登出。
  *
- * ## 计时起点必须落在「标签页」上，而不是「页面加载」上
+ * ## 计时必须「跨标签页共享」且「取最近的活动」
  *
- * 起算时刻记在 **`sessionStorage`** 里（`cpa.secret-gate.lastActivity`），
- * 因为 `lastActivityAt` 只是内存状态、**刷新即重置**：若拿内存值判断，
- * 那么「**加载页面 → 在超时窗口内不做任何操作**」永远等不到超时——每刷新一次
- * 就把时钟拨回当前时刻。用 sessionStorage 表示「这个标签页里的会话」，
- * 于是刷新**不会**把无操作时长清零：
+ * 每个标签页都各自跑一遍这个守卫，所以时钟不能放在 `sessionStorage`（那是
+ * **每标签页独立**的：两个页面互相看不见对方的活动，必然算错——取较早者会在
+ * 你正用一个页面时被另一个闲置页面踢下线；取较晚者又会让一个被遗忘的页面把
+ * 会话永远续下去）。「关闭标签页就锁库」同样行不通：多开时关掉其中一个，
+ * 并不代表用户不再使用，而另一个页面无法可靠地判定这一点。
  *
- * - 标签页已空置超过阈值 → **下一次检查立即登出**（而不是再续一个整窗口）；
- * - 标签页仍在活动 → 照常从最后一次操作起算。
+ * 因此最后活动时刻写进 **`localStorage`**（同源共享，所有标签页看到同一个值），
+ * 判定取 **最近（最大）的那个时刻** ——「只要还有任何一个标签页在操作，就不算
+ * 空闲」。每个标签页都会独立地在超时后强行登出自己；由于登出会清掉共享的
+ * `isLoggedIn` 并锁库，其余页面在下一次检查时也会跟着登出。
  *
- * 标签页关掉后会话随之消失，这里也不需要清理这个键。
+ * 判定条件只有一条：**距最近一次用户操作用了多久**。与后端是否仍有数据无关：
+ * 前端登出后就不再持有可用凭据，泄露面被切掉（除非服务器本身被人登录）。
  *
  * 无 UI；挂在 RootShell 里，只在已登录时生效。
  */
@@ -28,6 +34,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useSecretGateStore, ACTIVITY_THROTTLE_MS } from '@/stores/useSecretGateStore';
+import { readSharedActivity, writeSharedActivity } from './idleActivity';
 
 const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
   'mousemove',
@@ -42,32 +49,6 @@ const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
 
 /** 检查间隔：取超时的 1/4 与 15s 中的较小者，保证短超时也能及时触发。 */
 const CHECK_INTERVAL_FLOOR_MS = 5_000;
-
-/**
- * 最后一次用户活动的时刻，跨刷新有效。
- * 与 `useSecretGateStore` 的 `SESSION_VERIFIED_KEY` 一样，sessionStorage
- * 表达的正是「这个标签页里的会话」。
- */
-const LAST_ACTIVITY_KEY = 'cpa.secret-gate.lastActivity';
-
-function readLastActivity(): number | null {
-  try {
-    const raw = window.sessionStorage.getItem(LAST_ACTIVITY_KEY);
-    if (!raw) return null;
-    const value = Number(raw);
-    return Number.isFinite(value) ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeLastActivity(at: number): void {
-  try {
-    window.sessionStorage.setItem(LAST_ACTIVITY_KEY, String(at));
-  } catch {
-    // Private mode / storage disabled: fall back to the in-memory clock.
-  }
-}
 
 export function SecretGateIdleGuard() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -86,7 +67,7 @@ export function SecretGateIdleGuard() {
       const now = Date.now();
       if (now - lastThrottleRef.current < ACTIVITY_THROTTLE_MS) return;
       lastThrottleRef.current = now;
-      writeLastActivity(now);
+      writeSharedActivity(now);
       touch();
     };
 
@@ -110,17 +91,15 @@ export function SecretGateIdleGuard() {
 
     const timer = window.setInterval(() => {
       if (firingRef.current) return;
-      // 两个起算点取较早者：内存值（本页活动）与持久值（上次活动，可能是刷新前）。
-      // 用「较早」而不是「刷新即重置」，无操作时长才能跨刷新累积。
+      // 取**最近**的一次活动：内存值（本页）与共享值（可能是别的标签页写的）。
+      // 「最近」而不是「较早」：只要还有任何一个标签页在操作，就不算空闲。
       const inMemory = useSecretGateStore.getState().lastActivityAt;
-      const persisted = readLastActivity();
-      const lastActivity = persisted === null ? inMemory : Math.min(inMemory, persisted);
+      const shared = readSharedActivity();
+      const lastActivity = shared === null ? inMemory : Math.max(inMemory, shared);
       if (Date.now() - lastActivity < idleTimeoutMs) return;
 
       firingRef.current = true;
-      // 超时 = 会话结束：先让门回到未询问，再登出。
-      // 登出会拿当前会话的密钥把密钥库锁死（见 useAuthStore.logout），这里不再单独调用。
-      // `void`：登出必须立即生效，锁库在后台收尾。
+      // 超时 = 会话结束：清空会话、回登录页，并由 logout() 锁死密钥库。
       reset();
       void logout();
       firingRef.current = false;

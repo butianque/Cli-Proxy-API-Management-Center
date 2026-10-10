@@ -28,6 +28,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { clearSharedActivity } from '@/features/sms/idleActivity';
 
 /** 空闲超时默认 10 分钟（用户拍板）。 */
 export const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
@@ -177,6 +178,7 @@ export const useSecretGateStore = create<SecretGateState>()(
       // 同时清掉「本会话已验证」标记：登出即会话结束，下次登录必须重新验证。
       reset: () => {
         clearSessionVerified();
+        clearSharedActivity();
         set({
           phase: 'idle',
           errorKey: null,
