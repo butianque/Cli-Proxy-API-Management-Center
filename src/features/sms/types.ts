@@ -122,8 +122,6 @@ export interface SmsStatus {
   priceCeilingCny: number;
   /** 累计花费上限（元）。 */
   maxTotalCny: number;
-  /** 省钱的唯一手段开关：暂停超标渠道。 */
-  guardrail: boolean;
   /** 有货渠道数。 */
   availableChannels: number;
   /** 渠道总数。 */

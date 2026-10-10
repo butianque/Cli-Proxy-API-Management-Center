@@ -1,23 +1,23 @@
 /**
  * 接码服务页：聚合渠道的配置与运行总览。
  *
- * 数据来源（本轮）：
- * - **真实**：插件 `/sms/status` → 凭据是否已配（账密表 / CK 表）、主密码状态、
- *   余额（真实联网）、渠道列表与账本（后端返回，若有）；
- * - **占位**：渠道表 / 号码账本在字段缺失时回退到 ./mockData.ts（下一轮接线）。
+ * 数据来源：插件 `/sms/status` —— 凭据是否已配、余额（真实联网）、渠道列表与账本。
+ * **没有占位数据**：后端给什么就显示什么，没有就是空态（不编造，也不拿假数据兜底）。
+ * 锁定态下的规则：能显示的真实数据照常显示（渠道列表 / 账本 / 单价上限 / 花费），
+ * 只有**凭据相关**的读数（账号、会话、余额）不可读 —— 页面不为整体套一层「锁定」遮罩。
  *
  * 版面约定（遵循仓库 UI 原则 + 对齐 `ConfigHeader` 语汇）：
  * - 页头与「配置面板」同范式：`align-items: flex-end` 两端对齐 + `▍` mono meta + ghost 药丸按钮；
- * - 页头主开关负责服务启停，未配置渠道时禁用并引导去配置；
+ * - 页头只展示服务状态，**不做开关**（后端没有启停这条控制，摆个开关就是假的）；
  * - 视觉与指标靠拢：渠道健康点 + 单价 + 库存同排一行，扫一眼即知好坏；
- * - 颜色只由数据推导（健康度 / 上限 / 门是否锁定），不做纯装饰色块。
+ * - 颜色只由数据推导（健康度 / 上限 / 门是否锁定），不做纯装饰色块；
+ * - 文案只讲状态与下一步，不讲实现（见 AGENTS.md「UI 设计原则」）。
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import {
   IconAlertTriangle,
   IconCheckCircle2,
@@ -28,13 +28,18 @@ import {
   IconTimer,
 } from '@/components/ui/icons';
 import { smsApi } from '@/services/api/sms';
-import type { SmsChannelWire, SmsLedgerWire } from '@/services/api/sms';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useSecretGateStore } from '@/stores/useSecretGateStore';
 import { formatDateTimeValue } from '@/utils/format';
-import { getMockSmsStatus } from './mockData';
 import { ChannelConfigModal } from './ChannelConfigModal';
-import type { ChannelHealth, PhoneLedgerEntry, PlatformCredentials, SmsChannel } from './types';
+import { EMPTY_SMS_STATUS, toChannel, toLedger } from './smsMapping';
+import type {
+  ChannelHealth,
+  PhoneLedgerEntry,
+  PlatformCredentials,
+  SmsChannel,
+  SmsStatus,
+} from './types';
 import styles from './SmsServicePage.module.scss';
 
 const healthClass: Record<ChannelHealth, string> = {
@@ -53,115 +58,20 @@ function formatCny(value: number) {
   return `¥${value.toFixed(2)}`;
 }
 
-/**
- * 后端渠道行 → 页面领域类型。
- *
- * 健康度由可得的事实推导（暂停 / 是否有货 / 相对价格），不做纯装饰着色：
- * 暂停=critical、无货=warning、其余按价格分档。
- *
- * 渠道名不直接照搬平台的「[项目]讯飞」——同项目的多个渠道会全部同名、无法区分。
- * 改用该渠道真实抽取的运营商与号段（后端 `carriers`/`paragraphs`），
- * 这两个字段与平台无关，也真正说明「这条渠道能拿到什么号」。
- */
-function toChannel(raw: SmsChannelWire): SmsChannel {
-  const paused = raw.paused === true;
-  const stock = Number.isFinite(raw.stock) ? raw.stock : 0;
-  const health: ChannelHealth = paused
-    ? 'critical'
-    : stock <= 0
-      ? 'warning'
-      : raw.price <= 0.3
-        ? 'good'
-        : 'warning';
-  const label = channelLabel(raw);
-  return {
-    id: raw.uid,
-    name: label.name,
-    detail: label.detail,
-    priceCny: Number.isFinite(raw.price) ? raw.price : 0,
-    stock,
-    paused,
-    health,
-  };
-}
-
-/**
- * Builds a short, distinguishable label plus a full description.
- *
- * The platform's own label is the project name ("[21614]讯飞"), which every
- * channel of a project shares — useless for telling channels apart. The
- * carriers and number prefixes are real per-channel facts, so the name shows the
- * carriers and the detail adds the prefixes; a long prefix list is truncated in
- * the name and available in full on hover.
- */
-function channelLabel(raw: SmsChannelWire): { name: string; detail: string } {
-  const carriers = splitList(raw.carriers);
-  const paragraphs = splitList(raw.paragraphs);
-  const carriersText = carriers.length > 0 ? carriers.join('/') : '';
-  const paragraphsText = paragraphs.length > 0 ? paragraphs.join('/') : '';
-  const detail = [
-    carriersText,
-    paragraphsText ? `号段 ${paragraphsText}` : '',
-  ]
-    .filter((part) => part !== '')
-    .join(' · ');
-  if (detail === '') {
-    const fallback = (raw.name ?? '').trim() || raw.uid;
-    return { name: fallback, detail: fallback };
-  }
-  const prefix = paragraphsText
-    ? `号段 ${truncateList(paragraphs, 2)}${paragraphs.length > 2 ? '…' : ''}`
-    : '';
-  const name = [carriersText, prefix]
-    .filter((part) => part !== '')
-    .join(' · ');
-  return { name, detail };
-}
-
-/** 列表超过 `max` 项时只留前 `max` 项，其余交给悬停详情。 */
-function truncateList(items: string[], max: number): string {
-  if (items.length <= max) return items.join('/');
-  return items.slice(0, max).join('/');
-}
-
-/** 平台把运营商/号段用 `|` 分隔并留空尾，这里切成干净的列表。 */
-function splitList(value?: string): string[] {
-  if (!value) return [];
-  return value
-    .split('|')
-    .map((item) => item.trim())
-    .filter((item) => item !== '');
-}
-
-/** 后端账本行 → 页面领域类型（后端只记「租过」，成不成注册看账号绑定）。 */
-function toLedger(raw: SmsLedgerWire): PhoneLedgerEntry {
-  const used = typeof raw.last_used === 'number' ? raw.last_used : 0;
-  return {
-    phone: raw.phone,
-    account: raw.account ?? '',
-    channel: raw.sid ?? '',
-    // 后端不记录每次租用的实际支出，只有累计花费；这里不编造单条成本。
-    costCny: null,
-    status: raw.account ? 'registered' : 'pending',
-    takenAt: used > 0 ? new Date(used * 1000).toISOString() : new Date().toISOString(),
-  };
-}
-
 export function SmsServicePage() {
   const { t } = useTranslation();
   const apiBase = useAuthStore((state) => state.apiBase);
   const gatePhase = useSecretGateStore((state) => state.phase);
 
-  // 渠道表 / 账本：本轮仍为占位（真实字段缺失时回退）。
-  const mock = useMemo(() => getMockSmsStatus(), []);
-  const [status, setStatus] = useState(mock);
+  // 起步就是真实空态；后端返回什么就显示什么，不拿假数据兜底。
+  const [status, setStatus] = useState<SmsStatus>(EMPTY_SMS_STATUS);
   const [creds, setCreds] = useState<PlatformCredentials | null>(null);
+  const [lockedCreds, setLockedCreds] = useState(false);
   const [storeLocked, setStoreLocked] = useState(false);
   const [webPresent, setWebPresent] = useState(false);
   const [userHints, setUserHints] = useState({ apiUser: '', webUser: '' });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [running, setRunning] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [channelBusy, setChannelBusy] = useState<string | null>(null);
   const [channelError, setChannelError] = useState<string | null>(null);
@@ -174,8 +84,8 @@ export function SmsServicePage() {
     try {
       const raw = await smsApi.getStatus(apiBase);
       // While the store is locked the plugin cannot read the credential names, so
-      // api_present/cookie_present come back false even though they exist. Report
-      // that as "locked" instead of "not configured", or the page would imply the
+      // api_present/cookie_present come back false even though they exist. Keep
+      // that distinct from "nothing configured", or the page would claim the
       // operator never configured anything.
       const storeLocked = raw.store_available === false;
       const accountPresent = raw.api_present === true;
@@ -195,7 +105,11 @@ export function SmsServicePage() {
         statusKind = 'failed';
         statusReason = raw.balance_error;
       }
+      const channels = Array.isArray(raw.channels) ? raw.channels.map(toChannel) : [];
+      const ledger = Array.isArray(raw.ledger) ? raw.ledger.map(toLedger) : [];
       setStoreLocked(storeLocked);
+      // 锁定态下「凭据是否已配」不可读，是「读不到」而不是「没配」。
+      setLockedCreds(storeLocked);
       setWebPresent(webPresent);
       setUserHints({
         apiUser: raw.api_user_hint ?? '',
@@ -209,34 +123,24 @@ export function SmsServicePage() {
         status: statusKind,
         statusReason,
       });
-      // 真实余额 / 花费 / 护栏（有就用真实的，没有保留占位量级）。
-      // 锁定时不回显余额：加密数据不可访问期间不应泄露任何凭据相关读数。
-      setStatus((prev) => ({
-        ...prev,
-        balanceCny:
-          !storeLocked && typeof raw.balance_cny === 'number' ? raw.balance_cny : prev.balanceCny,
+      // 渠道 / 账本 / 花费是平台记录，与凭据无关，照实显示。
+      // 只有**凭据相关**读数在锁定时不可读：余额置空（而非沿用旧值）。
+      setStatus({
+        enabled: raw.enabled === true,
+        balanceCny: !storeLocked && typeof raw.balance_cny === 'number' ? raw.balance_cny : null,
         balanceError: raw.balance_error,
-        sessionSpendCny: typeof raw.spent_cny === 'number' ? raw.spent_cny : prev.sessionSpendCny,
-        priceCeilingCny: raw.budget?.max_per_number_cny ?? prev.priceCeilingCny,
-        maxTotalCny: raw.budget?.max_total_cny ?? prev.maxTotalCny,
-        // 渠道 / 账本接真实后端：后端返回了就用真实的，没返回才保留占位。
-        channels: Array.isArray(raw.channels)
-          ? raw.channels.map(toChannel)
-          : prev.channels,
-        ledger: Array.isArray(raw.ledger) ? raw.ledger.map(toLedger) : prev.ledger,
-        availableChannels:
-          Array.isArray(raw.channels) && raw.channels.length > 0
-            ? raw.channels.filter((c) => c.paused !== true && c.stock > 0).length
-            : prev.availableChannels,
-        totalChannels:
-          Array.isArray(raw.channels) && raw.channels.length > 0
-            ? raw.channels.length
-            : prev.totalChannels,
+        sessionSpendCny: typeof raw.spent_cny === 'number' ? raw.spent_cny : 0,
+        priceCeilingCny: raw.budget?.max_per_number_cny ?? 0,
+        maxTotalCny: raw.budget?.max_total_cny ?? 0,
+        availableChannels: channels.filter((c) => !c.paused && c.stock > 0).length,
+        totalChannels: channels.length,
+        channels,
+        ledger,
         updatedAt:
           typeof raw.channels_updated_at === 'number' && raw.channels_updated_at > 0
             ? new Date(raw.channels_updated_at * 1000).toISOString()
-            : prev.updatedAt,
-      }));
+            : '',
+      });
     } catch (error) {
       setLoadError((error as { message?: string })?.message ?? 'failed to load SMS status');
     } finally {
@@ -318,10 +222,26 @@ export function SmsServicePage() {
     [channels, status.priceCeilingCny]
   );
 
-  const anyCredential = Boolean(creds?.account.present || creds?.session.present);
-  // 锁定（门或密钥库）时凭据不可读，不能据此判定「未配置」或允许启动。
+  // 锁定（门或密钥库）时凭据不可读：余额等凭据读数不显示，但渠道/账本照常显示。
   const locked = gatePhase === 'locked' || storeLocked;
-  const canStart = anyCredential && !storeLocked;
+
+  // 页头状态词只在**能确认**时给；锁定态不猜，交给顶部那条主密码提示。
+  const headerStatus = (() => {
+    if (locked) return null;
+    // `enabled` 是后端的真实开关（sms_provider 已配置）；未配置时先报「未配置」。
+    if (!creds?.account.present) {
+      return { label: t('sms_service.status_not_configured'), ok: false };
+    }
+    if (!status.enabled) return { label: t('sms_service.status_disabled'), ok: false };
+    switch (creds.status) {
+      case 'connected':
+        return { label: t('sms_service.status_connected'), ok: true };
+      case 'failed':
+        return { label: t('sms_service.status_failed'), ok: false };
+      default:
+        return { label: t('sms_service.status_unknown'), ok: false };
+    }
+  })();
 
   const statusLabel = (() => {
     if (!creds) return t('sms_service.status_unknown');
@@ -343,28 +263,20 @@ export function SmsServicePage() {
         <div className={styles.headerCopy}>
           <h1 className={styles.title}>{t('sms_service.title')}</h1>
           <p className={styles.meta}>
-            <span className={running ? styles.metaOk : styles.metaMuted}>
-              {running ? t('sms_service.header_running') : t('sms_service.header_stopped')}
-            </span>
-            <span className={styles.metaDot}>·</span>
-            <span className={styles.metaMuted}>
-              {t('sms_service.header_platforms', { count: creds ? 1 : 0 })}
-            </span>
-            <span className={styles.metaDot}>·</span>
+            {headerStatus && (
+              <>
+                <span className={headerStatus.ok ? styles.metaOk : styles.metaMuted}>
+                  {headerStatus.label}
+                </span>
+                <span className={styles.metaDot}>·</span>
+              </>
+            )}
             <span className={styles.metaMuted}>
               {t('sms_service.header_channels', { count: status.availableChannels })}
             </span>
           </p>
         </div>
         <div className={styles.headerActions}>
-          <ToggleSwitch
-            checked={running}
-            onChange={setRunning}
-            disabled={!canStart}
-            labelPosition="left"
-            label={t('sms_service.service_switch')}
-            ariaLabel={t('sms_service.service_switch')}
-          />
           <button type="button" className={styles.ghostAction} onClick={() => setModalOpen(true)}>
             <IconSettings size={14} />
             {t('sms_service.configure_channels')}
@@ -372,12 +284,6 @@ export function SmsServicePage() {
         </div>
       </header>
 
-      {locked && (
-        <div className={styles.previewNotice} role="note">
-          <IconAlertTriangle size={15} />
-          <span>{t('sms_service.locked_notice')}</span>
-        </div>
-      )}
       {loadError && (
         <div className={styles.previewNotice} role="alert">
           <IconAlertTriangle size={15} />
@@ -406,7 +312,7 @@ export function SmsServicePage() {
           </button>
         }
       >
-        {storeLocked ? (
+        {lockedCreds ? (
           <EmptyState
             title={t('sms_service.configured_locked')}
             description={t('sms_service.configured_locked_desc')}
@@ -479,7 +385,9 @@ export function SmsServicePage() {
         </div>
         <div className={styles.statPill}>
           <span className={styles.statLabel}>{t('sms_service.stat_price_ceiling')}</span>
-          <span className={styles.statValue}>{formatCny(status.priceCeilingCny)}</span>
+          <span className={styles.statValue}>
+            {status.priceCeilingCny > 0 ? formatCny(status.priceCeilingCny) : '—'}
+          </span>
         </div>
         <div className={styles.statPill}>
           <span className={styles.statLabel}>{t('sms_service.stat_channels')}</span>
@@ -510,7 +418,10 @@ export function SmsServicePage() {
             }
           >
             {channels.length === 0 ? (
-              <EmptyState title={t('sms_service.channels_empty')} />
+              <EmptyState
+                title={t('sms_service.channels_empty')}
+                description={t('sms_service.channels_empty_desc')}
+              />
             ) : (
               <table className={styles.channelTable}>
                 <thead>
@@ -547,7 +458,9 @@ export function SmsServicePage() {
                             className={styles.actionPill}
                             onClick={() => void toggleChannel(channel)}
                             disabled={
-                              channelBusy === channel.id || gatePhase === 'locked' || !creds?.session.present
+                              channelBusy === channel.id ||
+                              gatePhase === 'locked' ||
+                              !creds?.session.present
                             }
                             title={
                               creds?.session.present
@@ -584,7 +497,10 @@ export function SmsServicePage() {
             }
           >
             {status.ledger.length === 0 ? (
-              <EmptyState title={t('sms_service.ledger_empty')} />
+              <EmptyState
+                title={t('sms_service.ledger_empty')}
+                description={t('sms_service.ledger_empty_desc')}
+              />
             ) : (
               <div className={styles.ledger}>
                 {status.ledger.map((entry) => (
@@ -646,7 +562,6 @@ export function SmsServicePage() {
                   {t('sms_service.guardrail_auto_bind_hint')}
                 </div>
               </div>
-              <ToggleSwitch checked onChange={() => undefined} disabled />
             </div>
 
             <div className={styles.guardrailRow}>

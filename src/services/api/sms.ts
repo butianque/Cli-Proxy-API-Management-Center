@@ -32,6 +32,8 @@ export interface SecretStoreStatus {
 export interface SmsStatusResponse {
   status: 'ok' | 'unavailable';
   error?: string;
+  /** 插件是否已启用（`sms_provider` 已配置）。 */
+  enabled?: boolean;
   locked?: boolean;
   missing?: boolean;
   store_enabled?: boolean;
@@ -179,9 +181,13 @@ export const smsApi = {
     passphrase: string
   ): Promise<CredentialWriteResult> {
     try {
-      await apiClient.post(smsPluginURL('/web-credential', apiBase), withPassphrase(input, passphrase), {
-        baseURL: '',
-      });
+      await apiClient.post(
+        smsPluginURL('/web-credential', apiBase),
+        withPassphrase(input, passphrase),
+        {
+          baseURL: '',
+        }
+      );
       return { ok: true };
     } catch (error) {
       return toCredentialWriteResult(error, 'failed to store the web sign-in credential');

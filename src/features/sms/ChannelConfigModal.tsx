@@ -23,7 +23,7 @@ import { IconAlertTriangle, IconCheckCircle2, IconRefreshCw } from '@/components
 import { smsApi, type CredentialWriteResult } from '@/services/api/sms';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useSecretGateStore } from '@/stores/useSecretGateStore';
-import { SMS_PLATFORMS } from './mockData';
+import { SMS_PLATFORMS } from './smsMapping';
 import type { SmsPlatform } from './types';
 import styles from './ChannelConfigModal.module.scss';
 
@@ -140,10 +140,7 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
   const webDirty = webUser.trim() !== '' || webPass.trim() !== '';
   const webPairIncomplete = webDirty && (webUser.trim() === '' || webPass.trim() === '');
 
-  const canSubmit =
-    tab === 'api'
-      ? !apiPairIncomplete && !apiNothingToSave
-      : !webPairIncomplete;
+  const canSubmit = tab === 'api' ? !apiPairIncomplete && !apiNothingToSave : !webPairIncomplete;
 
   const showErrors = submitAttempted;
 
@@ -299,7 +296,11 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
         <section className={styles.section}>
           <div className={styles.sectionLabel}>{t('sms_service.config_step_credentials')}</div>
 
-          <div className={styles.tabs} role="tablist" aria-label={t('sms_service.config_tabs_label')}>
+          <div
+            className={styles.tabs}
+            role="tablist"
+            aria-label={t('sms_service.config_tabs_label')}
+          >
             <button
               type="button"
               role="tab"
@@ -330,9 +331,7 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
               <div className={styles.credGrid}>
                 <Input
                   label={t('sms_service.config_field_api_account')}
-                  placeholder={
-                    existing?.apiUserHint || t('sms_service.config_ph_api_account')
-                  }
+                  placeholder={existing?.apiUserHint || t('sms_service.config_ph_api_account')}
                   value={apiUser}
                   onChange={(event) => {
                     setApiUser(event.target.value);
