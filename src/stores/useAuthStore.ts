@@ -33,6 +33,11 @@ interface AuthStoreState extends AuthState {
 
 let restoreSessionPromise: Promise<boolean> | null = null;
 
+// 正在进行的登出。登出必须**幂等**：`unauthorized` 监听、空闲守卫、手动按钮都可能
+// （几乎同时）调用它，而登出自己发出的 `/secrets/lock` 一旦 401 又会再触发一次
+// `unauthorized` —— 不挡住就会连锁登出（实测一次登出发出 3 条锁定请求）。
+let logoutPromise: Promise<void> | null = null;
+
 export const useAuthStore = create<AuthStoreState>()(
   persist(
     (set, get) => ({
@@ -155,14 +160,23 @@ export const useAuthStore = create<AuthStoreState>()(
       // 登出
       logout: (): Promise<void> => {
         restoreSessionPromise = null;
+        // 已在登出中：返回同一个 promise，不再发第二条锁定请求（见文件头的说明）。
+        if (logoutPromise) return logoutPromise;
         // 登出 = 清除会话，所以密钥库必须对新会话锁死；否则「已验证」只清了前端，
         // 后端还开着，任何人都能靠「登出再登录」直接看到凭据。
         //
         // 顺序是关键：`logout()` 会把管理密钥从 apiClient 里清掉，而 `/secrets/lock`
         // 是需要鉴权的（实测无密钥 → 401 `missing management key`）。所以必须先用
         // **当前这个会话的密钥**把锁定请求发出去，拿到响应再清。
-        const lockRequest = smsApi.lockStore();
+        //
+        // 已经没有会话凭据时不发这条请求：`apiClient` 的 baseURL 已空，请求会落到
+        // 相对路径 `/secrets/lock`（缺 `/v8/management` 前缀）而 404；而且本来也没有
+        // 可锁的库（会话结束后的迟到 401 也会走到这里）。
+        const { apiBase, managementKey } = get();
+        const lockRequest =
+          apiBase && managementKey ? smsApi.lockStore() : Promise.resolve();
         const finish = () => {
+          logoutPromise = null;
           apiClient.setConfig({ apiBase: '', managementKey: '' });
           useConfigStore.getState().clearCache();
           useModelsStore.getState().clearCache();
@@ -185,10 +199,11 @@ export const useAuthStore = create<AuthStoreState>()(
         // The store must look logged out the instant this returns; the lock itself
         // settles in the background. 锁定失败不阻断登出：前端凭据已经清掉了。
         void lockRequest.then(finish, finish);
-        return lockRequest.then(
+        logoutPromise = lockRequest.then(
           () => undefined,
           () => undefined
         );
+        return logoutPromise;
       },
 
       // 检查认证状态

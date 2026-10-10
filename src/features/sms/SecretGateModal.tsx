@@ -70,14 +70,14 @@ export function SecretGateModal() {
         refreshStoreState(status);
         // 密钥库不可用，或压根没装主密码 → 无需验证，直接放行（无密可锁）。
         if (!status.enabled || !status.initialized || !status.passphrase) {
-          useSecretGateStore.setState({ phase: 'unlocked', errorKey: null });
+          useSecretGateStore.setState({ phase: 'unlocked' });
           return;
         }
         // 同一会话内刷新（F5）：本会话已验证过、且后端确实仍解锁 → 直接放行。
         // 「已验证」的生命周期 = CPA 会话的生命周期，刷新不是会话边界，不该重问。
         // 标记只表达「本会话验证过」，解锁与否一律以后端为准——后端已锁则照常再问。
         if (isSessionVerified() && status.unlocked) {
-          useSecretGateStore.setState({ phase: 'unlocked', errorKey: null });
+          useSecretGateStore.setState({ phase: 'unlocked' });
         }
       })
       .catch(() => {

@@ -44,29 +44,34 @@ export const EMPTY_SMS_STATUS: SmsStatus = {
 /**
  * 后端渠道行 → 页面领域类型。
  *
- * 健康度由可得的事实推导（暂停 / 是否有货 / 相对价格），不做纯装饰着色：
- * 暂停=critical、无货=warning、其余按价格分档。
+ * 健康度由可得的事实推导（暂停 / 是否有货 / 是否超单价上限），不做纯装饰着色：
+ * 暂停=critical、无货=warning、超上限=warning、其余=good。
+ * `ceilingCny` 是使用者配置的单次取号单价上限（`null` = 未知/未配置）——健康点必须
+ * 跟**真实的上限**联动：写死一个价格档会跟页面上「超出上限」的计数互相矛盾
+ * （上限调了、颜色不变）。
  *
  * 渠道名不直接照搬平台的「[项目]讯飞」——同项目的多个渠道会全部同名、无法区分。
  * 改用该渠道真实抽取的运营商与号段（后端 `carriers`/`paragraphs`），
  * 这两个字段与平台无关，也真正说明「这条渠道能拿到什么号」。
  */
-export function toChannel(raw: SmsChannelWire): SmsChannel {
+export function toChannel(raw: SmsChannelWire, ceilingCny: number | null = null): SmsChannel {
   const paused = raw.paused === true;
   const stock = Number.isFinite(raw.stock) ? raw.stock : 0;
+  const price = Number.isFinite(raw.price) ? raw.price : 0;
+  const overCeiling = ceilingCny !== null && ceilingCny > 0 && price > ceilingCny;
   const health: ChannelHealth = paused
     ? 'critical'
     : stock <= 0
       ? 'warning'
-      : raw.price <= 0.3
-        ? 'good'
-        : 'warning';
+      : overCeiling
+        ? 'warning'
+        : 'good';
   const label = channelLabel(raw);
   return {
     id: raw.uid,
     name: label.name,
     detail: label.detail,
-    priceCny: Number.isFinite(raw.price) ? raw.price : 0,
+    priceCny: price,
     stock,
     paused,
     health,
@@ -126,6 +131,8 @@ export function toLedger(raw: SmsLedgerWire): PhoneLedgerEntry {
     // 后端不记录每次租用的实际支出，只有累计花费；这里不编造单条成本。
     costCny: null,
     status: raw.account ? 'registered' : 'pending',
-    takenAt: used > 0 ? new Date(used * 1000).toISOString() : new Date().toISOString(),
+    // 后端没记这次取号的时间就**留空**：拿 `now` 兜底等于把「现在」当成取号时刻，
+    // 是编造数据（见 AGENTS.md「不造假数据」）。空值在页面上不展示这一格。
+    takenAt: used > 0 ? new Date(used * 1000).toISOString() : null,
   };
 }

@@ -93,6 +93,16 @@ describe('a choice made mid-verify wins over the in-flight result', () => {
     const guards = body.match(/if \(get\(\)\.phase !== 'verifying'\) return false;/g) ?? [];
     expect(guards).toHaveLength(2);
   });
+
+  test('a failed verify returns to the state it was asked from', () => {
+    // The dialog lives in two places: the sign-in dialog (idle) and the locked
+    // banner's dialog (locked). Forcing `idle` on failure unmounted the banner's
+    // dialog and popped the sign-in one instead, dropping the "wrong password"
+    // message on the floor.
+    const body = actionBody('verifyAndUnlock', 'skip:');
+    expect(body).toContain('const previousPhase = get().phase;');
+    expect(body).toContain("phase: previousPhase === 'verifying' ? 'idle' : previousPhase");
+  });
 });
 
 describe('verified state lives as long as the CPA session, not a page load', () => {
@@ -171,6 +181,24 @@ describe('logging out ends the session for the store as well', () => {
     // One lock, inside logout(), covers idle timeout and manual logout alike.
     expect(idleGuard).not.toContain('lockStore()');
     expect(idleGuard).toContain('logout()');
+  });
+
+  test('logout is re-entrant: a second call reuses the in-flight one', () => {
+    // logout() issues an authenticated /secrets/lock. If that 401s, the client
+    // dispatches `unauthorized`, whose listener calls logout() again — without a
+    // latch the second call fires another lock. Observed in the run log: one
+    // logout produced three lock requests (401, 401, then 404 because the
+    // management key had already been cleared and the URL lost its prefix).
+    expect(authStore).toContain('let logoutPromise: Promise<void> | null = null;');
+    const body = authActionBody('logout', 'checkAuth:');
+    expect(body).toContain('if (logoutPromise) return logoutPromise;');
+  });
+
+  test('no lock request is issued once the session credentials are gone', () => {
+    // apiClient's baseURL is empty by then, so the request would fall through to
+    // the relative `/secrets/lock` (no /v8/management prefix) and 404.
+    const body = authActionBody('logout', 'checkAuth:');
+    expect(body).toContain('apiBase && managementKey ? smsApi.lockStore() : Promise.resolve()');
   });
 });
 

@@ -135,12 +135,16 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
   // 只校验当前 Tab：切到哪个 Tab，就只认那个 Tab 的输入。
   const apiDirty = apiUser.trim() !== '' || apiPass.trim() !== '' || endpoint.trim() !== '';
   const apiPairIncomplete = apiDirty && (apiUser.trim() === '' || apiPass.trim() === '');
-  const apiNothingToSave = !apiDirty;
 
   const webDirty = webUser.trim() !== '' || webPass.trim() !== '';
   const webPairIncomplete = webDirty && (webUser.trim() === '' || webPass.trim() === '');
 
-  const canSubmit = tab === 'api' ? !apiPairIncomplete && !apiNothingToSave : !webPairIncomplete;
+  const pairIncomplete = tab === 'api' ? apiPairIncomplete : webPairIncomplete;
+  // 两个 Tab 一视同仁：什么都没填就不给保存。空提交只会写一条什么都没改的请求，
+  // 却把弹窗关掉，看起来像保存成功了（网页 Tab 原先就是这样）。按钮直接置灰，
+  // 比「点了没反应」或「假装成功」都清楚。
+  const nothingToSave = tab === 'api' ? !apiDirty : !webDirty;
+  const canSubmit = !pairIncomplete;
 
   const showErrors = submitAttempted;
 
@@ -255,7 +259,7 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
           <Button variant="secondary" size="sm" onClick={onClose}>
             {t('sms_service.config_cancel')}
           </Button>
-          <Button variant="primary" size="sm" onClick={handleSave} disabled={saving}>
+          <Button variant="primary" size="sm" onClick={handleSave} disabled={saving || nothingToSave}>
             {saving ? t('sms_service.config_saving') : t('sms_service.config_save')}
           </Button>
         </div>

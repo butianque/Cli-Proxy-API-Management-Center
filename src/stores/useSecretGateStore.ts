@@ -85,8 +85,6 @@ export type SecretGatePhase =
 
 interface SecretGateState {
   phase: SecretGatePhase;
-  /** 验证失败的原因（口令错 / 其它），供弹窗展示。 */
-  errorKey: string | null;
   /** 上次成功解锁时用户输入的主密码（仅内存，用于随写请求传 passphrase）。 */
   passphrase: string;
   /** 是否已安装主密码（false = 纯机器模式库，无需验证）。 */
@@ -106,7 +104,7 @@ interface SecretGateState {
     initialized: boolean;
     passphrase: boolean;
   }) => void;
-  /** 校验主密码：成功 → verify+unlock → phase=unlocked；失败 → phase=locked。 */
+  /** 校验主密码：成功 → verify+unlock → phase=unlocked；失败 → 回到询问前的那一档。 */
   verifyAndUnlock: (passphrase: string, unlock: (p: string) => Promise<void>) => Promise<boolean>;
   /** 用户跳过 / 关闭弹窗 → 进入锁定态（密钥库保持或转为锁定）。 */
   skip: () => void;
@@ -126,7 +124,6 @@ export const useSecretGateStore = create<SecretGateState>()(
   persist(
     (set, get) => ({
       phase: 'idle',
-      errorKey: null,
       passphrase: '',
       passphraseSet: false,
       storeAvailable: false,
@@ -143,18 +140,21 @@ export const useSecretGateStore = create<SecretGateState>()(
       },
 
       verifyAndUnlock: async (passphrase, unlock) => {
-        set({ phase: 'verifying', errorKey: null });
+        // 记住进来时的那一档：失败要回到原处，而不是一律回到 `idle`（见 catch）。
+        const previousPhase = get().phase;
+        set({ phase: 'verifying' });
         try {
           await unlock(passphrase);
-        } catch (error) {
+        } catch {
           // The operator may have skipped or logged out while the round-trip was
-          // in flight; their choice wins. Only a still-open dialog returns to
-          // `idle` (with the error shown in place) so they can retry.
+          // in flight; their choice wins. Only a still-open dialog returns to its
+          // own state (with the error shown in place) so they can retry.
           if (get().phase !== 'verifying') return false;
-          const data = (error as { data?: { error?: string } })?.data;
+          // 回到**进来时**的那一档：从「锁定提示条」进来的留在提示条（错误就地显示、
+          // 可重试），从登录弹窗进来的留在弹窗。一律改成 `idle` 会让提示条的弹窗消失、
+          // 又弹出登录弹窗，把错误提示丢掉 —— 操作者只看到弹窗闪没，不知道是密码错了。
           set({
-            phase: 'idle',
-            errorKey: data?.error ?? 'verify_failed',
+            phase: previousPhase === 'verifying' ? 'idle' : previousPhase,
             passphrase: '',
           });
           return false;
@@ -166,14 +166,13 @@ export const useSecretGateStore = create<SecretGateState>()(
         markSessionVerified();
         set({
           phase: 'unlocked',
-          errorKey: null,
           passphrase,
           lastActivityAt: Date.now(),
         });
         return true;
       },
 
-      skip: () => set({ phase: 'locked', errorKey: null, passphrase: '' }),
+      skip: () => set({ phase: 'locked', passphrase: '' }),
 
       touch: () => {
         // Any activity resets the idle clock, in the unlocked and the locked
@@ -190,7 +189,6 @@ export const useSecretGateStore = create<SecretGateState>()(
         clearSharedActivity();
         set({
           phase: 'idle',
-          errorKey: null,
           passphrase: '',
           passphraseSet: false,
           storeAvailable: false,
@@ -210,7 +208,6 @@ export const useSecretGateStore = create<SecretGateState>()(
         markSessionVerified();
         set({
           phase: 'unlocked',
-          errorKey: null,
           passphrase,
           // A passphrase now exists and the store just answered, so it is
           // enabled, initialized, and usable.
@@ -228,8 +225,5 @@ export const useSecretGateStore = create<SecretGateState>()(
     }
   )
 );
-
-/** 供非组件代码读取（如 API 层要取 passphrase 时）。 */
-export const getSecretGate = () => useSecretGateStore.getState();
 
 export { ACTIVITY_THROTTLE_MS };

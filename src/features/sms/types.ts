@@ -102,8 +102,8 @@ export interface PhoneLedgerEntry {
   channel: string;
   /** 实际花费（元）；`null` 表示后端未记录该条成本（不展示，不编造）。 */
   costCny: number | null;
-  /** 取号时间（ISO 字符串）。 */
-  takenAt: string;
+  /** 取号时间（ISO 字符串）；`null` 表示后端没记这次取号的时间（不展示，不编造）。 */
+  takenAt: string | null;
   /** 结果状态。 */
   status: 'registered' | 'pending' | 'failed';
 }

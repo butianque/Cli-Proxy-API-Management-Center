@@ -104,7 +104,11 @@ export function SmsServicePage() {
         statusKind = 'failed';
         statusReason = raw.balance_error;
       }
-      const channels = Array.isArray(raw.channels) ? raw.channels.map(toChannel) : [];
+      // 上限既用来推渠道健康点，也是页面上的「单价上限」读数：同一个值只取一次。
+      const ceilingCny = raw.budget?.max_per_number_cny ?? 0;
+      const channels = Array.isArray(raw.channels)
+        ? raw.channels.map((channel) => toChannel(channel, ceilingCny))
+        : [];
       const ledger = Array.isArray(raw.ledger) ? raw.ledger.map(toLedger) : [];
       setStoreLocked(storeLocked);
       setWebPresent(webPresent);
@@ -127,7 +131,7 @@ export function SmsServicePage() {
         balanceCny: !storeLocked && typeof raw.balance_cny === 'number' ? raw.balance_cny : null,
         balanceError: raw.balance_error,
         sessionSpendCny: typeof raw.spent_cny === 'number' ? raw.spent_cny : 0,
-        priceCeilingCny: raw.budget?.max_per_number_cny ?? 0,
+        priceCeilingCny: ceilingCny,
         maxTotalCny: raw.budget?.max_total_cny ?? 0,
         availableChannels: channels.filter((c) => !c.paused && c.stock > 0).length,
         totalChannels: channels.length,
@@ -164,7 +168,7 @@ export function SmsServicePage() {
         }
         setStatus((prev) => ({
           ...prev,
-          channels: result.channels.map(toChannel),
+          channels: result.channels.map((channel) => toChannel(channel, prev.priceCeilingCny)),
           availableChannels: result.channels.filter((c) => c.paused !== true && c.stock > 0).length,
           totalChannels: result.channels.length,
         }));
@@ -191,7 +195,7 @@ export function SmsServicePage() {
       }
       setStatus((prev) => ({
         ...prev,
-        channels: result.channels.map(toChannel),
+        channels: result.channels.map((channel) => toChannel(channel, prev.priceCeilingCny)),
         availableChannels: result.channels.filter((c) => c.paused !== true && c.stock > 0).length,
         totalChannels: result.channels.length,
       }));
@@ -502,7 +506,7 @@ export function SmsServicePage() {
             ) : (
               <div className={styles.ledger}>
                 {status.ledger.map((entry) => (
-                  <div key={`${entry.phone}@${entry.takenAt}`} className={styles.ledgerRow}>
+                  <div key={`${entry.phone}@${entry.takenAt ?? ''}`} className={styles.ledgerRow}>
                     <span className={styles.ledgerPhone}>{entry.phone}</span>
                     <span className={`${styles.tag} ${ledgerStatusClass[entry.status]}`}>
                       {t(`sms_service.ledger_status_${entry.status}`)}
@@ -517,8 +521,12 @@ export function SmsServicePage() {
                           <span className={styles.mono}>{formatCny(entry.costCny)}</span>
                         </>
                       )}
-                      <span className={styles.ledgerDot} aria-hidden="true" />
-                      <span>{formatDateTimeValue(entry.takenAt)}</span>
+                      {entry.takenAt !== null && (
+                        <>
+                          <span className={styles.ledgerDot} aria-hidden="true" />
+                          <span>{formatDateTimeValue(entry.takenAt)}</span>
+                        </>
+                      )}
                     </span>
                   </div>
                 ))}
