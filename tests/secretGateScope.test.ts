@@ -69,6 +69,27 @@ describe('secret gate is scoped to an authenticated session', () => {
     expect(guard).toBeDefined();
     expect(guard).toContain("phase !== 'locked'");
   });
+
+  test('the banner is rendered inside the padded content, not on the shell', () => {
+    // `.main-header` is `position: fixed` with z-index 1001 and spans the top
+    // --header-height of the viewport; `.content` starts at y=0. Only
+    // `.main-content` carries the padding that reserves room for the header, so a
+    // banner mounted as a direct child of `.content` is laid out at y=0 and its
+    // "verify" button ends up underneath the header's floating action cluster —
+    // a real click lands on the header instead. Verified in a browser: at a 721px
+    // window the banner button and the header actions overlapped.
+    const mainLayout = readFileSync(
+      new URL('../src/components/layout/MainLayout.tsx', import.meta.url),
+      'utf8'
+    );
+    const bannerAt = mainLayout.indexOf('<SecretLockedBanner />');
+    const mainOpenAt = mainLayout.indexOf('className={`main-content');
+    const mainCloseAt = mainLayout.indexOf('</main>');
+    expect(bannerAt).toBeGreaterThan(-1);
+    expect(mainOpenAt).toBeGreaterThan(-1);
+    expect(bannerAt).toBeGreaterThan(mainOpenAt);
+    expect(bannerAt).toBeLessThan(mainCloseAt);
+  });
 });
 
 describe('logging out clears the whole gate, not just the phase', () => {

@@ -1206,12 +1206,16 @@ export function MainLayout() {
           }`}
           ref={contentRef}
         >
-          <SecretLockedBanner />
           <main
             className={`main-content${isLogsPage ? ' main-content-logs' : ''}${
               isPluginResourcePage ? ' main-content-plugin-resource' : ''
             }`}
           >
+            {/* 提示条必须在 `.main-content` 之内：那一层的 padding-top 才是给固定
+                顶栏（`.main-header`，z-index 1001）预留的空位。作为 `.content` 的
+                直接子元素时，它从 y=0 起排，自己的按钮正好落在顶栏那组浮动控件
+                底下 —— 点下去命中的是顶栏，按钮实际不可用。 */}
+            <SecretLockedBanner />
             <PageTransition
               render={(location) => <MainRoutes location={location} />}
               getRouteOrder={getRouteOrder}
