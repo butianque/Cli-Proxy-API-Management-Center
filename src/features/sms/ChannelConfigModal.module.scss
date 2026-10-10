@@ -121,48 +121,74 @@
   line-height: 1.45;
 }
 
-/* ---------- ② 凭据：两张表 ---------- */
+/* ---------- ② 登录方式：Tab 切换 ---------- */
 
-.credCard {
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--bg-secondary) 65%, transparent);
+}
+
+.tab {
+  position: relative;
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color $transition-fast,
+    color $transition-fast;
+
+  &:hover {
+    color: var(--text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+}
+
+.tabActive {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 12%, transparent);
+}
+
+/* 该渠道已存过这条路径的凭据：一个小圆点，不抢标题。 */
+.tabDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--viz-success);
+  flex-shrink: 0;
+}
+
+.tabPanel {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+  padding-top: 2px;
 }
 
-.credHead {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.credTitle {
-  color: var(--text-primary);
-  font-size: 13.5px;
-  font-weight: 650;
-}
-
-.credRole {
+.tabHint {
+  margin: 0;
   color: var(--text-tertiary);
-  font-size: 11.5px;
-}
-
-.credBadge {
-  display: inline-flex;
-  min-height: 18px;
-  align-items: center;
-  margin-left: auto;
-  border-radius: 5px;
-  padding: 1px 7px;
-  background: color-mix(in srgb, var(--viz-success) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--viz-success) 32%, transparent);
-  color: var(--viz-success);
-  font-size: 10.5px;
-  font-weight: 600;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .credGrid {
@@ -175,26 +201,14 @@
   }
 }
 
-.clearRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-  font-size: 12.5px;
-  cursor: pointer;
-  user-select: none;
-}
-
-/* 自动获取 CK：一行按钮 + 结果，跟随 CK 卡片流动 */
+/* 获取网页会话：一行按钮 + 结果 */
 
 .webLoginRow {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  margin-top: 2px;
 
   :global(.btn > span) {
     display: inline-flex;
@@ -265,7 +279,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .platformCard,
-  .platformRadio {
+  .platformRadio,
+  .tab {
     transition: none;
   }
 }

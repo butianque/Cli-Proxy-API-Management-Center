@@ -122,7 +122,7 @@ export const smsApi = {
     });
   },
 
-  /** 写账密凭据。空字段保留旧值。 */
+  /** 写账密凭据（API 登录）。空字段保留旧值。 */
   async saveApiCredential(
     apiBase: string,
     input: SmsApiCredentialInput,
@@ -138,28 +138,31 @@ export const smsApi = {
     }
   },
 
-  /** 写 CK（网页会话 Cookie）。空 cookie = 清除。 */
-  async saveCookie(
+  /**
+   * 写网页登录账号（网页登录）。空字段保留旧值。
+   *
+   * 只想记下账号、稍后再点「获取网页会话」时用；真正落库复用 `/web-login` 的
+   * 存值路径（同一对字段），避免两条写路径各写各的。
+   */
+  async saveWebCredential(
     apiBase: string,
-    cookie: string,
+    input: { username?: string; password?: string },
     passphrase: string
   ): Promise<CredentialWriteResult> {
     try {
-      await apiClient.post(
-        smsPluginURL('/cookie', apiBase),
-        withPassphrase({ cookie: cookie.trim() }, passphrase),
-        { baseURL: '' }
-      );
+      await apiClient.post(smsPluginURL('/web-credential', apiBase), withPassphrase(input, passphrase), {
+        baseURL: '',
+      });
       return { ok: true };
     } catch (error) {
-      return toCredentialWriteResult(error, 'failed to store the session cookie');
+      return toCredentialWriteResult(error, 'failed to store the web sign-in credential');
     }
   },
 
   /**
-   * 自动登录网页后台换取会话 Cookie（CK）。
+   * 自动登录网页后台换取会话（CK）。
    *
-   * 后端自己取验证码、解点选顺序、提交登录，成功后把 CK 写入密钥库；
+   * 后端自己取验证码、解点选顺序、提交登录，成功后把会话写入密钥库；
    * 登录失败**不会**落库任何东西。空账号/密码字段复用已存值。
    */
   async webLogin(

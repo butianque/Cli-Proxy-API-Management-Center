@@ -1,14 +1,15 @@
 /**
- * 渠道配置弹窗（L1 选平台 → L3 两张凭据表 → 真实保存 / 真实测试连接）。
+ * 渠道配置弹窗（选平台 → 选登录方式 → 填连接信息）。
  *
- * 交互契约（用户 2026-10-10 拍板）：
+ * 交互契约（用户 2026-10-10 拍板，2026-10-10 二次修正）：
  * - ① 选择平台：预置平台（豪猪）直接可选，另给「自定义」兜底；
- * - ② 凭据：**两张表并存**（不是二选一）——
- *     · **账密表**：账号 + 密码（+ 可选 API 地址）→ 取号；
- *     · **CK 表**：Cookie（网页会话）→ 管渠道；
- * - ③ 测试连接：真实调 `/sms/status`，按三态判定（成功 / 失败 / 凭据未就绪）；
- * - ④ 保存：真实写入宿主加密库（`/sms/api`、`/sms/cookie`）。
+ * - ② 登录方式：**两个 Tab 二选一**（同一平台的两种取数方式，不是两组独立数据）——
+ *     · **API 登录**：API 账号 + API 密码（+ 可选服务地址）→ 取号/收码；
+ *     · **网页登录**：网页账号 + 网页密码 → 一键获取网页会话，用于管理渠道；
+ *     Tab 只切换「当前在配哪一种」，保存时**只提交当前 Tab**，不会互相覆盖；
+ * - ③ 测试连接：真实调 `/sms/status`，按三态判定（成功 / 失败 / 凭据未就绪）。
  *
+ * ⚠️ UI 语汇：面向使用者，不暴露后端字段名（api_user / PHPSESSID / CK 等）。
  * ⚠️ 安全：主密码（`passphrase`）只从 SecretGate 的门取（内存中，登录时验证过的），
  * 本组件不自行收集密码；锁定态下保存会被后端 401 拒绝，此处如实提示。
  */
@@ -40,6 +41,9 @@ export interface ChannelConfigModalProps {
   onSaved: () => void;
 }
 
+/** 登录方式：同一个平台的两条取数路径，用 Tab 切换，不并存。 */
+type LoginTab = 'api' | 'web';
+
 type TestState =
   | { kind: 'idle' }
   | { kind: 'testing' }
@@ -47,15 +51,12 @@ type TestState =
   | { kind: 'fail'; message: string }
   | { kind: 'unavailable'; message: string };
 
-/** 自动获取 CK 的状态。 */
+/** 获取网页会话的状态。 */
 type WebLoginState =
   | { kind: 'idle' }
   | { kind: 'busy' }
   | { kind: 'ok'; channels: number }
   | { kind: 'fail'; message: string };
-
-/** Cookie 长度粗略校验：豪猪 PHPSESSID 形如 32 位 hex，这里只做「看着像」的软校验。 */
-const looksLikeCookie = (value: string) => value.trim().length >= 16;
 
 export function ChannelConfigModal({ open, onClose, existing, onSaved }: ChannelConfigModalProps) {
   const { t } = useTranslation();
@@ -64,11 +65,12 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
   const gatePhase = useSecretGateStore((state) => state.phase);
 
   const [platformId, setPlatformId] = useState<string>(SMS_PLATFORMS[0].id);
-  const [account, setAccount] = useState('');
-  const [password, setPassword] = useState('');
+  const [tab, setTab] = useState<LoginTab>('api');
+  // API 登录
+  const [apiUser, setApiUser] = useState('');
+  const [apiPass, setApiPass] = useState('');
   const [endpoint, setEndpoint] = useState('');
-  const [cookie, setCookie] = useState('');
-  const [clearCookie, setClearCookie] = useState(false);
+  // 网页登录
   const [webUser, setWebUser] = useState('');
   const [webPass, setWebPass] = useState('');
   const [test, setTest] = useState<TestState>({ kind: 'idle' });
@@ -83,18 +85,14 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
     [platformId]
   );
 
-  const accountDirty = account.trim() !== '' || password.trim() !== '' || endpoint.trim() !== '';
-  const cookieDirty = clearCookie || cookie.trim() !== '';
-
   // 打开时重置表单为「只显示已存状态」。
   useEffect(() => {
     if (!open) return;
     setPlatformId(SMS_PLATFORMS[0].id);
-    setAccount('');
-    setPassword('');
+    setTab('api');
+    setApiUser('');
+    setApiPass('');
     setEndpoint('');
-    setCookie('');
-    setClearCookie(false);
     setWebUser('');
     setWebPass('');
     setTest({ kind: 'idle' });
@@ -122,11 +120,24 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
     resetTest();
   };
 
-  // 校验：至少有一种改动；账密表改了就必须账号+密码齐。
-  const accountPairIncomplete = accountDirty && (account.trim() === '' || password.trim() === '');
-  const cookieInvalid = cookieDirty && !clearCookie && !looksLikeCookie(cookie);
-  const nothingToSave = !accountDirty && !cookieDirty;
-  const canSubmit = !accountPairIncomplete && !cookieInvalid && !nothingToSave;
+  const switchTab = (next: LoginTab) => {
+    setTab(next);
+    resetTest();
+  };
+
+  // 只校验当前 Tab：切到哪个 Tab，就只认那个 Tab 的输入。
+  const apiDirty = apiUser.trim() !== '' || apiPass.trim() !== '' || endpoint.trim() !== '';
+  const apiPairIncomplete = apiDirty && (apiUser.trim() === '' || apiPass.trim() === '');
+  const apiNothingToSave = !apiDirty;
+
+  const webDirty = webUser.trim() !== '' || webPass.trim() !== '';
+  const webPairIncomplete = webDirty && (webUser.trim() === '' || webPass.trim() === '');
+
+  const canSubmit =
+    tab === 'api'
+      ? !apiPairIncomplete && !apiNothingToSave
+      : !webPairIncomplete;
+
   const showErrors = submitAttempted;
 
   const applySaveResults = (results: CredentialWriteResult[]) => {
@@ -142,6 +153,7 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
     return false;
   };
 
+  /** 保存：只提交当前 Tab，避免另一条路径被空值覆盖。 */
   const handleSave = async () => {
     if (!canSubmit) {
       setSubmitAttempted(true);
@@ -150,26 +162,25 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
     setSaving(true);
     setSaveError(null);
     try {
-      const results: CredentialWriteResult[] = [];
-      if (accountDirty) {
-        results.push(
-          await smsApi.saveApiCredential(
-            apiBase,
-            {
-              api_user: account.trim(),
-              api_pass: password.trim(),
-              endpoint: endpoint.trim(),
-            },
-            passphrase
-          )
+      if (tab === 'api') {
+        const result = await smsApi.saveApiCredential(
+          apiBase,
+          {
+            api_user: apiUser.trim(),
+            api_pass: apiPass.trim(),
+            endpoint: endpoint.trim(),
+          },
+          passphrase
         );
-      }
-      if (cookieDirty) {
-        results.push(
-          await smsApi.saveCookie(apiBase, clearCookie ? '' : cookie.trim(), passphrase)
+        if (!applySaveResults([result])) return;
+      } else {
+        const result = await smsApi.saveWebCredential(
+          apiBase,
+          { username: webUser.trim(), password: webPass.trim() },
+          passphrase
         );
+        if (!applySaveResults([result])) return;
       }
-      if (!applySaveResults(results)) return;
       onSaved();
       onClose();
     } finally {
@@ -205,7 +216,7 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
   };
 
   /**
-   * 自动获取 CK：后端取验证码 → 解点选顺序 → 提交登录 → 存 CK。
+   * 获取网页会话：后端取验证码 → 解点选顺序 → 提交登录 → 存会话。
    * 登录失败不落库；账号/密码留空则复用已存值。
    */
   const handleWebLogin = async () => {
@@ -276,153 +287,146 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
           </div>
         </section>
 
-        {/* ② 凭据：两张表并存 */}
+        {/* ② 登录方式（Tab） + 连接信息 */}
         <section className={styles.section}>
           <div className={styles.sectionLabel}>{t('sms_service.config_step_credentials')}</div>
 
-          {/* 账密表 */}
-          <div className={styles.credCard}>
-            <div className={styles.credHead}>
-              <span className={styles.credTitle}>{t('sms_service.config_account_title')}</span>
-              <span className={styles.credRole}>{t('sms_service.config_account_role')}</span>
-              {existing?.accountPresent && (
-                <span className={styles.credBadge}>{t('sms_service.config_stored')}</span>
+          <div className={styles.tabs} role="tablist" aria-label={t('sms_service.config_tabs_label')}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'api'}
+              className={`${styles.tab} ${tab === 'api' ? styles.tabActive : ''}`}
+              onClick={() => switchTab('api')}
+            >
+              {t('sms_service.config_tab_api')}
+              {existing?.accountPresent && <span className={styles.tabDot} aria-hidden="true" />}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'web'}
+              className={`${styles.tab} ${tab === 'web' ? styles.tabActive : ''}`}
+              onClick={() => switchTab('web')}
+            >
+              {t('sms_service.config_tab_web')}
+              {(existing?.webPresent || existing?.cookiePresent) && (
+                <span className={styles.tabDot} aria-hidden="true" />
               )}
-            </div>
-            <div className={styles.credGrid}>
-              <Input
-                label={t('sms_service.config_field_account')}
-                placeholder={existing?.accountHint || 'api_user'}
-                value={account}
-                onChange={(event) => {
-                  setAccount(event.target.value);
-                  resetTest();
-                }}
-                error={
-                  showErrors && accountDirty && account.trim() === ''
-                    ? t('sms_service.config_required')
-                    : undefined
-                }
-              />
-              <Input
-                label={t('sms_service.config_field_secret')}
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(event) => {
-                  setPassword(event.target.value);
-                  resetTest();
-                }}
-                hint={existing?.accountPresent ? t('sms_service.config_keep_blank') : undefined}
-                error={
-                  showErrors && accountDirty && password.trim() === ''
-                    ? t('sms_service.config_required')
-                    : undefined
-                }
-              />
-            </div>
-            <Input
-              label={t('sms_service.config_field_endpoint')}
-              placeholder={platform.defaultEndpoint ?? 'https://api.example.com'}
-              value={endpoint}
-              onChange={(event) => {
-                setEndpoint(event.target.value);
-                resetTest();
-              }}
-              hint={t('sms_service.config_field_endpoint_opt')}
-            />
+            </button>
           </div>
 
-          {/* CK 表 */}
-          <div className={styles.credCard}>
-            <div className={styles.credHead}>
-              <span className={styles.credTitle}>{t('sms_service.config_cookie_title')}</span>
-              <span className={styles.credRole}>{t('sms_service.config_cookie_role')}</span>
-              {existing?.cookiePresent && !clearCookie && (
-                <span className={styles.credBadge}>{t('sms_service.config_stored')}</span>
-              )}
-            </div>
-            <div className={styles.credGrid}>
-              <Input
-                label={t('sms_service.config_field_web_user')}
-                placeholder="linhua888"
-                value={webUser}
-                onChange={(event) => {
-                  setWebUser(event.target.value);
-                  resetTest();
-                }}
-                hint={t('sms_service.config_field_web_hint')}
-              />
-              <Input
-                label={t('sms_service.config_field_web_pass')}
-                type="password"
-                placeholder="••••••••"
-                value={webPass}
-                onChange={(event) => {
-                  setWebPass(event.target.value);
-                  resetTest();
-                }}
-                hint={existing?.webPresent ? t('sms_service.config_keep_blank') : undefined}
-              />
-            </div>
-            <Input
-              label={t('sms_service.config_field_cookie')}
-              placeholder="PHPSESSID=..."
-              value={cookie}
-              disabled={clearCookie}
-              onChange={(event) => {
-                setCookie(event.target.value);
-                resetTest();
-              }}
-              onFocus={() => setClearCookie(false)}
-              hint={t('sms_service.config_field_cookie_hint')}
-              error={
-                showErrors && cookieInvalid ? t('sms_service.config_cookie_invalid') : undefined
-              }
-            />
-            {existing?.cookiePresent && (
-              <label className={styles.clearRow}>
-                <input
-                  type="checkbox"
-                  checked={clearCookie}
+          {tab === 'api' ? (
+            <div className={styles.tabPanel} role="tabpanel">
+              <p className={styles.tabHint}>{t('sms_service.config_api_lead')}</p>
+              <div className={styles.credGrid}>
+                <Input
+                  label={t('sms_service.config_field_api_account')}
+                  placeholder={existing?.accountHint || t('sms_service.config_ph_api_account')}
+                  value={apiUser}
                   onChange={(event) => {
-                    setClearCookie(event.target.checked);
-                    setCookie('');
+                    setApiUser(event.target.value);
                     resetTest();
                   }}
+                  error={
+                    showErrors && apiPairIncomplete && apiUser.trim() === ''
+                      ? t('sms_service.config_required')
+                      : undefined
+                  }
                 />
-                {t('sms_service.config_clear_cookie')}
-              </label>
-            )}
-            <div className={styles.webLoginRow}>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleWebLogin}
-                disabled={webLogin.kind === 'busy' || gatePhase === 'locked'}
-              >
-                <IconRefreshCw size={14} />
-                {webLogin.kind === 'busy'
-                  ? t('sms_service.config_web_login_busy')
-                  : t('sms_service.config_web_login')}
-              </Button>
-              {webLogin.kind === 'ok' && (
-                <span className={`${styles.testResult} ${styles.testOk}`}>
-                  <IconCheckCircle2 size={15} />
-                  {t('sms_service.config_web_login_ok', { count: webLogin.channels })}
-                </span>
-              )}
-              {webLogin.kind === 'fail' && (
-                <span className={`${styles.testResult} ${styles.testFail}`}>
-                  <IconAlertTriangle size={15} />
-                  {webLogin.message}
-                </span>
-              )}
-              {webLogin.kind !== 'busy' && (
-                <span className={styles.testNote}>{t('sms_service.config_web_login_note')}</span>
-              )}
+                <Input
+                  label={t('sms_service.config_field_api_secret')}
+                  type="password"
+                  placeholder="••••••••"
+                  value={apiPass}
+                  onChange={(event) => {
+                    setApiPass(event.target.value);
+                    resetTest();
+                  }}
+                  hint={existing?.accountPresent ? t('sms_service.config_keep_blank') : undefined}
+                  error={
+                    showErrors && apiPairIncomplete && apiPass.trim() === ''
+                      ? t('sms_service.config_required')
+                      : undefined
+                  }
+                />
+              </div>
+              <Input
+                label={t('sms_service.config_field_endpoint')}
+                placeholder={platform.defaultEndpoint ?? 'https://api.example.com'}
+                value={endpoint}
+                onChange={(event) => {
+                  setEndpoint(event.target.value);
+                  resetTest();
+                }}
+                hint={t('sms_service.config_field_endpoint_opt')}
+              />
             </div>
-          </div>
+          ) : (
+            <div className={styles.tabPanel} role="tabpanel">
+              <p className={styles.tabHint}>{t('sms_service.config_web_lead')}</p>
+              <div className={styles.credGrid}>
+                <Input
+                  label={t('sms_service.config_field_web_user')}
+                  placeholder={t('sms_service.config_ph_web_user')}
+                  value={webUser}
+                  onChange={(event) => {
+                    setWebUser(event.target.value);
+                    resetTest();
+                  }}
+                  error={
+                    showErrors && webPairIncomplete && webUser.trim() === ''
+                      ? t('sms_service.config_required')
+                      : undefined
+                  }
+                />
+                <Input
+                  label={t('sms_service.config_field_web_pass')}
+                  type="password"
+                  placeholder="••••••••"
+                  value={webPass}
+                  onChange={(event) => {
+                    setWebPass(event.target.value);
+                    resetTest();
+                  }}
+                  hint={existing?.webPresent ? t('sms_service.config_keep_blank') : undefined}
+                  error={
+                    showErrors && webPairIncomplete && webPass.trim() === ''
+                      ? t('sms_service.config_required')
+                      : undefined
+                  }
+                />
+              </div>
+              <div className={styles.webLoginRow}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleWebLogin}
+                  disabled={webLogin.kind === 'busy' || gatePhase === 'locked'}
+                >
+                  <IconRefreshCw size={14} />
+                  {webLogin.kind === 'busy'
+                    ? t('sms_service.config_web_login_busy')
+                    : t('sms_service.config_web_login')}
+                </Button>
+                {webLogin.kind === 'ok' && (
+                  <span className={`${styles.testResult} ${styles.testOk}`}>
+                    <IconCheckCircle2 size={15} />
+                    {t('sms_service.config_web_login_ok', { count: webLogin.channels })}
+                  </span>
+                )}
+                {webLogin.kind === 'fail' && (
+                  <span className={`${styles.testResult} ${styles.testFail}`}>
+                    <IconAlertTriangle size={15} />
+                    {webLogin.message}
+                  </span>
+                )}
+                {webLogin.kind !== 'busy' && (
+                  <span className={styles.testNote}>{t('sms_service.config_web_login_note')}</span>
+                )}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* ③ 测试连接 + 错误 */}
