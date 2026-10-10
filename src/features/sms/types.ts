@@ -78,16 +78,16 @@ export interface PlatformCredentials {
 export interface SmsChannel {
   /** 渠道 ID（后端 uid）。 */
   id: string;
-  /** 渠道展示名，例如「讯飞」。 */
+  /** 渠道展示名（简短，如「移动/联通」）。 */
   name: string;
+  /** 渠道完整说明（运营商 + 全部号段），用于悬停查看。 */
+  detail: string;
   /** 实际取号单价（元）。 */
   priceCny: number;
   /** 当前库存（可用号码数）。 */
   stock: number;
   /** 是否处于暂停状态（省钱手段：暂停贵的 / 无货的）。 */
   paused: boolean;
-  /** 该渠道累计取号次数。 */
-  usedCount: number;
   /** 健康度：由单价、库存、暂停状态推导，驱动字色/色块。 */
   health: ChannelHealth;
 }
@@ -100,8 +100,8 @@ export interface PhoneLedgerEntry {
   account: string;
   /** 取号渠道名。 */
   channel: string;
-  /** 实际花费（元）。 */
-  costCny: number;
+  /** 实际花费（元）；`null` 表示后端未记录该条成本（不展示，不编造）。 */
+  costCny: number | null;
   /** 取号时间（ISO 字符串）。 */
   takenAt: string;
   /** 结果状态。 */

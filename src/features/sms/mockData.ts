@@ -16,19 +16,19 @@ import type {
   SmsStatus,
 } from './types';
 
-/** 预置平台（L1）。选择后其名称/摘要进入「已配置渠道」卡。 */
+/** 可选平台（L1）。内置平台已知协议、地址固定；自定义平台由使用者自填。 */
 export const SMS_PLATFORMS: SmsPlatform[] = [
   {
     id: 'haozhuma',
     name: '豪猪接码',
-    summary: '已对接：用 API 接入取号，用网页登录管理渠道',
+    summary: '用 API 接入取号，用网页登录管理渠道',
     preset: true,
     defaultEndpoint: 'https://api.haozhuma.cn',
   },
   {
     id: 'custom',
     name: '自定义',
-    summary: '接入其他接码平台，自行填写 API 地址与凭据',
+    summary: '接入其他接码平台，自行填写地址与凭据',
     preset: false,
   },
 ];
@@ -45,7 +45,6 @@ const CHANNEL_SEED: Array<{
   name: string;
   priceCny: number;
   stock: number;
-  usedCount: number;
   successRate: number;
   latencyMs: number;
   paused: boolean;
@@ -55,7 +54,6 @@ const CHANNEL_SEED: Array<{
     name: '讯飞 · 21614-K3YRTDXCSL',
     priceCny: 0.13,
     stock: 42,
-    usedCount: 8,
     successRate: 0.96,
     latencyMs: 3100,
     paused: false,
@@ -65,7 +63,6 @@ const CHANNEL_SEED: Array<{
     name: '讯飞 · 21614-FPM36FDX4H',
     priceCny: 0.18,
     stock: 17,
-    usedCount: 4,
     successRate: 0.88,
     latencyMs: 4600,
     paused: false,
@@ -75,7 +72,6 @@ const CHANNEL_SEED: Array<{
     name: '稀土掘金/Trae · 58562-OEIO5JKMZH',
     priceCny: 0.18,
     stock: 9,
-    usedCount: 2,
     successRate: 0.72,
     latencyMs: 7800,
     paused: false,
@@ -85,7 +81,6 @@ const CHANNEL_SEED: Array<{
     name: '商汤 · 69454-428K8MRUKD',
     priceCny: 1.1,
     stock: 0,
-    usedCount: 1,
     successRate: 0.5,
     latencyMs: 9200,
     paused: true,
@@ -124,9 +119,9 @@ export function getMockSmsStatus(): SmsStatus {
   const channels: SmsChannel[] = CHANNEL_SEED.map((seed) => ({
     id: seed.id,
     name: seed.name,
+    detail: seed.name,
     priceCny: seed.priceCny,
     stock: seed.stock,
-    usedCount: seed.usedCount,
     successRate: seed.successRate,
     latencyMs: seed.latencyMs,
     paused: seed.paused,

@@ -191,6 +191,38 @@
   line-height: 1.5;
 }
 
+/* 内置平台的地址：真值只读展示，不是提示文案。 */
+.readonlyField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.readonlyLabel {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.readonlyValue {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-secondary) 60%, transparent);
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+  font-size: 12.5px;
+  user-select: all;
+}
+
+.readonlyHint {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
 .credGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;

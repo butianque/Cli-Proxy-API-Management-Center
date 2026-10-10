@@ -35,7 +35,10 @@ export interface ChannelConfigModalProps {
     accountPresent: boolean;
     cookiePresent: boolean;
     webPresent: boolean;
-    accountHint: string;
+    /** 已存 API 账号的脱敏提示（如 `e3••••f8`）。 */
+    apiUserHint?: string;
+    /** 已存网页账号的脱敏提示（如 `li••••88`）。 */
+    webUserHint?: string;
   } | null;
   /** 保存成功后回调（父组件据此刷新状态）。 */
   onSaved: () => void;
@@ -69,6 +72,7 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
   // API 登录
   const [apiUser, setApiUser] = useState('');
   const [apiPass, setApiPass] = useState('');
+  // 仅「自定义」平台用：内置平台地址由后端固定，不采集。
   const [endpoint, setEndpoint] = useState('');
   // 网页登录
   const [webUser, setWebUser] = useState('');
@@ -84,6 +88,9 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
     () => SMS_PLATFORMS.find((item) => item.id === platformId) ?? SMS_PLATFORMS[0],
     [platformId]
   );
+  // 内置平台的地址由后端固定（`haozhumaDefaultEndpoint`），界面只读展示；
+  // 自定义平台才让使用者自己填。
+  const endpointLocked = Boolean(platform.defaultEndpoint);
 
   // 打开时重置表单为「只显示已存状态」。
   useEffect(() => {
@@ -168,7 +175,8 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
           {
             api_user: apiUser.trim(),
             api_pass: apiPass.trim(),
-            endpoint: endpoint.trim(),
+            // 内置平台地址由后端固定，界面不采集也不提交地址。
+            endpoint: '',
           },
           passphrase
         );
@@ -322,12 +330,15 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
               <div className={styles.credGrid}>
                 <Input
                   label={t('sms_service.config_field_api_account')}
-                  placeholder={existing?.accountHint || t('sms_service.config_ph_api_account')}
+                  placeholder={
+                    existing?.apiUserHint || t('sms_service.config_ph_api_account')
+                  }
                   value={apiUser}
                   onChange={(event) => {
                     setApiUser(event.target.value);
                     resetTest();
                   }}
+                  hint={existing?.accountPresent ? t('sms_service.config_keep_blank') : undefined}
                   error={
                     showErrors && apiPairIncomplete && apiUser.trim() === ''
                       ? t('sms_service.config_required')
@@ -351,16 +362,29 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
                   }
                 />
               </div>
-              <Input
-                label={t('sms_service.config_field_endpoint')}
-                placeholder={platform.defaultEndpoint ?? 'https://api.example.com'}
-                value={endpoint}
-                onChange={(event) => {
-                  setEndpoint(event.target.value);
-                  resetTest();
-                }}
-                hint={t('sms_service.config_field_endpoint_opt')}
-              />
+              {/* 内置平台地址只读展示（真值，非提示）；自定义平台才可填。 */}
+              {endpointLocked ? (
+                <div className={styles.readonlyField}>
+                  <span className={styles.readonlyLabel}>
+                    {t('sms_service.config_field_endpoint')}
+                  </span>
+                  <span className={styles.readonlyValue}>{platform.defaultEndpoint}</span>
+                  <span className={styles.readonlyHint}>
+                    {t('sms_service.config_endpoint_builtin')}
+                  </span>
+                </div>
+              ) : (
+                <Input
+                  label={t('sms_service.config_field_endpoint')}
+                  placeholder="https://api.example.com"
+                  value={endpoint}
+                  onChange={(event) => {
+                    setEndpoint(event.target.value);
+                    resetTest();
+                  }}
+                  hint={t('sms_service.config_field_endpoint_opt')}
+                />
+              )}
             </div>
           ) : (
             <div className={styles.tabPanel} role="tabpanel">
@@ -368,12 +392,13 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
               <div className={styles.credGrid}>
                 <Input
                   label={t('sms_service.config_field_web_user')}
-                  placeholder={t('sms_service.config_ph_web_user')}
+                  placeholder={existing?.webUserHint || t('sms_service.config_ph_web_user')}
                   value={webUser}
                   onChange={(event) => {
                     setWebUser(event.target.value);
                     resetTest();
                   }}
+                  hint={existing?.webPresent ? t('sms_service.config_keep_blank') : undefined}
                   error={
                     showErrors && webPairIncomplete && webUser.trim() === ''
                       ? t('sms_service.config_required')

@@ -44,6 +44,10 @@ export interface SmsStatusResponse {
   cookie_present?: boolean;
   /** 网页登录账号（linhua888）是否已随账密 secret 存好。 */
   web_present?: boolean;
+  /** 已存 API 账号的脱敏提示（如 `e3••••f8`），仅解锁态返回。 */
+  api_user_hint?: string;
+  /** 已存网页账号的脱敏提示（如 `li••••88`），仅解锁态返回。 */
+  web_user_hint?: string;
   project?: string;
   provider?: string;
   budget?: { max_total_cny?: number; max_per_number_cny?: number };
@@ -51,9 +55,34 @@ export interface SmsStatusResponse {
   balance_cny?: number;
   /** 真实联网失败的原因。 */
   balance_error?: string;
-  channels?: unknown[];
-  ledger?: unknown[];
+  channels?: SmsChannelWire[];
+  ledger?: SmsLedgerWire[];
   spent_cny?: number;
+  /** 渠道缓存写入时间（Unix 秒）。 */
+  channels_updated_at?: number;
+}
+
+/** 后端返回的渠道行（uid / price / stock / paused）。 */
+export interface SmsChannelWire {
+  uid: string;
+  name: string;
+  price: number;
+  stock: number;
+  paused?: boolean;
+  carriers?: string;
+  paragraphs?: string;
+  contact?: string;
+}
+
+/** 后端返回的账本行。 */
+export interface SmsLedgerWire {
+  phone: string;
+  sid?: string;
+  code?: string;
+  account?: string;
+  rents?: number;
+  first_seen?: number;
+  last_used?: number;
 }
 
 /** 账密表提交（→ POST /sms/api，空字段=保留旧值）。 */
@@ -156,6 +185,60 @@ export const smsApi = {
       return { ok: true };
     } catch (error) {
       return toCredentialWriteResult(error, 'failed to store the web sign-in credential');
+    }
+  },
+
+  /** 刷新渠道缓存（真实拉取平台渠道）。 */
+  async refreshChannels(
+    apiBase: string,
+    join = false
+  ): Promise<{ ok: true; channels: SmsChannelWire[] } | { ok: false; message: string }> {
+    try {
+      const result = await apiClient.post<{ channels?: SmsChannelWire[] }>(
+        smsPluginURL('/refresh', apiBase),
+        { join },
+        { baseURL: '' }
+      );
+      return { ok: true, channels: result?.channels ?? [] };
+    } catch (error) {
+      const data = (error as { data?: unknown })?.data as { error?: string } | undefined;
+      return { ok: false, message: data?.error ?? 'failed to refresh channels' };
+    }
+  },
+
+  /** 省钱护栏：暂停超上限/无货渠道，恢复可用渠道（真实写平台；需网页会话）。 */
+  async runGuardrail(
+    apiBase: string
+  ): Promise<{ ok: true; channels: SmsChannelWire[] } | { ok: false; message: string }> {
+    try {
+      const result = await apiClient.post<{ channels?: SmsChannelWire[] }>(
+        smsPluginURL('/guardrail', apiBase),
+        {},
+        { baseURL: '' }
+      );
+      return { ok: true, channels: result?.channels ?? [] };
+    } catch (error) {
+      const data = (error as { data?: unknown })?.data as { error?: string } | undefined;
+      return { ok: false, message: data?.error ?? 'failed to apply the guardrail' };
+    }
+  },
+
+  /** 暂停/恢复单个渠道（真实写平台；需要网页会话）。 */
+  async setChannel(
+    apiBase: string,
+    uid: string,
+    paused: boolean
+  ): Promise<{ ok: true; channels: SmsChannelWire[] } | { ok: false; message: string }> {
+    try {
+      const result = await apiClient.post<{ channels?: SmsChannelWire[] }>(
+        smsPluginURL('/channel', apiBase),
+        { uid, paused },
+        { baseURL: '' }
+      );
+      return { ok: true, channels: result?.channels ?? [] };
+    } catch (error) {
+      const data = (error as { data?: unknown })?.data as { error?: string } | undefined;
+      return { ok: false, message: data?.error ?? 'failed to switch the channel' };
     }
   },
 
