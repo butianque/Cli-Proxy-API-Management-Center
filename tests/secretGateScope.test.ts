@@ -125,3 +125,51 @@ describe('verified state lives as long as the CPA session, not a page load', () 
     expect(actionBody('skip', 'touch:')).not.toContain('markSessionVerified');
   });
 });
+
+describe('logging out ends the session for the store as well', () => {
+  const authStore = readFileSync(new URL('../src/stores/useAuthStore.ts', import.meta.url), 'utf8');
+  const idleGuard = readFileSync(
+    new URL('../src/features/sms/SecretGateIdleGuard.tsx', import.meta.url),
+    'utf8'
+  );
+
+  /** The implementation body of a store action (last occurrence, as in actionBody). */
+  function authActionBody(name: string, endMarker: string): string {
+    const start = authStore.lastIndexOf(`${name}: `);
+    expect(start).toBeGreaterThan(-1);
+    const rest = authStore.slice(start);
+    const end = rest.indexOf(endMarker);
+    expect(end).toBeGreaterThan(-1);
+    return rest.slice(0, end);
+  }
+
+  test('logout locks the backend store with the own session key', () => {
+    // Logging out IS "clear the session". If the front end only forgot the
+    // session while the backend stayed unlocked, logging out and back in would
+    // hand anyone with the management key the credentials with no master
+    // password — the marker would be decoration.
+    const body = authActionBody('logout', 'checkAuth:');
+    expect(body).toContain('lockStore()');
+    expect(body).toContain('reset()');
+  });
+
+  test('the lock is issued before the credential is cleared', () => {
+    // /secrets/lock is authenticated: calling it after clearing the management
+    // key returns 401 "missing management key" (verified against the running
+    // backend). So the request must be captured first; cleanup follows inside
+    // its `.then` callback.
+    const body = authActionBody('logout', 'checkAuth:');
+    const lockAt = body.indexOf('lockStore()');
+    const clearAt = body.indexOf("apiClient.setConfig({ apiBase: '', managementKey: '' })");
+    expect(lockAt).toBeGreaterThan(-1);
+    expect(clearAt).toBeGreaterThan(lockAt);
+  });
+
+  test('both logout paths lock the store through logout()', () => {
+    // Idle timeout must not lock on its own path: the guard cancels its timer
+    // when it logs out, so a lock issued after logout() would never fire.
+    // One lock, inside logout(), covers idle timeout and manual logout alike.
+    expect(idleGuard).not.toContain('lockStore()');
+    expect(idleGuard).toContain('logout()');
+  });
+});

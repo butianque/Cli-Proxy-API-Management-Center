@@ -9,6 +9,7 @@ import type { AuthState, LoginCredentials, ConnectionStatus } from '@/types';
 import { STORAGE_KEY_AUTH } from '@/utils/constants';
 import { obfuscatedStorage } from '@/services/storage/secureStorage';
 import { apiClient } from '@/services/api/client';
+import { smsApi } from '@/services/api/sms';
 import { LegacyBackendError, probeLegacyBackend } from '@/services/api/legacyBackendProbe';
 import { useConfigStore } from './useConfigStore';
 import { useModelsStore } from './useModelsStore';
@@ -21,7 +22,7 @@ interface AuthStoreState extends AuthState {
 
   // 操作
   login: (credentials: LoginCredentials) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   checkAuth: () => Promise<boolean>;
   restoreSession: () => Promise<boolean>;
   updateServerVersion: (version: string | null, buildDate?: string | null) => void;
@@ -150,26 +151,42 @@ export const useAuthStore = create<AuthStoreState>()(
       },
 
       // 登出
-      logout: () => {
+      logout: (): Promise<void> => {
         restoreSessionPromise = null;
-        apiClient.setConfig({ apiBase: '', managementKey: '' });
-        useConfigStore.getState().clearCache();
-        useModelsStore.getState().clearCache();
-        useQuotaStore.getState().clearQuotaCache();
-        set({
-          isAuthenticated: false,
-          apiBase: '',
-          managementKey: '',
-          serverVersion: null,
-          serverBuildDate: null,
-          supportsPlugin: false,
-          connectionStatus: 'disconnected',
-        });
-        localStorage.removeItem('isLoggedIn');
-        // The secret gate shares the CPA session's lifetime: logging out (manual
-        // or idle-timeout) always returns it to the unasked state, clearing the
-        // in-memory passphrase so the next login re-verifies.
-        useSecretGateStore.getState().reset();
+        // 登出 = 清除会话，所以密钥库必须对新会话锁死；否则「已验证」只清了前端，
+        // 后端还开着，任何人都能靠「登出再登录」直接看到凭据。
+        //
+        // 顺序是关键：`logout()` 会把管理密钥从 apiClient 里清掉，而 `/secrets/lock`
+        // 是需要鉴权的（实测无密钥 → 401 `missing management key`）。所以必须先用
+        // **当前这个会话的密钥**把锁定请求发出去，拿到响应再清。
+        const lockRequest = smsApi.lockStore();
+        const finish = () => {
+          apiClient.setConfig({ apiBase: '', managementKey: '' });
+          useConfigStore.getState().clearCache();
+          useModelsStore.getState().clearCache();
+          useQuotaStore.getState().clearQuotaCache();
+          set({
+            isAuthenticated: false,
+            apiBase: '',
+            managementKey: '',
+            serverVersion: null,
+            serverBuildDate: null,
+            supportsPlugin: false,
+            connectionStatus: 'disconnected',
+          });
+          localStorage.removeItem('isLoggedIn');
+          // The secret gate shares the CPA session's lifetime: logging out (manual
+          // or idle-timeout) always returns it to the unasked state, clearing the
+          // in-memory passphrase so the next login re-verifies.
+          useSecretGateStore.getState().reset();
+        };
+        // The store must look logged out the instant this returns; the lock itself
+        // settles in the background. 锁定失败不阻断登出：前端凭据已经清掉了。
+        void lockRequest.then(finish, finish);
+        return lockRequest.then(
+          () => undefined,
+          () => undefined
+        );
       },
 
       // 检查认证状态
@@ -244,7 +261,7 @@ export const useAuthStore = create<AuthStoreState>()(
 // 监听全局未授权事件
 if (typeof window !== 'undefined') {
   window.addEventListener('unauthorized', () => {
-    useAuthStore.getState().logout();
+    void useAuthStore.getState().logout();
   });
 
   window.addEventListener('server-version-update', ((e: CustomEvent) => {

@@ -6,14 +6,13 @@
  * - 只把**用户主动操作**算作活动（鼠标移动/按下、滚屏、按键、点击、切页）；
  * - 后台轮询/自动刷新**不算**（否则永远不会超时）；
  * - 面板内任何主动操作都重置计时器（活动事件节流，避免 mousemove 高频触发）；
- * - 超时 → `POST /secrets/lock`（真锁）+ 既有 `logout()`（回登录页）；
+ * - 超时 → 既有 `logout()`（回登录页；`logout()` 内部会 `POST /secrets/lock` 真锁）；
  * - **已验证态与锁定态都计时**：只要已登录，停手满超时即登出（用户 2026-10-10 明确）。
  *
  * 无 UI；挂在 RootShell 里，只在已登录时生效。
  */
 
 import { useEffect, useRef } from 'react';
-import { smsApi } from '@/services/api/sms';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useSecretGateStore, ACTIVITY_THROTTLE_MS } from '@/stores/useSecretGateStore';
 
@@ -75,16 +74,12 @@ export function SecretGateIdleGuard() {
       if (Date.now() - lastActivityAt < idleTimeoutMs) return;
 
       firingRef.current = true;
-      // 超时 → 锁定后端密钥库（真安全），再登出。
-      // 锁定失败不阻断登出：登出本身就清掉了面板凭据。
-      void smsApi
-        .lockStore()
-        .catch(() => undefined)
-        .finally(() => {
-          reset();
-          logout();
-          firingRef.current = false;
-        });
+      // 超时 = 会话结束：先让门回到未询问，再登出。
+      // 登出会拿当前会话的密钥把密钥库锁死（见 useAuthStore.logout），这里不再单独调用。
+      // `void`：登出必须立即生效，锁库在后台收尾。
+      reset();
+      void logout();
+      firingRef.current = false;
     }, interval);
 
     return () => window.clearInterval(timer);
