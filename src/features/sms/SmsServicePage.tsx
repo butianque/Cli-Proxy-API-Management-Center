@@ -66,7 +66,6 @@ export function SmsServicePage() {
   // 起步就是真实空态；后端返回什么就显示什么，不拿假数据兜底。
   const [status, setStatus] = useState<SmsStatus>(EMPTY_SMS_STATUS);
   const [creds, setCreds] = useState<PlatformCredentials | null>(null);
-  const [lockedCreds, setLockedCreds] = useState(false);
   const [storeLocked, setStoreLocked] = useState(false);
   const [webPresent, setWebPresent] = useState(false);
   const [userHints, setUserHints] = useState({ apiUser: '', webUser: '' });
@@ -108,8 +107,6 @@ export function SmsServicePage() {
       const channels = Array.isArray(raw.channels) ? raw.channels.map(toChannel) : [];
       const ledger = Array.isArray(raw.ledger) ? raw.ledger.map(toLedger) : [];
       setStoreLocked(storeLocked);
-      // 锁定态下「凭据是否已配」不可读，是「读不到」而不是「没配」。
-      setLockedCreds(storeLocked);
       setWebPresent(webPresent);
       setUserHints({
         apiUser: raw.api_user_hint ?? '',
@@ -222,12 +219,13 @@ export function SmsServicePage() {
     [channels, status.priceCeilingCny]
   );
 
-  // 锁定（门或密钥库）时凭据不可读：余额等凭据读数不显示，但渠道/账本照常显示。
-  const locked = gatePhase === 'locked' || storeLocked;
+  // 凭据可见的**唯一**判据：本会话验证过主密码（gate unlocked），且后端密钥库确实已解锁。
+  // 二者缺一都不可见 —— 否则「跳过验证但后端先前已解锁」会让页面把凭据露出来。
+  const credsVisible = gatePhase === 'unlocked' && !storeLocked;
 
-  // 页头状态词只在**能确认**时给；锁定态不猜，交给顶部那条主密码提示。
+  // 页头状态词只在**能确认**时给；凭据不可见时不猜，交给顶部那条主密码提示。
   const headerStatus = (() => {
-    if (locked) return null;
+    if (!credsVisible) return null;
     // `enabled` 是后端的真实开关（sms_provider 已配置）；未配置时先报「未配置」。
     if (!creds?.account.present) {
       return { label: t('sms_service.status_not_configured'), ok: false };
@@ -312,7 +310,7 @@ export function SmsServicePage() {
           </button>
         }
       >
-        {lockedCreds ? (
+        {!credsVisible ? (
           <EmptyState
             title={t('sms_service.configured_locked')}
             description={t('sms_service.configured_locked_desc')}
@@ -376,7 +374,7 @@ export function SmsServicePage() {
         <div className={styles.statPill}>
           <span className={styles.statLabel}>{t('sms_service.stat_balance')}</span>
           <span className={styles.statValue}>
-            {status.balanceCny === null || locked ? '—' : formatCny(status.balanceCny)}
+            {status.balanceCny === null || !credsVisible ? '—' : formatCny(status.balanceCny)}
           </span>
         </div>
         <div className={styles.statPill}>

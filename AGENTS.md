@@ -52,6 +52,18 @@ Component files use PascalCase, hooks use `useName`, and API modules use domain 
 
 Keep user-facing text in i18n. Preserve keyboard interaction, accessible names, focus behavior, and reduced-motion handling when modifying interactive UI.
 
+### UI speaks state and action, never mechanism
+
+User-facing copy states **what the situation is and what to do next**. It never explains how the feature is implemented, and it never lists what the product "cannot do". Test: would a person who only uses the product need to know the backend detail in this sentence? If yes, rewrite it.
+
+- Never surface backend concepts (`store`, `secret`, `pool`, `loaded`/`locked` internals, snake_case field names) in UI text. Say "master password", "credentials", "channels".
+- Do not translate internal state into copy. A `store_available: false` response is not a sentence; show the normal empty state with a next step (e.g. "Credentials hidden / verify the master password to show them").
+- State a condition once. Global conditions belong to the global banner; a card only speaks about itself. Repeating the same lock notice in a banner, a page notice, and a card is noise.
+- A restricted or locked state is the **normal empty state plus an action hint**, not a bespoke "restricted" card. Data that is not restricted (channels, history, caps) keeps rendering; only the restricted part is empty.
+- Never ship a control that cannot change anything: no toggle backed by local `useState` with no backend, no permanently `checked`/`disabled` switch standing in for "this is a capability". Either wire it to the backend or state it as text.
+- Keep backend field names in a single mapping module (e.g. `features/sms/smsMapping.ts`). Components consume UI types only; a snake_case field name inside a component means the separation is missing.
+- Never fabricate data. When there is no real value, show an empty state (`EmptyState`) instead of a hardcoded placeholder or a mock fallback.
+
 ## Testing & Verification
 
 Tests are centralized under `tests/` as `*.test.ts` and use `bun:test`. Existing suites cover pure logic, React server-side static rendering via `renderToStaticMarkup`, and source/contract checks. There is no configured browser DOM test harness; static markup tests do not verify browser interactions. Prefer extracting testable logic and following nearby test patterns rather than introducing a new framework by default.
