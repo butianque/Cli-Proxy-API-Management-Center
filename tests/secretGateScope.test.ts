@@ -173,3 +173,30 @@ describe('logging out ends the session for the store as well', () => {
     expect(idleGuard).toContain('logout()');
   });
 });
+
+describe('idle expiry is measured from real activity, not from page load', () => {
+  const idleGuard = readFileSync(
+    new URL('../src/features/sms/SecretGateIdleGuard.tsx', import.meta.url),
+    'utf8'
+  );
+
+  test('the activity clock survives a reload', () => {
+    // `lastActivityAt` is in-memory state, so a reload resets it to "now". If the
+    // check used only that, "load the page, then touch nothing" could never time
+    // out: every refresh would restart the full window. The clock therefore
+    // lives in sessionStorage, which means "this tab's session".
+    expect(idleGuard).toContain("const LAST_ACTIVITY_KEY = 'cpa.secret-gate.lastActivity'");
+    expect(idleGuard).toContain('window.sessionStorage.setItem(LAST_ACTIVITY_KEY');
+    expect(idleGuard).toContain('window.sessionStorage.getItem(LAST_ACTIVITY_KEY)');
+  });
+
+  test('the earliest activity wins, so an untouched tab expires on load', () => {
+    // min(): a stale persisted stamp must not be overwritten by the fresh
+    // in-memory one, otherwise reopening an abandoned tab buys another window.
+    expect(idleGuard).toContain('Math.min(inMemory, persisted)');
+  });
+
+  test('activity is recorded when it happens', () => {
+    expect(idleGuard).toContain('writeLastActivity(now)');
+  });
+});
