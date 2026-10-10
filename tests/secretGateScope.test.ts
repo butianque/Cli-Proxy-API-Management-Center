@@ -94,3 +94,34 @@ describe('a choice made mid-verify wins over the in-flight result', () => {
     expect(guards).toHaveLength(2);
   });
 });
+
+describe('verified state lives as long as the CPA session, not a page load', () => {
+  test('a successful verify records a session marker', () => {
+    const body = actionBody('verifyAndUnlock', 'skip:');
+    expect(body).toContain('markSessionVerified()');
+  });
+
+  test('logging out clears the marker, so the next login re-verifies', () => {
+    const body = actionBody('reset', 'setIdleTimeout:');
+    expect(body).toContain('clearSessionVerified()');
+  });
+
+  test('the marker is session-scoped and never stores the passphrase', () => {
+    // sessionStorage: survives F5 in the tab, dies with the tab. Storing the
+    // passphrase itself would turn a UI convenience into a credential store.
+    expect(gateStore).toContain('window.sessionStorage.setItem');
+    expect(gateStore).toContain("const SESSION_VERIFIED_KEY = 'cpa.secret-gate.verified'");
+    expect(gateStore).toContain("setItem(SESSION_VERIFIED_KEY, '1')");
+  });
+
+  test('reload resumes verified only when the backend is still unlocked', () => {
+    // The marker alone must never grant access: the backend is the authority.
+    const probe = gateModal.slice(gateModal.indexOf('isSessionVerified()'));
+    expect(probe).toContain('isSessionVerified()');
+    expect(probe).toContain('status.unlocked');
+  });
+
+  test('a skipped session is not marked verified', () => {
+    expect(actionBody('skip', 'touch:')).not.toContain('markSessionVerified');
+  });
+});

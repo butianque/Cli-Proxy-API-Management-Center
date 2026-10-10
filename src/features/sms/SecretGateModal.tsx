@@ -8,6 +8,9 @@
  *
  * 弹窗只在 `phase === 'idle'`（刚登录、尚未询问）时出现；`locked` 态不再弹，
  * 改由常驻的「锁定提示条」（SecretLockedBanner）提供重新验证入口。
+ *
+ * 「已验证」绑 **CPA 会话**而非页面加载：本会话验证过、且后端仍解锁时，刷新（F5）
+ * 不重问（见 `useSecretGateStore` 头注释第 5 条）。
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -18,7 +21,7 @@ import { Modal } from '@/components/ui/Modal';
 import { IconKey, IconShield } from '@/components/ui/icons';
 import { smsApi } from '@/services/api/sms';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { useSecretGateStore } from '@/stores/useSecretGateStore';
+import { isSessionVerified, useSecretGateStore } from '@/stores/useSecretGateStore';
 import styles from './SecretGateModal.module.scss';
 
 export function SecretGateModal() {
@@ -67,6 +70,13 @@ export function SecretGateModal() {
         refreshStoreState(status);
         // 密钥库不可用，或压根没装主密码 → 无需验证，直接放行（无密可锁）。
         if (!status.enabled || !status.initialized || !status.passphrase) {
+          useSecretGateStore.setState({ phase: 'unlocked', errorKey: null });
+          return;
+        }
+        // 同一会话内刷新（F5）：本会话已验证过、且后端确实仍解锁 → 直接放行。
+        // 「已验证」的生命周期 = CPA 会话的生命周期，刷新不是会话边界，不该重问。
+        // 标记只表达「本会话验证过」，解锁与否一律以后端为准——后端已锁则照常再问。
+        if (isSessionVerified() && status.unlocked) {
           useSecretGateStore.setState({ phase: 'unlocked', errorKey: null });
         }
       })
