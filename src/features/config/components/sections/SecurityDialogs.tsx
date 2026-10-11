@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { IconAlertTriangle } from '@/components/ui/icons';
 import { configApi } from '@/services/api/config';
-import { smsApi } from '@/services/api/sms';
+import { secretStoreApi } from '@/services/api/secretStore';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useNotificationStore } from '@/stores/useNotificationStore';
 import { useSecretGateStore } from '@/stores/useSecretGateStore';
@@ -174,9 +174,9 @@ export function MasterPassphraseDialog({
     setError(null);
     try {
       if (changing) {
-        await smsApi.setPassphrase(current, value);
+        await secretStoreApi.setPassphrase(current, value);
       } else {
-        await smsApi.initializeStore(value);
+        await secretStoreApi.initialize(value);
       }
       // 门采用新密码：本会话解着锁继续用，后续写凭据才会带对新值。
       useSecretGateStore.getState().adoptPassphrase(value);

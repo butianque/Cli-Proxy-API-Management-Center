@@ -9,7 +9,7 @@ import type { AuthState, LoginCredentials, ConnectionStatus } from '@/types';
 import { STORAGE_KEY_AUTH } from '@/utils/constants';
 import { obfuscatedStorage } from '@/services/storage/secureStorage';
 import { apiClient } from '@/services/api/client';
-import { smsApi } from '@/services/api/sms';
+import { secretStoreApi } from '@/services/api/secretStore';
 import { LegacyBackendError, probeLegacyBackend } from '@/services/api/legacyBackendProbe';
 import { useConfigStore } from './useConfigStore';
 import { useModelsStore } from './useModelsStore';
@@ -165,40 +165,49 @@ export const useAuthStore = create<AuthStoreState>()(
         // 登出 = 清除会话，所以密钥库必须对新会话锁死；否则「已验证」只清了前端，
         // 后端还开着，任何人都能靠「登出再登录」直接看到凭据。
         //
-        // 顺序是关键：`logout()` 会把管理密钥从 apiClient 里清掉，而 `/secrets/lock`
-        // 是需要鉴权的（实测无密钥 → 401 `missing management key`）。所以必须先用
-        // **当前这个会话的密钥**把锁定请求发出去，拿到响应再清。
+        // 两件事的顺序是关键：
+        // - `/secrets/lock` 需要鉴权（实测无密钥 → 401 `missing management key`），
+        //   而 `apiClient` 的连接信息一清就会让请求落到相对路径（缺 `/v8/management`
+        //   前缀）而 404。所以这条请求必须**带着当前会话的密钥发出**。
+        // - 但前端的登出**不能**等它落地：后端挂起时操作者会一直停在受保护页面上。
+        // 所以：前端状态**同步**清掉（受保护路由立刻把人送回登录页），`apiClient`
+        // 的连接信息等请求落地再清（它只影响之后的新请求，且此时已无人再发请求）。
         //
-        // 已经没有会话凭据时不发这条请求：`apiClient` 的 baseURL 已空，请求会落到
-        // 相对路径 `/secrets/lock`（缺 `/v8/management` 前缀）而 404；而且本来也没有
-        // 可锁的库（会话结束后的迟到 401 也会走到这里）。
+        // 已经没有会话凭据时不发这条请求：本来也没有可锁的库，且会话结束后的迟到
+        // 401 也会走到这里。
         const { apiBase, managementKey } = get();
         const lockRequest =
-          apiBase && managementKey ? smsApi.lockStore() : Promise.resolve();
-        const finish = () => {
+          apiBase && managementKey ? secretStoreApi.lock() : Promise.resolve();
+        // 锁定请求发出时的连接世代。期间若有人重新登录（`setConfig` 会 +1），
+        // 迟到的收尾就**不能**再清 `apiClient`，否则会把新会话踢掉。
+        const revision = apiClient.getConnectionRevision();
+        const settleClient = () => {
+          if (apiClient.getConnectionRevision() === revision) {
+            apiClient.setConfig({ apiBase: '', managementKey: '' });
+          }
           logoutPromise = null;
-          apiClient.setConfig({ apiBase: '', managementKey: '' });
-          useConfigStore.getState().clearCache();
-          useModelsStore.getState().clearCache();
-          useQuotaStore.getState().clearQuotaCache();
-          set({
-            isAuthenticated: false,
-            apiBase: '',
-            managementKey: '',
-            serverVersion: null,
-            serverBuildDate: null,
-            supportsPlugin: false,
-            connectionStatus: 'disconnected',
-          });
-          localStorage.removeItem('isLoggedIn');
-          // The secret gate shares the CPA session's lifetime: logging out (manual
-          // or idle-timeout) always returns it to the unasked state, clearing the
-          // in-memory passphrase so the next login re-verifies.
-          useSecretGateStore.getState().reset();
         };
-        // The store must look logged out the instant this returns; the lock itself
-        // settles in the background. 锁定失败不阻断登出：前端凭据已经清掉了。
-        void lockRequest.then(finish, finish);
+        // 前端会话立刻结束：清 apiBase/managementKey 一并把 `ProtectedRoute` 的
+        // 会话恢复挡住（它见到「未登录 + 有密钥」会立刻重新登录）。
+        useConfigStore.getState().clearCache();
+        useModelsStore.getState().clearCache();
+        useQuotaStore.getState().clearQuotaCache();
+        set({
+          isAuthenticated: false,
+          apiBase: '',
+          managementKey: '',
+          serverVersion: null,
+          serverBuildDate: null,
+          supportsPlugin: false,
+          connectionStatus: 'disconnected',
+        });
+        localStorage.removeItem('isLoggedIn');
+        // The secret gate shares the CPA session's lifetime: logging out (manual
+        // or idle-timeout) always returns it to the unasked state, clearing the
+        // in-memory passphrase so the next login re-verifies.
+        useSecretGateStore.getState().reset();
+        // 锁定失败不阻断登出：前端凭据已经清掉了。
+        void lockRequest.then(settleClient, settleClient);
         logoutPromise = lockRequest.then(
           () => undefined,
           () => undefined

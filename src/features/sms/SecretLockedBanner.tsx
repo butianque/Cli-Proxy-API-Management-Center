@@ -14,8 +14,9 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
+import { Notice } from '@/components/ui/Notice';
 import { IconShield } from '@/components/ui/icons';
-import { smsApi } from '@/services/api/sms';
+import { secretStoreApi } from '@/services/api/secretStore';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useSecretGateStore } from '@/stores/useSecretGateStore';
 import styles from './SecretLockedBanner.module.scss';
@@ -41,9 +42,9 @@ export function SecretLockedBanner() {
     setSubmitting(true);
     setErrorKey(null);
     const ok = await verifyAndUnlock(value, async (passphrase) => {
-      const verified = await smsApi.verifyPassphrase(passphrase);
+      const verified = await secretStoreApi.verifyPassphrase(passphrase);
       if (!verified) throw new Error('verify failed');
-      await smsApi.unlockStore(passphrase);
+      await secretStoreApi.unlock(passphrase);
     });
     setSubmitting(false);
     if (!ok) {
@@ -57,14 +58,20 @@ export function SecretLockedBanner() {
 
   return (
     <>
-      <div className={styles.banner} role="status">
-        <IconShield size={15} />
-        <span className={styles.text}>{t('sms_service.gate_locked_banner')}</span>
-        <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
-          <IconShield size={14} />
-          {t('sms_service.gate_reverify')}
-        </Button>
-      </div>
+      <Notice
+        tone="warning"
+        className={styles.banner}
+        role="status"
+        icon={<IconShield size={15} />}
+        action={
+          <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+            <IconShield size={14} />
+            {t('sms_service.gate_reverify')}
+          </Button>
+        }
+      >
+        {t('sms_service.gate_locked_banner')}
+      </Notice>
 
       <Modal
         open={open}

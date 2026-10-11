@@ -156,7 +156,10 @@ describe('key rotation keeps the current session usable', () => {
     new URL('../src/services/api/config.ts', import.meta.url),
     'utf8'
   );
-  const smsApi = readFileSync(new URL('../src/services/api/sms.ts', import.meta.url), 'utf8');
+  const secretStore = readFileSync(
+    new URL('../src/services/api/secretStore.ts', import.meta.url),
+    'utf8'
+  );
   const client = readFileSync(new URL('../src/services/api/client.ts', import.meta.url), 'utf8');
   const authStore = readFileSync(new URL('../src/stores/useAuthStore.ts', import.meta.url), 'utf8');
 
@@ -174,12 +177,12 @@ describe('key rotation keeps the current session usable', () => {
 
   test('the master password is replaced by unlocking first, then setting', () => {
     // 锁定态直接换会被后端拒绝，所以顺序不能反。
-    const unlockAt = smsApi.indexOf("apiClient.post('/secrets/unlock'");
-    const setAt = smsApi.indexOf("'/secrets/passphrase'");
+    const unlockAt = secretStore.indexOf("apiClient.post('/secrets/unlock'");
+    const setAt = secretStore.indexOf("'/secrets/passphrase'");
     expect(unlockAt).toBeGreaterThan(-1);
     expect(setAt).toBeGreaterThan(unlockAt);
-    expect(dialogs).toContain('smsApi.setPassphrase');
-    expect(dialogs).toContain('smsApi.initializeStore');
+    expect(dialogs).toContain('secretStoreApi.setPassphrase');
+    expect(dialogs).toContain('secretStoreApi.initialize');
   });
 
   test('the gate adopts the new passphrase so later writes use the right one', () => {

@@ -2,6 +2,7 @@
  * 接码服务页：聚合渠道的配置与运行总览。
  *
  * 数据来源：插件 `/sms/status` —— 凭据是否已配、余额（真实联网）、渠道列表与账本。
+ * 后端字段的归一化**全部**在 `smsMapping.ts`（前后端唯一接缝），本文件只见界面类型。
  * **没有占位数据**：后端给什么就显示什么，没有就是空态（不编造，也不拿假数据兜底）。
  * 锁定态下的规则：能显示的真实数据照常显示（渠道列表 / 账本 / 单价上限 / 花费），
  * 只有**凭据相关**的读数（账号、会话、余额）不可读 —— 页面不为整体套一层「锁定」遮罩。
@@ -18,6 +19,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Notice } from '@/components/ui/Notice';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/Table';
 import {
   IconAlertTriangle,
   IconCheckCircle2,
@@ -32,14 +42,8 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { useSecretGateStore } from '@/stores/useSecretGateStore';
 import { formatDateTimeValue } from '@/utils/format';
 import { ChannelConfigModal } from './ChannelConfigModal';
-import { EMPTY_SMS_STATUS, toChannel, toLedger } from './smsMapping';
-import type {
-  ChannelHealth,
-  PhoneLedgerEntry,
-  PlatformCredentials,
-  SmsChannel,
-  SmsStatus,
-} from './types';
+import { EMPTY_SMS_VIEW, isOverCeiling, toChannels, toStatus } from './smsMapping';
+import type { ChannelHealth, PhoneLedgerEntry, SmsChannel, SmsStatusView } from './types';
 import styles from './SmsServicePage.module.scss';
 
 const healthClass: Record<ChannelHealth, string> = {
@@ -62,13 +66,11 @@ export function SmsServicePage() {
   const { t } = useTranslation();
   const apiBase = useAuthStore((state) => state.apiBase);
   const gatePhase = useSecretGateStore((state) => state.phase);
+  // 渠道名里要用「号段」这个词，由页面把本地化写法交给映射层（映射层保持纯函数）。
+  const prefixLabel = t('sms_service.channel_prefix');
 
   // 起步就是真实空态；后端返回什么就显示什么，不拿假数据兜底。
-  const [status, setStatus] = useState<SmsStatus>(EMPTY_SMS_STATUS);
-  const [creds, setCreds] = useState<PlatformCredentials | null>(null);
-  const [storeLocked, setStoreLocked] = useState(false);
-  const [webPresent, setWebPresent] = useState(false);
-  const [userHints, setUserHints] = useState({ apiUser: '', webUser: '' });
+  const [view, setView] = useState<SmsStatusView>(EMPTY_SMS_VIEW);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -77,77 +79,22 @@ export function SmsServicePage() {
   const [guardrailBusy, setGuardrailBusy] = useState(false);
 
   const loadStatus = useCallback(async () => {
-    if (!apiBase) return;
+    if (!apiBase) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setLoadError(null);
     try {
-      const raw = await smsApi.getStatus(apiBase);
-      // While the store is locked the plugin cannot read the credential names, so
-      // api_present/cookie_present come back false even though they exist. Keep
-      // that distinct from "nothing configured", or the page would claim the
-      // operator never configured anything.
-      const storeLocked = raw.store_available === false;
-      const accountPresent = raw.api_present === true;
-      const cookiePresent = raw.cookie_present === true;
-      const webPresent = raw.web_present === true;
-      let statusKind: PlatformCredentials['status'] = 'unchecked';
-      let statusReason: string | undefined;
-      if (storeLocked) {
-        statusKind = 'unavailable';
-        statusReason = raw.error;
-      } else if (typeof raw.balance_cny === 'number') {
-        statusKind = 'connected';
-      } else if (raw.status === 'unavailable') {
-        statusKind = 'unavailable';
-        statusReason = raw.error;
-      } else if (raw.balance_error) {
-        statusKind = 'failed';
-        statusReason = raw.balance_error;
-      }
-      // 上限既用来推渠道健康点，也是页面上的「单价上限」读数：同一个值只取一次。
-      const ceilingCny = raw.budget?.max_per_number_cny ?? 0;
-      const channels = Array.isArray(raw.channels)
-        ? raw.channels.map((channel) => toChannel(channel, ceilingCny))
-        : [];
-      const ledger = Array.isArray(raw.ledger) ? raw.ledger.map(toLedger) : [];
-      setStoreLocked(storeLocked);
-      setWebPresent(webPresent);
-      setUserHints({
-        apiUser: raw.api_user_hint ?? '',
-        webUser: raw.web_user_hint ?? '',
-      });
-      setCreds({
-        platformId: 'haozhuma',
-        platformName: '豪猪接码',
-        account: { account: '', endpoint: '', present: accountPresent },
-        session: { cookie: '', present: cookiePresent },
-        status: statusKind,
-        statusReason,
-      });
-      // 渠道 / 账本 / 花费是平台记录，与凭据无关，照实显示。
-      // 只有**凭据相关**读数在锁定时不可读：余额置空（而非沿用旧值）。
-      setStatus({
-        enabled: raw.enabled === true,
-        balanceCny: !storeLocked && typeof raw.balance_cny === 'number' ? raw.balance_cny : null,
-        balanceError: raw.balance_error,
-        sessionSpendCny: typeof raw.spent_cny === 'number' ? raw.spent_cny : 0,
-        priceCeilingCny: ceilingCny,
-        maxTotalCny: raw.budget?.max_total_cny ?? 0,
-        availableChannels: channels.filter((c) => !c.paused && c.stock > 0).length,
-        totalChannels: channels.length,
-        channels,
-        ledger,
-        updatedAt:
-          typeof raw.channels_updated_at === 'number' && raw.channels_updated_at > 0
-            ? new Date(raw.channels_updated_at * 1000).toISOString()
-            : '',
-      });
+      setView(toStatus(await smsApi.getStatus(apiBase), prefixLabel));
     } catch (error) {
-      setLoadError((error as { message?: string })?.message ?? 'failed to load SMS status');
+      setLoadError(
+        (error as { message?: string })?.message ?? t('sms_service.load_error_generic')
+      );
     } finally {
       setLoading(false);
     }
-  }, [apiBase]);
+  }, [apiBase, prefixLabel, t]);
 
   useEffect(() => {
     void loadStatus();
@@ -166,22 +113,40 @@ export function SmsServicePage() {
           setChannelError(result.message);
           return;
         }
-        setStatus((prev) => ({
+        setView((prev) => ({
           ...prev,
-          channels: result.channels.map((channel) => toChannel(channel, prev.priceCeilingCny)),
-          availableChannels: result.channels.filter((c) => c.paused !== true && c.stock > 0).length,
-          totalChannels: result.channels.length,
+          channels: toChannels(result.channels, {
+            ceilingCny: prev.ceilingCny,
+            prefixLabel,
+          }),
         }));
       } catch (error) {
-        setChannelError((error as { message?: string })?.message ?? 'failed to switch the channel');
+        setChannelError(
+          (error as { message?: string })?.message ?? t('sms_service.channel_error_generic')
+        );
       } finally {
         setChannelBusy(null);
       }
     },
-    [apiBase]
+    [apiBase, prefixLabel, t]
   );
 
-  const channels: SmsChannel[] = status.channels;
+  const channels = view.channels;
+
+  // 渠道数 / 超标数都由渠道列表推导，不另存一份（同一件事只有一个来源）。
+  const availableChannels = useMemo(
+    () => channels.filter((channel) => !channel.paused && channel.stock > 0).length,
+    [channels]
+  );
+
+  // 「超标」与渠道健康点用**同一个判据**（`isOverCeiling`），上限未配置时两边都是 0。
+  const overCeiling = useMemo(
+    () =>
+      channels.filter(
+        (channel) => !channel.paused && isOverCeiling(channel.priceCny, view.ceilingCny)
+      ),
+    [channels, view.ceilingCny]
+  );
 
   /** 省钱护栏：把超上限 / 无货的渠道暂停，把可用的恢复（真实写平台）。 */
   const runGuardrail = useCallback(async () => {
@@ -193,18 +158,18 @@ export function SmsServicePage() {
         setChannelError(result.message);
         return;
       }
-      setStatus((prev) => ({
+      setView((prev) => ({
         ...prev,
-        channels: result.channels.map((channel) => toChannel(channel, prev.priceCeilingCny)),
-        availableChannels: result.channels.filter((c) => c.paused !== true && c.stock > 0).length,
-        totalChannels: result.channels.length,
+        channels: toChannels(result.channels, { ceilingCny: prev.ceilingCny, prefixLabel }),
       }));
     } catch (error) {
-      setChannelError((error as { message?: string })?.message ?? 'failed to apply the guardrail');
+      setChannelError(
+        (error as { message?: string })?.message ?? t('sms_service.guardrail_error_generic')
+      );
     } finally {
       setGuardrailBusy(false);
     }
-  }, [apiBase]);
+  }, [apiBase, prefixLabel, t]);
 
   const cheapestChannel = useMemo(
     () =>
@@ -217,25 +182,19 @@ export function SmsServicePage() {
     [channels]
   );
 
-  const overCeiling = useMemo(
-    () =>
-      channels.filter((channel) => !channel.paused && channel.priceCny > status.priceCeilingCny),
-    [channels, status.priceCeilingCny]
-  );
-
   // 凭据可见的**唯一**判据：本会话验证过主密码（gate unlocked），且后端密钥库确实已解锁。
   // 二者缺一都不可见 —— 否则「跳过验证但后端先前已解锁」会让页面把凭据露出来。
-  const credsVisible = gatePhase === 'unlocked' && !storeLocked;
+  const credsVisible = gatePhase === 'unlocked' && !view.storeLocked;
 
   // 页头状态词只在**能确认**时给；凭据不可见时不猜，交给顶部那条主密码提示。
   const headerStatus = (() => {
     if (!credsVisible) return null;
     // `enabled` 是后端的真实开关（sms_provider 已配置）；未配置时先报「未配置」。
-    if (!creds?.account.present) {
+    if (!view.accountPresent) {
       return { label: t('sms_service.status_not_configured'), ok: false };
     }
-    if (!status.enabled) return { label: t('sms_service.status_disabled'), ok: false };
-    switch (creds.status) {
+    if (!view.enabled) return { label: t('sms_service.status_disabled'), ok: false };
+    switch (view.connection) {
       case 'connected':
         return { label: t('sms_service.status_connected'), ok: true };
       case 'failed':
@@ -246,8 +205,7 @@ export function SmsServicePage() {
   })();
 
   const statusLabel = (() => {
-    if (!creds) return t('sms_service.status_unknown');
-    switch (creds.status) {
+    switch (view.connection) {
       case 'connected':
         return t('sms_service.status_connected');
       case 'failed':
@@ -274,7 +232,7 @@ export function SmsServicePage() {
               </>
             )}
             <span className={styles.metaMuted}>
-              {t('sms_service.header_channels', { count: status.availableChannels })}
+              {t('sms_service.header_channels', { count: availableChannels })}
             </span>
           </p>
         </div>
@@ -287,16 +245,14 @@ export function SmsServicePage() {
       </header>
 
       {loadError && (
-        <div className={styles.previewNotice} role="alert">
-          <IconAlertTriangle size={15} />
-          <span>{t('sms_service.load_error', { message: loadError })}</span>
-        </div>
+        <Notice tone="danger" role="alert" icon={<IconAlertTriangle size={15} />}>
+          {t('sms_service.load_error', { message: loadError })}
+        </Notice>
       )}
       {channelError && (
-        <div className={styles.previewNotice} role="alert">
-          <IconAlertTriangle size={15} />
-          <span>{t('sms_service.channel_error', { message: channelError })}</span>
-        </div>
+        <Notice tone="danger" role="alert" icon={<IconAlertTriangle size={15} />}>
+          {t('sms_service.channel_error', { message: channelError })}
+        </Notice>
       )}
 
       {/* 已配置渠道：L3（两张凭据表 + 真实连接状态）。 */}
@@ -319,7 +275,7 @@ export function SmsServicePage() {
             title={t('sms_service.configured_locked')}
             description={t('sms_service.configured_locked_desc')}
           />
-        ) : !creds || (!creds.account.present && !creds.session.present) ? (
+        ) : !view.accountPresent && !view.cookiePresent ? (
           <EmptyState
             title={t('sms_service.configured_empty')}
             description={t('sms_service.configured_empty_desc')}
@@ -329,33 +285,33 @@ export function SmsServicePage() {
             <div className={styles.platformRow}>
               <span
                 className={`${styles.healthDot} ${
-                  creds.status === 'connected' ? styles.healthGood : styles.healthCritical
+                  view.connection === 'connected' ? styles.healthGood : styles.healthCritical
                 }`}
                 aria-hidden="true"
               />
               <span className={styles.platformRowText}>
                 <span className={styles.platformRowName}>
-                  {creds.platformName}
+                  {t('sms_service.platform_haozhuma')}
                   <span
                     className={`${styles.tag} ${
-                      creds.status === 'connected' ? styles.tagGood : styles.tagMuted
+                      view.connection === 'connected' ? styles.tagGood : styles.tagMuted
                     }`}
                   >
                     {statusLabel}
                   </span>
                 </span>
                 <span className={styles.platformRowMeta}>
-                  <span className={creds.account.present ? styles.metaOk : styles.metaMuted}>
-                    {t('sms_service.cred_account')}·{creds.account.present ? '✓' : '—'}
+                  <span className={view.accountPresent ? styles.metaOk : styles.metaMuted}>
+                    {t('sms_service.cred_account')}·{view.accountPresent ? '✓' : '—'}
                   </span>
                   <span className={styles.ledgerDot} aria-hidden="true" />
-                  <span className={creds.session.present ? styles.metaOk : styles.metaMuted}>
-                    {t('sms_service.cred_cookie')}·{creds.session.present ? '✓' : '—'}
+                  <span className={view.cookiePresent ? styles.metaOk : styles.metaMuted}>
+                    {t('sms_service.cred_cookie')}·{view.cookiePresent ? '✓' : '—'}
                   </span>
-                  {creds.statusReason && (
+                  {view.connectionReason && (
                     <>
                       <span className={styles.ledgerDot} aria-hidden="true" />
-                      <span className={styles.metaMuted}>{creds.statusReason}</span>
+                      <span className={styles.metaMuted}>{view.connectionReason}</span>
                     </>
                   )}
                 </span>
@@ -378,24 +334,24 @@ export function SmsServicePage() {
         <div className={styles.statPill}>
           <span className={styles.statLabel}>{t('sms_service.stat_balance')}</span>
           <span className={styles.statValue}>
-            {status.balanceCny === null || !credsVisible ? '—' : formatCny(status.balanceCny)}
+            {view.balanceCny === null || !credsVisible ? '—' : formatCny(view.balanceCny)}
           </span>
         </div>
         <div className={styles.statPill}>
           <span className={styles.statLabel}>{t('sms_service.stat_session_spend')}</span>
-          <span className={styles.statValue}>{formatCny(status.sessionSpendCny)}</span>
+          <span className={styles.statValue}>{formatCny(view.spentCny)}</span>
         </div>
         <div className={styles.statPill}>
           <span className={styles.statLabel}>{t('sms_service.stat_price_ceiling')}</span>
           <span className={styles.statValue}>
-            {status.priceCeilingCny > 0 ? formatCny(status.priceCeilingCny) : '—'}
+            {view.ceilingCny > 0 ? formatCny(view.ceilingCny) : '—'}
           </span>
         </div>
         <div className={styles.statPill}>
           <span className={styles.statLabel}>{t('sms_service.stat_channels')}</span>
           <span className={styles.statValue}>
-            {status.availableChannels}
-            <span className={styles.statLabel}> / {status.totalChannels}</span>
+            {availableChannels}
+            <span className={styles.statLabel}> / {channels.length}</span>
           </span>
         </div>
       </div>
@@ -411,12 +367,16 @@ export function SmsServicePage() {
               </span>
             }
             extra={
-              <span className={styles.statLabel}>
-                {t('sms_service.channels_extra', {
-                  count: overCeiling.length,
-                  ceiling: formatCny(status.priceCeilingCny),
-                })}
-              </span>
+              // 上限没配置就**不说**「几个超标」——没有上限就没有超标，说「N 个高于 ¥0.00」
+              // 是拿一个不存在的门槛当读数。
+              view.ceilingCny > 0 ? (
+                <span className={styles.statLabel}>
+                  {t('sms_service.channels_extra', {
+                    count: overCeiling.length,
+                    ceiling: formatCny(view.ceilingCny),
+                  })}
+                </span>
+              ) : null
             }
           >
             {channels.length === 0 ? (
@@ -425,19 +385,19 @@ export function SmsServicePage() {
                 description={t('sms_service.channels_empty_desc')}
               />
             ) : (
-              <table className={styles.channelTable}>
-                <thead>
-                  <tr>
-                    <th>{t('sms_service.col_channel')}</th>
-                    <th>{t('sms_service.col_price')}</th>
-                    <th>{t('sms_service.col_stock')}</th>
-                    <th aria-label={t('sms_service.col_actions')} />
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('sms_service.col_channel')}</TableHead>
+                    <TableHead>{t('sms_service.col_price')}</TableHead>
+                    <TableHead>{t('sms_service.col_stock')}</TableHead>
+                    <TableHead alignRight aria-label={t('sms_service.col_actions')} />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {channels.map((channel) => (
-                    <tr key={channel.id} className={channel.paused ? styles.rowMuted : undefined}>
-                      <td>
+                    <TableRow key={channel.id} className={channel.paused ? styles.rowMuted : undefined}>
+                      <TableCell>
                         <span className={styles.channelName} title={channel.detail || channel.name}>
                           <span
                             className={`${styles.healthDot} ${healthClass[channel.health]}`}
@@ -450,10 +410,10 @@ export function SmsServicePage() {
                             </span>
                           )}
                         </span>
-                      </td>
-                      <td className={styles.mono}>{formatCny(channel.priceCny)}</td>
-                      <td className={styles.mono}>{channel.stock}</td>
-                      <td>
+                      </TableCell>
+                      <TableCell className={styles.mono}>{formatCny(channel.priceCny)}</TableCell>
+                      <TableCell className={styles.mono}>{channel.stock}</TableCell>
+                      <TableCell>
                         <div className={styles.channelActions}>
                           <button
                             type="button"
@@ -462,12 +422,10 @@ export function SmsServicePage() {
                             disabled={
                               channelBusy === channel.id ||
                               gatePhase === 'locked' ||
-                              !creds?.session.present
+                              !view.cookiePresent
                             }
                             title={
-                              creds?.session.present
-                                ? undefined
-                                : t('sms_service.action_need_session')
+                              view.cookiePresent ? undefined : t('sms_service.action_need_session')
                             }
                           >
                             {channelBusy === channel.id
@@ -477,11 +435,11 @@ export function SmsServicePage() {
                                 : t('sms_service.action_pause')}
                           </button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             )}
           </Card>
 
@@ -494,18 +452,18 @@ export function SmsServicePage() {
             }
             extra={
               <span className={styles.statLabel}>
-                {t('sms_service.ledger_extra', { count: status.ledger.length })}
+                {t('sms_service.ledger_extra', { count: view.ledger.length })}
               </span>
             }
           >
-            {status.ledger.length === 0 ? (
+            {view.ledger.length === 0 ? (
               <EmptyState
                 title={t('sms_service.ledger_empty')}
                 description={t('sms_service.ledger_empty_desc')}
               />
             ) : (
               <div className={styles.ledger}>
-                {status.ledger.map((entry) => (
+                {view.ledger.map((entry) => (
                   <div key={`${entry.phone}@${entry.takenAt ?? ''}`} className={styles.ledgerRow}>
                     <span className={styles.ledgerPhone}>{entry.phone}</span>
                     <span className={`${styles.tag} ${ledgerStatusClass[entry.status]}`}>
@@ -554,8 +512,8 @@ export function SmsServicePage() {
                 type="button"
                 className={styles.actionPill}
                 onClick={() => void runGuardrail()}
-                disabled={gatePhase === 'locked' || !creds?.session.present || guardrailBusy}
-                title={creds?.session.present ? undefined : t('sms_service.action_need_session')}
+                disabled={gatePhase === 'locked' || !view.cookiePresent || guardrailBusy}
+                title={view.cookiePresent ? undefined : t('sms_service.action_need_session')}
               >
                 {guardrailBusy ? t('sms_service.action_working') : t('sms_service.guardrail_apply')}
               </button>
@@ -575,21 +533,19 @@ export function SmsServicePage() {
                 <div className={styles.guardrailLabel}>{t('sms_service.guardrail_budget')}</div>
                 <div className={styles.guardrailHint}>
                   {t('sms_service.guardrail_ceiling_hint', {
-                    ceiling: formatCny(status.priceCeilingCny),
-                    total: formatCny(status.maxTotalCny),
+                    ceiling: formatCny(view.ceilingCny),
+                    total: formatCny(view.maxTotalCny),
                   })}
                 </div>
               </div>
               <span
                 className={`${styles.statValue} ${
-                  status.sessionSpendCny >= status.maxTotalCny
-                    ? styles.statValueWarn
-                    : styles.statValueGood
+                  view.spentCny >= view.maxTotalCny ? styles.statValueWarn : styles.statValueGood
                 }`}
               >
                 {t('sms_service.guardrail_budget_value', {
-                  spent: formatCny(status.sessionSpendCny),
-                  total: formatCny(status.maxTotalCny),
+                  spent: formatCny(view.spentCny),
+                  total: formatCny(view.maxTotalCny),
                 })}
               </span>
             </div>
@@ -604,10 +560,13 @@ export function SmsServicePage() {
                   </span>
                 </div>
                 <div className={styles.recommendHint}>
-                  {t('sms_service.recommend_hint', {
-                    stock: cheapestChannel.stock,
-                    count: overCeiling.length,
-                  })}
+                  {/* 「暂停 N 个就能省钱」只在真有超标渠道时才是句实话。 */}
+                  {overCeiling.length > 0
+                    ? t('sms_service.recommend_saving', {
+                        stock: cheapestChannel.stock,
+                        count: overCeiling.length,
+                      })
+                    : t('sms_service.recommend_stock', { stock: cheapestChannel.stock })}
                 </div>
               </div>
             )}
@@ -631,23 +590,19 @@ export function SmsServicePage() {
       </div>
 
       <div className={styles.statLabel}>
-        {t('sms_service.updated_at', { time: formatDateTimeValue(status.updatedAt) })}
+        {t('sms_service.updated_at', { time: formatDateTimeValue(view.updatedAt) })}
         {loading ? ` · ${t('sms_service.loading')}` : ''}
       </div>
 
       <ChannelConfigModal
         open={modalOpen}
-        existing={
-          creds
-            ? {
-                accountPresent: creds.account.present,
-                cookiePresent: creds.session.present,
-                webPresent,
-                apiUserHint: userHints.apiUser,
-                webUserHint: userHints.webUser,
-              }
-            : null
-        }
+        existing={{
+          accountPresent: view.accountPresent,
+          cookiePresent: view.cookiePresent,
+          webPresent: view.webPresent,
+          apiUserHint: view.apiUserHint,
+          webUserHint: view.webUserHint,
+        }}
         onClose={() => setModalOpen(false)}
         onSaved={() => {
           void loadStatus();

@@ -180,27 +180,50 @@ describe('logging out ends the session for the store as well', () => {
     // hand anyone with the management key the credentials with no master
     // password — the marker would be decoration.
     const body = authActionBody('logout', 'checkAuth:');
-    expect(body).toContain('lockStore()');
+    expect(body).toContain('secretStoreApi.lock()');
     expect(body).toContain('reset()');
   });
 
-  test('the lock is issued before the credential is cleared', () => {
+  test('the lock is issued with the session key, before that key is cleared', () => {
     // /secrets/lock is authenticated: calling it after clearing the management
     // key returns 401 "missing management key" (verified against the running
-    // backend). So the request must be captured first; cleanup follows inside
-    // its `.then` callback.
+    // backend), so the request must be captured first. The front-end state is
+    // cleared synchronously, but `apiClient` only after the request settles.
     const body = authActionBody('logout', 'checkAuth:');
-    const lockAt = body.indexOf('lockStore()');
+    const lockAt = body.indexOf('secretStoreApi.lock()');
     const clearAt = body.indexOf("apiClient.setConfig({ apiBase: '', managementKey: '' })");
     expect(lockAt).toBeGreaterThan(-1);
     expect(clearAt).toBeGreaterThan(lockAt);
+  });
+
+  test('the front-end session ends synchronously, not when the lock settles', () => {
+    // Waiting for /secrets/lock left the operator on the protected page until it
+    // resolved — indefinitely if the backend hung. `isAuthenticated: false` must
+    // therefore appear *before* the `.then` that settles the lock.
+    const body = authActionBody('logout', 'checkAuth:');
+    const sessionClearedAt = body.indexOf('isAuthenticated: false');
+    const settleAt = body.indexOf('.then(settleClient, settleClient)');
+    expect(sessionClearedAt).toBeGreaterThan(-1);
+    expect(settleAt).toBeGreaterThan(-1);
+    expect(sessionClearedAt).toBeLessThan(settleAt);
+    // Clearing apiBase/managementKey also stops ProtectedRoute from silently
+    // restoring the session the instant it sees "not authenticated + key present".
+    expect(body).toContain("managementKey: ''");
+  });
+
+  test('a login that lands mid-logout is not clobbered by the late settle', () => {
+    // setConfig bumps the revision, so the deferred cleanup can tell that the
+    // connection changed and leave the new session alone.
+    const body = authActionBody('logout', 'checkAuth:');
+    expect(body).toContain('apiClient.getConnectionRevision()');
+    expect(body).toContain('if (apiClient.getConnectionRevision() === revision)');
   });
 
   test('both logout paths lock the store through logout()', () => {
     // Idle timeout must not lock on its own path: the guard cancels its timer
     // when it logs out, so a lock issued after logout() would never fire.
     // One lock, inside logout(), covers idle timeout and manual logout alike.
-    expect(idleGuard).not.toContain('lockStore()');
+    expect(idleGuard).not.toContain('secretStoreApi.lock()');
     expect(idleGuard).toContain('logout()');
   });
 
@@ -219,7 +242,7 @@ describe('logging out ends the session for the store as well', () => {
     // apiClient's baseURL is empty by then, so the request would fall through to
     // the relative `/secrets/lock` (no /v8/management prefix) and 404.
     const body = authActionBody('logout', 'checkAuth:');
-    expect(body).toContain('apiBase && managementKey ? smsApi.lockStore() : Promise.resolve()');
+    expect(body).toContain('apiBase && managementKey ? secretStoreApi.lock() : Promise.resolve()');
   });
 });
 

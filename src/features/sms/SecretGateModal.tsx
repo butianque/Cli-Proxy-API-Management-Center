@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { IconKey, IconShield } from '@/components/ui/icons';
-import { smsApi } from '@/services/api/sms';
+import { secretStoreApi } from '@/services/api/secretStore';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { isSessionVerified, useSecretGateStore } from '@/stores/useSecretGateStore';
 import styles from './SecretGateModal.module.scss';
@@ -63,8 +63,8 @@ export function SecretGateModal() {
     if (phase !== 'idle' || !isAuthenticated || !apiBase || probedRef.current) return;
     probedRef.current = true;
     let cancelled = false;
-    smsApi
-      .getSecretStatus()
+    secretStoreApi
+      .getStatus()
       .then((status) => {
         if (cancelled) return;
         refreshStoreState(status);
@@ -112,9 +112,9 @@ export function SecretGateModal() {
     setErrorKey(null);
     const result = await verifyAndUnlock(value, async (passphrase) => {
       // verify 只验口令、不解锁；真正让密钥库可读必须再 unlock。
-      const verified = await smsApi.verifyPassphrase(passphrase);
+      const verified = await secretStoreApi.verifyPassphrase(passphrase);
       if (!verified) throw new Error('verify failed');
-      await smsApi.unlockStore(passphrase);
+      await secretStoreApi.unlock(passphrase);
     });
     setSubmitting(false);
     if (!result) {

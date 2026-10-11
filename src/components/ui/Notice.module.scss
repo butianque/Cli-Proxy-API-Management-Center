@@ -1,0 +1,47 @@
+@use '../../styles/variables' as *;
+
+/* 一行提示条：图标 + 说明 +（可选）动作。边距由使用方给，组件只管这一行的样子。 */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.icon,
+.action {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 提醒（成本 / 需先做某事）：琥珀。 */
+.warning {
+  border-color: var(--amber-30);
+  background: var(--amber-10);
+  color: var(--amber-text);
+}
+
+/* 失败（读数据出错）：红。 */
+.danger {
+  border-color: var(--destructive-30);
+  background: var(--destructive-10);
+  color: var(--destructive-color);
+}
+
+/* 中性说明。 */
+.info {
+  border-color: color-mix(in srgb, var(--border-color) 60%, transparent);
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+  color: var(--text-secondary);
+}

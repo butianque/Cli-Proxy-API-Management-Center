@@ -14,7 +14,7 @@
  * 本组件不自行收集密码；锁定态下保存会被后端 401 拒绝，此处如实提示。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -82,7 +82,6 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
   const [saving, setSaving] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const testTimerRef = useRef<number | null>(null);
 
   const platform = useMemo(
     () => SMS_PLATFORMS.find((item) => item.id === platformId) ?? SMS_PLATFORMS[0],
@@ -107,13 +106,6 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
     setSubmitAttempted(false);
     setSaveError(null);
   }, [open]);
-
-  useEffect(
-    () => () => {
-      if (testTimerRef.current !== null) window.clearTimeout(testTimerRef.current);
-    },
-    []
-  );
 
   const resetTest = () => {
     setTest({ kind: 'idle' });
@@ -176,8 +168,8 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
           {
             api_user: apiUser.trim(),
             api_pass: apiPass.trim(),
-            // 内置平台地址由后端固定，界面不采集也不提交地址。
-            endpoint: '',
+            // 内置平台的地址由后端固定（界面只读展示），不提交；自定义平台才带上。
+            endpoint: endpointLocked ? '' : endpoint.trim(),
           },
           passphrase
         );
@@ -283,12 +275,12 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
                   <span className={styles.platformRadio} aria-hidden="true" />
                   <span className={styles.platformText}>
                     <span className={styles.platformName}>
-                      {item.name}
+                      {t(item.nameKey)}
                       {item.preset && (
                         <span className={styles.platformTag}>{t('sms_service.config_preset')}</span>
                       )}
                     </span>
-                    <span className={styles.platformSummary}>{item.summary}</span>
+                    <span className={styles.platformSummary}>{t(item.summaryKey)}</span>
                   </span>
                 </button>
               );

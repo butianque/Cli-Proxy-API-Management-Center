@@ -123,24 +123,6 @@
   }
 }
 
-/* 预览提醒：明确告知本页数据为占位 mock，避免误读为真实余额。 */
-.previewNotice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border: 1px dashed color-mix(in srgb, var(--primary-color) 42%, var(--border-color));
-  border-radius: $radius-md;
-  background: color-mix(in srgb, var(--primary-color) 7%, transparent);
-  color: var(--text-secondary);
-  font-size: 12.5px;
-  line-height: 1.5;
-
-  svg {
-    flex-shrink: 0;
-  }
-}
-
 /* ---------- 状态带 ---------- */
 
 .statusBar {
@@ -260,42 +242,7 @@
 }
 
 /* ---------- 渠道表 ---------- */
-
-.channelTable {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-
-.channelTable th {
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-tertiary);
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.channelTable th:first-child {
-  padding-left: 0;
-}
-
-.channelTable td {
-  padding: 9px 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
-  color: var(--text-secondary);
-  vertical-align: middle;
-}
-
-.channelTable td:first-child {
-  padding-left: 0;
-}
-
-.channelTable tbody tr:last-child td {
-  border-bottom: none;
-}
+/* 表格骨架（边框 / 表头 / 悬停 / 横向滚动）用共享的 `Table`，这里只补本页特有的东西。 */
 
 .channelName {
   display: flex;

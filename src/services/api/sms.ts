@@ -1,9 +1,9 @@
 /**
- * 接码服务 API（L1 平台 / L3 凭据 / L5 运行时）。
+ * 接码服务插件 API（L1 平台 / L3 凭据 / L5 运行时）。
  *
- * 两条链路，不要混：
- * - **基座密钥库**（`/v8/management/secrets/*`）：验/解锁/锁定主密码，编解码宿主加密库；
- * - **插件接码路由**（`/v0/management/plugins/loomy/sms/*`）：写凭据、取状态。
+ * 基座密钥库（`/v8/management/secrets/*`）不在这里 —— 那是基座能力，见
+ * `./secretStore.ts`。本模块只管**插件接码路由**
+ * （`/v0/management/plugins/loomy/sms/*`）：写凭据、取状态。
  *
  * ⚠️ 插件路由不在 `/v8/management` 前缀下，`apiClient` 的 baseURL 固定为
  * `/v8/management`，所以这里必须用 `resolvePluginAssetURL` 拼**绝对 URL** 再请求，
@@ -16,17 +16,6 @@ import { normalizeApiBase } from '@/utils/connection';
 
 /** 插件接码路由的固定前缀（与 plugins/loomy/management.go 的 Path 声明一致）。 */
 export const SMS_PLUGIN_BASE = '/v0/management/plugins/loomy/sms';
-
-/** 密钥库状态（GET /v8/management/secrets）。 */
-export interface SecretStoreStatus {
-  enabled: boolean;
-  initialized: boolean;
-  unlocked: boolean;
-  /** 是否已安装主密码。 */
-  passphrase: boolean;
-  mode: string;
-  names: string[];
-}
 
 /** 插件 `/sms/status` 的响应（只取本模块用得到的字段）。 */
 export interface SmsStatusResponse {
@@ -125,44 +114,6 @@ function withPassphrase<T extends object>(
 }
 
 export const smsApi = {
-  /** 读取基座密钥库状态。 */
-  async getSecretStatus(): Promise<SecretStoreStatus> {
-    return apiClient.get<SecretStoreStatus>('/secrets');
-  },
-
-  /** 校验主密码（不改变解锁状态；成功不等于已解锁）。 */
-  async verifyPassphrase(passphrase: string): Promise<boolean> {
-    const result = await apiClient.post<{ verified?: boolean }>('/secrets/verify', { passphrase });
-    return result?.verified === true;
-  },
-
-  /** 用主密码解锁密钥库。成功后库内密文可读，直到被 Lock。 */
-  async unlockStore(passphrase: string): Promise<SecretStoreStatus> {
-    return apiClient.post<SecretStoreStatus>('/secrets/unlock', { passphrase });
-  },
-
-  /** 锁定密钥库（丢弃内存中的 key）。 */
-  async lockStore(): Promise<SecretStoreStatus> {
-    return apiClient.post<SecretStoreStatus>('/secrets/lock', {});
-  },
-
-  /**
-   * 更换主密码。
-   *
-   * 后端要求「先解锁、再更换」（锁定态直接更换会被拒绝），所以这里把两步合成
-   * 一次调用，调用方无法把顺序弄错。当前主密码不对会以 401 抛出——那是「主密码
-   * 不符」而非会话失效，由调用方就地提示。
-   */
-  async setPassphrase(current: string, next: string): Promise<SecretStoreStatus> {
-    await apiClient.post('/secrets/unlock', { passphrase: current });
-    return apiClient.post<SecretStoreStatus>('/secrets/passphrase', { current, next });
-  },
-
-  /** 全新密钥库首次安装主密码（已安装的库会被拒绝，不会静默覆盖）。 */
-  async initializeStore(passphrase: string): Promise<SecretStoreStatus> {
-    return apiClient.post<SecretStoreStatus>('/secrets/initialize', { passphrase });
-  },
-
   /** 读取插件接码状态（会真实联网取余额）。 */
   async getStatus(apiBase: string): Promise<SmsStatusResponse> {
     return apiClient.get<SmsStatusResponse>(smsPluginURL('/status', apiBase), {
