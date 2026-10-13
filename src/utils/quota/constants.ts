@@ -54,6 +54,14 @@ export const TYPE_COLORS: Record<string, TypeColorSet> = {
     light: { bg: '#e4edfd', text: '#2b5fbc' },
     dark: { bg: '#1a3d80', text: '#89b3f7' },
   },
+  'zcode-bigmodel': {
+    light: { bg: '#e8f0fe', text: '#1a56b8' },
+    dark: { bg: '#12306e', text: '#9fc0f5' },
+  },
+  'zcode-zai': {
+    light: { bg: '#e6f6f2', text: '#0f7a63' },
+    dark: { bg: '#0b4a3d', text: '#7fd8c2' },
+  },
   empty: {
     light: { bg: '#f5f5f5', text: '#616161' },
     dark: { bg: '#424242', text: '#bdbdbd' },

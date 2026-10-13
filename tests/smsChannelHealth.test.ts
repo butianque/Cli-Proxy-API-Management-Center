@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
-import { isOverCeiling, toChannel, toLedger, toStatus } from '../src/features/sms/smsMapping';
+import { isOverCeiling, toChannel, toLedger, toStatus, EMPTY_SMS_VIEW } from '../src/features/sms/smsMapping';
 import type { SmsChannelWire, SmsLedgerWire } from '../src/services/api/sms';
 
 /**
@@ -89,13 +89,35 @@ describe('the over-ceiling count and the dot share one predicate', () => {
   });
 
   test('the page uses that predicate and hides the chip when no ceiling is set', () => {
+    // The phone category view owns the channel table now; the page is only the
+    // category container. The predicate contract follows the logic.
     const page = readFileSync(
-      new URL('../src/features/sms/SmsServicePage.tsx', import.meta.url),
+      new URL('../src/features/sms/PhoneSupplyView.tsx', import.meta.url),
       'utf8'
     );
     expect(page).toContain('isOverCeiling(');
     expect(page).not.toContain('channel.priceCny > ');
     expect(page).toContain('view.ceilingCny > 0 ?');
+  });
+
+  test('an unloaded snapshot is never rendered as ¥0.00', () => {
+    // The guardrail card read `¥0.00` from the empty view before the backend
+    // answered, i.e. it invented a real spend and a real cap. Every money and
+    // count reading now goes through the `loaded` flag, and the good/warn colour
+    // is only applied when a cumulative cap actually exists.
+    const page = readFileSync(
+      new URL('../src/features/sms/PhoneSupplyView.tsx', import.meta.url),
+      'utf8'
+    );
+    expect(page).toContain("view.loaded ? formatCny(view.spentCny) : '—'");
+    expect(page).toContain("spent: view.loaded ? formatCny(view.spentCny) : '—'");
+    expect(page).toContain('const capConfigured = view.loaded && view.maxTotalCny > 0;');
+    expect(page).not.toContain('view.spentCny >= view.maxTotalCny ?');
+  });
+
+  test('the empty view is unloaded, not a zero reading', () => {
+    expect(EMPTY_SMS_VIEW.loaded).toBe(false);
+    expect(toStatus({ status: 'ok' }, '号段').loaded).toBe(true);
   });
 
   test('the custom platform endpoint the operator typed is actually submitted', () => {
@@ -108,6 +130,20 @@ describe('the over-ceiling count and the dot share one predicate', () => {
     expect(modal).toContain("endpoint: endpointLocked ? '' : endpoint.trim()");
     // The built-in platform's address stays read-only, so it must not be sent.
     expect(modal).toContain('endpointLocked ? (');
+  });
+
+  test('the channel modal has one entry per state, not three duplicates', () => {
+    // The header "channel config" button, the card's "add channel" action and the
+    // row's "edit" action all opened the same modal. The card action was removed:
+    // the empty state carries the "add" action and a configured row carries "edit".
+    const page = readFileSync(
+      new URL('../src/features/sms/PhoneSupplyView.tsx', import.meta.url),
+      'utf8'
+    );
+    expect(page).not.toContain('sms_service.configure_channels');
+    // Two entries remain: the empty-state add and the configured-row edit.
+    expect(page.match(/sms_service\.configure_add/g)?.length).toBe(1);
+    expect(page.match(/sms_service\.configure_edit/g)?.length).toBe(1);
   });
 });
 
@@ -185,5 +221,45 @@ describe('the status view is the only place backend field names live', () => {
     expect(toStatus({ status: 'ok', channels_updated_at: 1_700_000_000 }, '号段').updatedAt).toBe(
       new Date(1_700_000_000 * 1000).toISOString()
     );
+  });
+});
+
+describe('the page carries both supply categories side by side', () => {
+  const read = (name: string) =>
+    readFileSync(new URL(`../src/features/sms/${name}`, import.meta.url), 'utf8');
+
+  test('the container renders a phone view and an email view, not one borrowing the other', () => {
+    const page = read('SmsServicePage.tsx');
+    // The category switch is a real control that points both ways at real views.
+    expect(page).toContain("useState<SupplyCategory>('phone')");
+    expect(page).toContain("tab_phone");
+    expect(page).toContain("tab_email");
+    expect(page).toContain('<PhoneSupplyView />');
+    expect(page).toContain('<EmailSupplyView />');
+    // The page must not restate the phone page's own data contract.
+    expect(page).not.toContain('smsApi');
+  });
+
+  test('the email view ships an honest empty state and invents no data', () => {
+    const email = read('EmailSupplyView.tsx');
+    expect(email).toContain('<EmptyState');
+    // No fabricated email address, no placeholder counters, no backend calls.
+    expect(email).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
+    expect(email).not.toMatch(/\b\d+%/);
+    expect(email).not.toContain('smsApi');
+  });
+
+  test('the phone view owns the phone data load', () => {
+    const phone = read('PhoneSupplyView.tsx');
+    expect(phone).toContain('smsApi.getStatus');
+    expect(phone).toContain('export function PhoneSupplyView');
+  });
+
+  test('the phone view wires the refresh route it exposes in its header', () => {
+    // `smsApi.refreshChannels` had no caller after the page was split: the route
+    // existed but the header control was gone. The header action must call it.
+    const phone = read('PhoneSupplyView.tsx');
+    expect(phone).toContain('smsApi.refreshChannels()');
+    expect(phone).toContain("t('sms_service.refresh_channels')");
   });
 });

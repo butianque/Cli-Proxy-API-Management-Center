@@ -21,7 +21,6 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { IconAlertTriangle, IconCheckCircle2, IconRefreshCw } from '@/components/ui/icons';
 import { smsApi, type CredentialWriteResult } from '@/services/api/sms';
-import { useAuthStore } from '@/stores/useAuthStore';
 import { useSecretGateStore } from '@/stores/useSecretGateStore';
 import { SMS_PLATFORMS } from './smsMapping';
 import type { SmsPlatform } from './types';
@@ -63,7 +62,6 @@ type WebLoginState =
 
 export function ChannelConfigModal({ open, onClose, existing, onSaved }: ChannelConfigModalProps) {
   const { t } = useTranslation();
-  const apiBase = useAuthStore((state) => state.apiBase);
   const passphrase = useSecretGateStore((state) => state.passphrase);
   const gatePhase = useSecretGateStore((state) => state.phase);
 
@@ -164,7 +162,6 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
     try {
       if (tab === 'api') {
         const result = await smsApi.saveApiCredential(
-          apiBase,
           {
             api_user: apiUser.trim(),
             api_pass: apiPass.trim(),
@@ -176,7 +173,6 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
         if (!applySaveResults([result])) return;
       } else {
         const result = await smsApi.saveWebCredential(
-          apiBase,
           { username: webUser.trim(), password: webPass.trim() },
           passphrase
         );
@@ -189,11 +185,11 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
     }
   };
 
-  /** 真实测试连接：调 /sms/status，按其三态判定。 */
+  /** 真实测试连接：调基座状态路由，按其三态判定。 */
   const handleTest = async () => {
     setTest({ kind: 'testing' });
     try {
-      const status = await smsApi.getStatus(apiBase);
+      const status = await smsApi.getStatus();
       if (typeof status.balance_cny === 'number') {
         setTest({ kind: 'ok', balance: status.balance_cny });
       } else if (status.status === 'unavailable') {
@@ -225,7 +221,6 @@ export function ChannelConfigModal({ open, onClose, existing, onSaved }: Channel
     setSaveError(null);
     try {
       const result = await smsApi.webLogin(
-        apiBase,
         { username: webUser.trim(), password: webPass.trim() },
         passphrase
       );

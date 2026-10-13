@@ -87,6 +87,14 @@ export interface PhoneLedgerEntry {
  * 免得同一件事有两个来源、彼此对不上。
  */
 export interface SmsStatusView {
+  /**
+   * 后端是否已经返回过一次真实快照。
+   *
+   * `false` = 还没读到（首屏加载中 / 加载失败）。此时页面上的金额与计数**一律显示
+   * `—`**，而不是把空态里的 0 当成真实读数 —— 把「没读到」渲染成 `¥0.00` 是编造数据
+   * （见 AGENTS.md「不造假数据」）。`true` 之后的 0 才是真的 0。
+   */
+  loaded: boolean;
   /** 服务是否启用（后端已配置接码平台）。 */
   enabled: boolean;
   /** 密钥库锁定 → 凭据读数不可读（**不等于**「没配过」）。 */

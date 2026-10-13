@@ -36,8 +36,9 @@ export const SMS_PLATFORMS: SmsPlatform[] = [
   },
 ];
 
-/** 后端还没返回时页面显示的空态：各计数为 0，上限为「未配置」。 */
+/** 后端还没返回时页面显示的空态：各计数为 0，上限为「未配置」，`loaded` 为 false。 */
 export const EMPTY_SMS_VIEW: SmsStatusView = {
+  loaded: false,
   enabled: false,
   storeLocked: false,
   accountPresent: false,
@@ -92,6 +93,7 @@ export function toStatus(raw: SmsStatusResponse, prefixLabel: string): SmsStatus
     connectionReason = raw.balance_error;
   }
   return {
+    loaded: true,
     enabled: raw.enabled === true,
     storeLocked,
     accountPresent: raw.api_present === true,
