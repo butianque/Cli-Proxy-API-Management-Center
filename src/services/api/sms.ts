@@ -69,6 +69,12 @@ export interface SmsLedgerWire {
   sid?: string;
   code?: string;
   account?: string;
+  target?: string;
+  auth_index?: string;
+  price?: number;
+  spend?: number;
+  outcome?: string;
+  state?: string;
   rents?: number;
   first_seen?: number;
   last_used?: number;

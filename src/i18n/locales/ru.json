@@ -108,7 +108,8 @@
     "config_management": "Панель конфигурации",
     "sms_service": "Сервис SMS",
     "logs": "Просмотр логов",
-    "system_info": "Информация системы"
+    "system_info": "Информация системы",
+    "plugin_actions": "Действия плагинов"
   },
   "nav_groups": {
     "operate": "Работа",
@@ -128,7 +129,8 @@
     "logs": "Трассировка запросов",
     "config_management": "Базовая конфигурация шлюза",
     "sms_service": "Каналы номеров и реестр телефонов",
-    "system_info": "Состояние и диагностика"
+    "system_info": "Состояние и диагностика",
+    "plugin_actions": "Запуск операций плагинов и отслеживание прогресса"
   },
   "dashboard": {
     "hero_verdict_good": "Всё стабильно",
@@ -1697,6 +1699,30 @@
     "expected_array": "Введите JSON-массив",
     "expected_object": "Введите JSON-объект",
     "invalid_enum": "Выберите одно из объявленных значений enum"
+  },
+  "plugin_actions": {
+    "title": "Действия плагинов",
+    "subtitle": "Плагины объявляют операции; запускайте их здесь и следите за ходом.",
+    "refresh": "Обновить",
+    "loading": "Загрузка…",
+    "load_failed": "Не удалось загрузить действия плагинов",
+    "empty_title": "Нет доступных действий",
+    "empty_desc": "Действия появятся здесь, когда плагин включён и объявил их.",
+    "run": "Запустить",
+    "run_failed": "Не удалось выполнить действие",
+    "long_running": "Длительная",
+    "destructive": "Необратимо",
+    "destructive_confirm_title": "Подтвердите действие",
+    "destructive_confirm_message": "«{{title}}» нельзя отменить. Запустить?",
+    "result_raw": "Исходный результат",
+    "jobs_title": "Задачи",
+    "jobs_empty": "Задач пока нет",
+    "job_cancel": "Отменить",
+    "job_logs": "Журнал",
+    "job_state_running": "Выполняется",
+    "job_state_done": "Готово",
+    "job_state_failed": "Ошибка",
+    "job_state_cancelled": "Отменено"
   },
   "plugin_store": {
     "title": "Магазин плагинов",

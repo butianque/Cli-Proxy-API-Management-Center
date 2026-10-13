@@ -682,6 +682,12 @@ export function MainLayout() {
                 icon: sidebarIcons.plugins,
               },
               {
+                path: '/plugin-actions',
+                labelKey: 'nav.plugin_actions',
+                metaKey: 'nav_meta.plugin_actions',
+                icon: sidebarIcons.plugins,
+              },
+              {
                 path: '/plugin-store',
                 labelKey: 'nav.plugin_store',
                 metaKey: 'nav_meta.plugin_store',

@@ -519,6 +519,12 @@ export function PhoneSupplyView() {
                     </span>
                     <span className={styles.ledgerMeta}>
                       <span>{entry.account}</span>
+                      {entry.target && (
+                        <>
+                          <span className={styles.ledgerDot} aria-hidden="true" />
+                          <span className={styles.tag}>{entry.target}</span>
+                        </>
+                      )}
                       <span className={styles.ledgerDot} aria-hidden="true" />
                       <span>{entry.channel}</span>
                       {entry.costCny !== null && (

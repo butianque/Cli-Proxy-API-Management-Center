@@ -108,7 +108,8 @@
     "config_management": "설정 패널",
     "sms_service": "SMS 서비스",
     "logs": "로그 뷰어",
-    "system_info": "관리 센터 정보"
+    "system_info": "관리 센터 정보",
+    "plugin_actions": "플러그인 작업"
   },
   "nav_groups": {
     "operate": "운영",
@@ -129,7 +130,8 @@
     "logs": "요청 추적",
     "config_management": "게이트웨이 설정",
     "sms_service": "번호 채널 및 전화 원장",
-    "system_info": "런타임 및 진단"
+    "system_info": "런타임 및 진단",
+    "plugin_actions": "플러그인이 선언한 작업을 실행하고 진행 상황 추적"
   },
   "dashboard": {
     "hero_verdict_good": "모든 시스템 정상",
@@ -1694,6 +1696,30 @@
     "expected_array": "JSON 배열을 입력하세요",
     "expected_object": "JSON 객체를 입력하세요",
     "invalid_enum": "선언된 열거형 값 중 하나를 선택하세요"
+  },
+  "plugin_actions": {
+    "title": "플러그인 작업",
+    "subtitle": "플러그인이 선언한 작업을 여기서 실행하고 진행 상황을 확인합니다.",
+    "refresh": "새로 고침",
+    "loading": "불러오는 중…",
+    "load_failed": "플러그인 작업을 불러오지 못했습니다",
+    "empty_title": "사용 가능한 작업이 없습니다",
+    "empty_desc": "플러그인을 활성화하고 작업을 선언하면 여기에 표시됩니다.",
+    "run": "실행",
+    "run_failed": "작업 실행 실패",
+    "long_running": "장시간",
+    "destructive": "되돌릴 수 없음",
+    "destructive_confirm_title": "작업 확인",
+    "destructive_confirm_message": "\"{{title}}\"은(는) 되돌릴 수 없습니다. 실행할까요?",
+    "result_raw": "원본 결과",
+    "jobs_title": "작업",
+    "jobs_empty": "아직 작업이 없습니다",
+    "job_cancel": "취소",
+    "job_logs": "로그",
+    "job_state_running": "실행 중",
+    "job_state_done": "완료",
+    "job_state_failed": "실패",
+    "job_state_cancelled": "취소됨"
   },
   "plugin_store": {
     "title": "플러그인 스토어",

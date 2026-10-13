@@ -1,0 +1,250 @@
+@use '../../styles/mixins' as *;
+
+/* ============================================================
+ * 插件动作页 —— 基座聚合的动作网格。
+ *
+ * 自上而下：
+ *  1. 页头（标题 + 说明 + 刷新）；
+ *  2. 按插件分组的动作卡片（每个动作一张卡：标题 / 参数 / 触发）；
+ *  3. 任务卡（运行中的进度与取消）。
+ *
+ * 颜色只用于状态：危险动作黄、失败红、其余中性。
+ * ============================================================ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+  width: 100%;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 24px;
+  flex-wrap: wrap;
+}
+
+.headerCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: clamp(26px, 3.2vw, 30px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.pageSubtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 62ch;
+}
+
+.muted {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+/* ---------- 分组与网格 ---------- */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+.groupTitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: $spacing-md;
+  align-items: start;
+}
+
+/* ---------- 动作卡片 ---------- */
+
+.cardTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pluginName {
+  color: var(--text-tertiary);
+  font-family: $font-mono;
+  font-size: 12px;
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.actionDesc {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cardActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+/* ---------- 标签 ---------- */
+
+.tag {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.tagWarning {
+  background: rgba($warning-color, 0.1);
+  border: 1px solid rgba($warning-color, 0.22);
+  color: var(--warning-color);
+}
+
+.tagMuted {
+  background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-color) 45%, transparent);
+  color: var(--text-tertiary);
+}
+
+/* ---------- 结果 ---------- */
+
+.result {
+  margin-top: 2px;
+}
+
+.result summary {
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.resultBody {
+  margin: 8px 0 0;
+  max-height: 16rem;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  border-radius: $radius-md;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-family: $font-mono;
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ---------- 任务 ---------- */
+
+.jobs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.jobHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.jobTitle {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.jobProgress {
+  width: 100%;
+  height: 6px;
+  appearance: none;
+  border: none;
+  border-radius: $radius-full;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+
+  &::-webkit-progress-bar {
+    background: var(--bg-tertiary);
+    border-radius: $radius-full;
+  }
+
+  &::-webkit-progress-value {
+    background: var(--primary-color);
+    border-radius: $radius-full;
+  }
+
+  &::-moz-progress-bar {
+    background: var(--primary-color);
+    border-radius: $radius-full;
+  }
+}
+
+.jobMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+.jobMessage {
+  color: var(--text-secondary);
+}
+
+.jobError {
+  color: var(--error-color);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result summary {
+    transition: none;
+  }
+}

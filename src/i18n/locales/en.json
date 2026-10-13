@@ -108,7 +108,8 @@
     "config_management": "Config Panel",
     "sms_service": "SMS Service",
     "logs": "Logs Viewer",
-    "system_info": "Management Center Info"
+    "system_info": "Management Center Info",
+    "plugin_actions": "Plugin actions"
   },
   "nav_groups": {
     "operate": "Operate",
@@ -129,7 +130,8 @@
     "logs": "Request tracing",
     "config_management": "Gateway configuration",
     "sms_service": "Number channels & phone ledger",
-    "system_info": "Runtime & diagnostics"
+    "system_info": "Runtime & diagnostics",
+    "plugin_actions": "Trigger plugin operations and track progress"
   },
   "dashboard": {
     "hero_verdict_good": "All systems steady",
@@ -1694,6 +1696,30 @@
     "expected_array": "Enter a JSON array",
     "expected_object": "Enter a JSON object",
     "invalid_enum": "Choose one of the declared enum values"
+  },
+  "plugin_actions": {
+    "title": "Plugin actions",
+    "subtitle": "Plugins declare their operations; trigger them here and follow their progress.",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "load_failed": "Failed to load plugin actions",
+    "empty_title": "No actions available",
+    "empty_desc": "Actions appear here once a plugin is enabled and declares them.",
+    "run": "Run",
+    "run_failed": "The action failed",
+    "long_running": "Long-running",
+    "destructive": "Irreversible",
+    "destructive_confirm_title": "Confirm action",
+    "destructive_confirm_message": "\"{{title}}\" cannot be undone. Run it?",
+    "result_raw": "Raw result",
+    "jobs_title": "Jobs",
+    "jobs_empty": "No jobs yet",
+    "job_cancel": "Cancel",
+    "job_logs": "Logs",
+    "job_state_running": "Running",
+    "job_state_done": "Done",
+    "job_state_failed": "Failed",
+    "job_state_cancelled": "Cancelled"
   },
   "plugin_store": {
     "title": "Plugin Store",

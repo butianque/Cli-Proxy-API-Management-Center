@@ -108,7 +108,8 @@
     "config_management": "Bảng cấu hình",
     "sms_service": "Dịch vụ SMS",
     "logs": "Trình xem Log",
-    "system_info": "Thông tin Trung tâm Quản lý"
+    "system_info": "Thông tin Trung tâm Quản lý",
+    "plugin_actions": "Thao tác plugin"
   },
   "nav_groups": {
     "operate": "Vận hành",
@@ -129,7 +130,8 @@
     "logs": "Truy vết yêu cầu",
     "config_management": "Cấu hình gateway",
     "sms_service": "Kênh số & sổ số điện thoại",
-    "system_info": "Runtime & chẩn đoán"
+    "system_info": "Runtime & chẩn đoán",
+    "plugin_actions": "Kích hoạt thao tác do plugin khai báo và theo dõi tiến độ"
   },
   "dashboard": {
     "hero_verdict_good": "Mọi hệ thống ổn định",
@@ -1651,6 +1653,30 @@
     "expected_array": "Nhập mảng JSON",
     "expected_object": "Nhập đối tượng JSON",
     "invalid_enum": "Chọn một trong các giá trị enum đã khai báo"
+  },
+  "plugin_actions": {
+    "title": "Thao tác plugin",
+    "subtitle": "Plugin khai báo thao tác; kích hoạt tại đây và theo dõi tiến độ.",
+    "refresh": "Làm mới",
+    "loading": "Đang tải…",
+    "load_failed": "Không tải được thao tác plugin",
+    "empty_title": "Chưa có thao tác nào",
+    "empty_desc": "Thao tác sẽ xuất hiện khi plugin được bật và khai báo.",
+    "run": "Chạy",
+    "run_failed": "Thao tác thất bại",
+    "long_running": "Chạy lâu",
+    "destructive": "Không thể hoàn tác",
+    "destructive_confirm_title": "Xác nhận thao tác",
+    "destructive_confirm_message": "\"{{title}}\" không thể hoàn tác. Chạy?",
+    "result_raw": "Kết quả gốc",
+    "jobs_title": "Tác vụ",
+    "jobs_empty": "Chưa có tác vụ",
+    "job_cancel": "Hủy",
+    "job_logs": "Nhật ký",
+    "job_state_running": "Đang chạy",
+    "job_state_done": "Hoàn tất",
+    "job_state_failed": "Thất bại",
+    "job_state_cancelled": "Đã hủy"
   },
   "plugin_store": {
     "title": "Cửa hàng Plugin",

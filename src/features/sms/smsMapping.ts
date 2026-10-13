@@ -220,12 +220,26 @@ export function toLedger(raw: SmsLedgerWire): PhoneLedgerEntry {
   return {
     phone: raw.phone,
     account: raw.account ?? '',
-    channel: raw.sid ?? '',
+    target: raw.target ?? '',
+    // `code` 是取号渠道（对接码）；`sid` 是项目号，两者不同，渠道展示用前者。
+    channel: raw.code ?? '',
     // 后端不记录每次租用的实际支出，只有累计花费；这里不编造单条成本。
     costCny: null,
-    status: raw.account ? 'registered' : 'pending',
+    status: ledgerStatus(raw),
     // 后端没记这次取号的时间就**留空**：拿 `now` 兜底等于把「现在」当成取号时刻，
     // 是编造数据（见 AGENTS.md「不造假数据」）。空值在页面上不展示这一格。
     takenAt: used > 0 ? new Date(used * 1000).toISOString() : null,
   };
+}
+
+/**
+ * 账本行的状态。
+ *
+ * 后端按「有没有绑定账号」和「号码当前的处置」两个事实来描述，页面把它们归成
+ * 三态：已绑定账号 = 注册成功；被拉黑 = 失败；其余 = 还在等（取过号、还没结果）。
+ */
+function ledgerStatus(raw: SmsLedgerWire): PhoneLedgerEntry['status'] {
+  if (raw.state === 'blacklisted') return 'failed';
+  if (raw.account) return 'registered';
+  return 'pending';
 }

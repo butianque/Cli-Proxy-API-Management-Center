@@ -76,6 +76,8 @@ export interface PhoneLedgerEntry {
   /** 取号时间（ISO 字符串）；`null` 表示后端没记这次取号的时间（不展示，不编造）。 */
   takenAt: string | null;
   /** 结果状态。 */
+  /** 号码注册的平台，如 `loomy`。 */
+  target: string;
   status: 'registered' | 'pending' | 'failed';
 }
 

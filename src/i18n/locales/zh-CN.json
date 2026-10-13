@@ -108,7 +108,8 @@
     "config_management": "配置面板",
     "sms_service": "接码服务",
     "logs": "日志查看",
-    "system_info": "中心信息"
+    "system_info": "中心信息",
+    "plugin_actions": "插件动作"
   },
   "nav_groups": {
     "operate": "运行",
@@ -129,7 +130,8 @@
     "logs": "请求追踪与排查",
     "config_management": "网关基础配置",
     "sms_service": "取号渠道与号码账本",
-    "system_info": "运行与诊断信息"
+    "system_info": "运行与诊断信息",
+    "plugin_actions": "触发插件声明的操作并跟踪进度"
   },
   "dashboard": {
     "hero_verdict_good": "运行平稳",
@@ -1692,6 +1694,30 @@
     "expected_array": "请输入 JSON 数组",
     "expected_object": "请输入 JSON 对象",
     "invalid_enum": "请选择声明的枚举值"
+  },
+  "plugin_actions": {
+    "title": "插件动作",
+    "subtitle": "插件声明操作，这里统一触发并跟踪进度。",
+    "refresh": "刷新",
+    "loading": "加载中…",
+    "load_failed": "加载插件动作失败",
+    "empty_title": "还没有可用的动作",
+    "empty_desc": "插件启用并声明动作后会出现在这里。",
+    "run": "执行",
+    "run_failed": "执行失败",
+    "long_running": "长任务",
+    "destructive": "不可逆",
+    "destructive_confirm_title": "确认执行",
+    "destructive_confirm_message": "「{{title}}」不可撤销，确认执行？",
+    "result_raw": "原始结果",
+    "jobs_title": "任务",
+    "jobs_empty": "暂无任务",
+    "job_cancel": "取消",
+    "job_logs": "日志",
+    "job_state_running": "进行中",
+    "job_state_done": "已完成",
+    "job_state_failed": "失败",
+    "job_state_cancelled": "已取消"
   },
   "plugin_store": {
     "title": "插件商店",

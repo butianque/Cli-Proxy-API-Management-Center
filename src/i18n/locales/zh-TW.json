@@ -108,7 +108,8 @@
     "config_management": "設定面板",
     "sms_service": "接碼服務",
     "logs": "記錄檢視",
-    "system_info": "中心資訊"
+    "system_info": "中心資訊",
+    "plugin_actions": "外掛動作"
   },
   "nav_groups": {
     "operate": "運行",
@@ -129,7 +130,8 @@
     "logs": "請求追蹤與排查",
     "config_management": "閘道基礎設定",
     "sms_service": "取號管道與號碼帳本",
-    "system_info": "運行與診斷資訊"
+    "system_info": "運行與診斷資訊",
+    "plugin_actions": "觸發外掛宣告的操作並追蹤進度"
   },
   "dashboard": {
     "hero_verdict_good": "運行平穩",
@@ -1718,6 +1720,30 @@
     "expected_array": "請輸入 JSON 陣列",
     "expected_object": "請輸入 JSON 物件",
     "invalid_enum": "請選擇宣告的枚舉值"
+  },
+  "plugin_actions": {
+    "title": "外掛動作",
+    "subtitle": "外掛宣告操作，這裡統一觸發並追蹤進度。",
+    "refresh": "重新整理",
+    "loading": "載入中…",
+    "load_failed": "載入外掛動作失敗",
+    "empty_title": "還沒有可用的動作",
+    "empty_desc": "外掛啟用並宣告動作後會出現在這裡。",
+    "run": "執行",
+    "run_failed": "執行失敗",
+    "long_running": "長任務",
+    "destructive": "不可逆",
+    "destructive_confirm_title": "確認執行",
+    "destructive_confirm_message": "「{{title}}」不可撤銷，確認執行？",
+    "result_raw": "原始結果",
+    "jobs_title": "任務",
+    "jobs_empty": "暫無任務",
+    "job_cancel": "取消",
+    "job_logs": "日誌",
+    "job_state_running": "進行中",
+    "job_state_done": "已完成",
+    "job_state_failed": "失敗",
+    "job_state_cancelled": "已取消"
   },
   "plugin_store": {
     "title": "插件商店",
