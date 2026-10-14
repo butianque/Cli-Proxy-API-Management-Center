@@ -150,25 +150,30 @@ export interface SupplyNatureOption {
   kinds: SupplyKind[];
 }
 
-/** 一条已配置的来源。 */
+/** 一条连接方式的连接信息（UI 侧）。 */
+export interface SupplyConnection {
+  endpoint: string;
+  account: string;
+  secret: string;
+  secretPresent: boolean;
+  usage: string;
+  domain: string;
+}
+
+/** 一个种类块（UI 侧）。 */
+export interface SupplyKindConfig {
+  enabled: boolean;
+  natures: SupplyNature[];
+  connections: Partial<Record<SupplyNature, SupplyConnection>>;
+}
+
+/** 一条已配置的来源。可以同时服务手机号和邮箱。 */
 export interface SupplyChannel {
   id: string;
-  kind: SupplyKind;
   label: string;
-  nature: SupplyNature;
-  /** 服务地址（网络类性质才有）；`''` = 未填。 */
-  endpoint: string;
-  /** 非密登录名；`''` = 未填。 */
-  account: string;
-  /** 凭据在密钥库里的**名字**，不是值；`''` = 未命名。 */
-  secret: string;
-  enabled: boolean;
-  /** 该凭据名在密钥库里是否存在。只报有无，值永不出现在页面上。 */
-  secretPresent: boolean;
-  /** IMAP 用途：`'self-domain'`（自建域转发）/ `'personal'`（个人邮箱）；非 IMAP 为空。 */
-  usage: string;
-  /** 自建域的域名（仅 usage=self-domain）；`''` = 不适用。 */
-  domain: string;
+  category: string;
+  phone: SupplyKindConfig | null;
+  email: SupplyKindConfig | null;
 }
 
 /** 池里一条身份的处置。 */

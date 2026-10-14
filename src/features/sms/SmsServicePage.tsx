@@ -89,7 +89,6 @@ export function SmsServicePage() {
       ) : (
         <>
           <SupplyChannelCard
-            kind={category}
             onEditCredential={
               category === 'phone' ? () => setModalOpen(true) : undefined
             }

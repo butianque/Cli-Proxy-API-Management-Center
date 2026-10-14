@@ -12,6 +12,8 @@
 import type { SmsChannelWire, SmsLedgerWire, SmsStatusResponse } from '@/services/api/sms';
 import type {
   SupplyChannelWire,
+  SupplyConnectionWire,
+  SupplyKindConfigWire,
   SupplyLedgerWire,
   SupplyNatureWireInfo,
 } from '@/services/api/supply';
@@ -25,7 +27,9 @@ import type {
   SmsPlatform,
   SmsStatusView,
   SupplyChannel,
+  SupplyConnection,
   SupplyKind,
+  SupplyKindConfig,
   SupplyNature,
   SupplyNatureOption,
 } from './types';
@@ -277,20 +281,42 @@ export function toNatureOptions(list: SupplyNatureWireInfo[] | undefined): Suppl
     }));
 }
 
+/** 后端一条连接信息 → 页面形状。 */
+function toSupplyConnection(raw: SupplyConnectionWire | undefined): SupplyConnection {
+  return {
+    endpoint: raw?.endpoint ?? '',
+    account: raw?.account ?? '',
+    secret: raw?.secret ?? '',
+    secretPresent: raw?.secret_present === true,
+    usage: raw?.usage ?? '',
+    domain: raw?.domain ?? '',
+  };
+}
+
+/** 后端一个种类块 → 页面形状。 */
+function toSupplyKindConfig(raw: SupplyKindConfigWire | undefined): SupplyKindConfig | null {
+  if (!raw) return null;
+  const conns: Partial<Record<SupplyNature, SupplyConnection>> = {};
+  if (raw.connections) {
+    for (const [key, value] of Object.entries(raw.connections)) {
+      conns[key as SupplyNature] = toSupplyConnection(value);
+    }
+  }
+  return {
+    enabled: raw.enabled,
+    natures: (raw.natures ?? []) as SupplyNature[],
+    connections: conns,
+  };
+}
+
 /** 后端一条来源 → 页面形状。 */
 export function toSupplyChannel(raw: SupplyChannelWire): SupplyChannel {
   return {
     id: raw.id,
-    kind: raw.kind as SupplyKind,
     label: raw.label ?? '',
-    nature: raw.nature as SupplyNature,
-    endpoint: raw.endpoint ?? '',
-    account: raw.account ?? '',
-    secret: raw.secret ?? '',
-    enabled: raw.enabled !== false,
-    secretPresent: raw.secret_present === true,
-    usage: raw.usage ?? '',
-    domain: raw.domain ?? '',
+    category: raw.category ?? 'third-party',
+    phone: toSupplyKindConfig(raw.phone),
+    email: toSupplyKindConfig(raw.email),
   };
 }
 

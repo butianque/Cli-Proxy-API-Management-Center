@@ -1,19 +1,13 @@
 /**
- * 来源（渠道）：手机号与邮箱**共用**的一张卡。
+ * 渠道配置卡：所有来源的列表 + 编辑弹窗。
  *
- * 一条来源 = 标签 + 性质 + 连接信息：
- * - **标签**是给人看、给人选的；
- * - **性质**（我们怎么连它）才是基座那个分支，它决定连接表单，也决定池的样式。
- * 所以改名不动实现 —— id 是稳定的那个键，标签是自由文本。
+ * 一条来源可以同时服务手机号和邮箱。表格把所有来源混在一起，每行显示：
+ * 名称 | 服务类型（手机/邮箱）| 类别 | 连接方式 | 状态 | 启用开关
  *
- * 规矩：
- * - 凭据的值**永不**出现在这里，只出现凭据的**名字**和「有没有存」；
- * - 可选性质由**基座**给出（`/supply/channels` 的 `natures`），页面不自己维护一份 ——
- *   自己维护就会在两处漂移：后端拒了、页面还在让人选；
- * - 没有数据就是空态，不摆占位行、不摆不能用的控件。
+ * 编辑弹窗：名称 + 类别 + 手机号/邮箱 tab + 每 tab 多选连接方式 + 各自连接信息。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -33,65 +27,136 @@ import {
 } from '@/components/ui/Table';
 import {
   IconAlertTriangle,
-  IconKey,
   IconPencil,
-  IconPlus,
   IconPlug,
+  IconPlus,
   IconTrash2,
 } from '@/components/ui/icons';
-import { supplyApi, type SupplyChannelInput } from '@/services/api/supply';
+import { supplyApi, type SupplyChannelInput, type SupplyKindConfigInput, type SupplyConnectionInput } from '@/services/api/supply';
 import { toNatureOptions, toSupplyChannels } from './smsMapping';
-import type { SupplyChannel, SupplyKind, SupplyNature, SupplyNatureOption } from './types';
+import type { SupplyChannel, SupplyNature, SupplyNatureOption } from './types';
 import styles from './SmsServicePage.module.scss';
 
 export interface SupplyChannelCardProps {
-  /** 这一类身份（手机号 / 邮箱）。 */
-  kind: SupplyKind;
-  /** 数据变化后通知外层（手机号侧据此刷新状态行）。 */
-  onChanged?: () => void;
-  /**
-   * 手机号侧：打开凭据弹窗。邮箱侧暂不传。
-   *
-   * 入口摆在**卡头**、不挂在行上：手机号的凭据目前是**整类一份**（后端 `supply.phone`），
-   * 并不属于某一条来源。挂在行上的话，来源清单为空时这个入口就**没有落脚点**（点不到）。
-   * 等渠道成为唯一来源定义、凭据按来源存（下一步）后，它再移到行内与具体来源绑定。
-   */
+  /** 手机号侧：打开凭据弹窗（豪猪的 API/网页登录）。 */
   onEditCredential?: () => void;
 }
 
-/** 性质 → 页面上的说法。这里只放「怎么连它」，不放「身份从哪来」。 */
-const NATURE_LABEL_KEY: Record<SupplyNature, string> = {
+const NATURE_LABEL: Record<SupplyNature, string> = {
   api: 'sms_service.nature_api',
   imap: 'sms_service.nature_imap',
   web: 'sms_service.nature_web',
 };
 
-/** 编辑器里的草稿；`id` 为空表示新建。 */
-interface ChannelDraft {
-  id: string;
-  label: string;
-  nature: SupplyNature;
+const CATEGORY_LABEL: Record<string, string> = {
+  'third-party': 'sms_service.category_third_party',
+  'self-owned': 'sms_service.category_self_owned',
+  'self-built': 'sms_service.category_self_built',
+};
+
+const CATEGORY_OPTIONS = ['third-party', 'self-owned', 'self-built'] as const;
+
+/** Draft for one kind's connection to a specific nature. */
+interface ConnectionDraft {
   endpoint: string;
   account: string;
   secret: string;
-  enabled: boolean;
   usage: string;
   domain: string;
 }
 
+/** Draft for one kind block. */
+interface KindDraft {
+  active: boolean;
+  natures: Set<SupplyNature>;
+  connections: Partial<Record<SupplyNature, ConnectionDraft>>;
+}
+
+interface ChannelDraft {
+  id: string;
+  label: string;
+  category: string;
+  phone: KindDraft;
+  email: KindDraft;
+  editTab: 'phone' | 'email';
+}
+
+const emptyConnection = (): ConnectionDraft => ({
+  endpoint: '', account: '', secret: '', usage: '', domain: '',
+});
+
+const emptyKindDraft = (): KindDraft => ({
+  active: false, natures: new Set(), connections: {},
+});
+
 const EMPTY_DRAFT: ChannelDraft = {
-  id: '',
-  label: '',
-  nature: 'api',
-  endpoint: '',
-  account: '',
-  secret: '',
-  enabled: true,
-  usage: '',
-  domain: '',
+  id: '', label: '', category: 'third-party',
+  phone: emptyKindDraft(), email: emptyKindDraft(),
+  editTab: 'phone',
 };
 
-export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyChannelCardProps) {
+function kindDraftFromChannel(channel: SupplyChannel, kind: 'phone' | 'email'): KindDraft {
+  const kc = kind === 'phone' ? channel.phone : channel.email;
+  if (!kc) return emptyKindDraft();
+  const conns: Partial<Record<SupplyNature, ConnectionDraft>> = {};
+  for (const [nature, conn] of Object.entries(kc.connections)) {
+    conns[nature as SupplyNature] = {
+      endpoint: conn.endpoint, account: conn.account, secret: conn.secret,
+      usage: conn.usage, domain: conn.domain,
+    };
+  }
+  return { active: true, natures: new Set(kc.natures), connections: conns };
+}
+
+function kindDraftToInput(draft: KindDraft): SupplyKindConfigInput | undefined {
+  if (!draft.active || draft.natures.size === 0) return undefined;
+  const natures = [...draft.natures];
+  const connections: Record<string, SupplyConnectionInput> = {};
+  for (const n of natures) {
+    const c = draft.connections[n] ?? emptyConnection();
+    connections[n] = {
+      endpoint: c.endpoint.trim(), account: c.account.trim(),
+      secret: c.secret.trim(), usage: c.usage, domain: c.domain.trim(),
+    };
+  }
+  return { enabled: true, natures, connections };
+}
+
+/** Which natures can serve a given kind (from the backend's nature list). */
+function naturesForKind(allNatures: SupplyNatureOption[], kind: 'phone' | 'email'): SupplyNature[] {
+  return allNatures
+    .filter((o) => o.kinds.includes(kind))
+    .map((o) => o.nature);
+}
+
+/** Summarize natures as a label string. */
+function naturesLabel(natures: SupplyNature[], t: (key: string) => string): string {
+  return natures.map((n) => t(NATURE_LABEL[n])).join(' + ') || '—';
+}
+
+/** Summarize which kinds a channel serves. */
+function kindsLabel(channel: SupplyChannel, t: (key: string) => string): string {
+  const parts: string[] = [];
+  if (channel.phone) parts.push(t('sms_service.tab_phone'));
+  if (channel.email) parts.push(t('sms_service.tab_email'));
+  return parts.join(' + ') || '—';
+}
+
+/** All natures across all kind blocks. */
+function allNaturesOf(channel: SupplyChannel): SupplyNature[] {
+  const set = new Set<SupplyNature>();
+  for (const kc of [channel.phone, channel.email]) {
+    if (kc) kc.natures.forEach((n) => set.add(n));
+  }
+  return [...set];
+}
+
+/** Is the channel fully enabled (at least one kind block is enabled)? */
+function isEnabled(channel: SupplyChannel): boolean {
+  return (channel.phone?.enabled ?? false) || (channel.email?.enabled ?? false);
+}
+
+export function SupplyChannelCard({ onEditCredential }: SupplyChannelCardProps) {
   const { t } = useTranslation();
   const [channels, setChannels] = useState<SupplyChannel[]>([]);
   const [natures, setNatures] = useState<SupplyNatureOption[]>([]);
@@ -103,15 +168,9 @@ export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyC
   const [saving, setSaving] = useState(false);
   const [draftError, setDraftError] = useState('');
 
-  /** 基座允许用在这一类身份上的性质。 */
-  const allowedNatures = useMemo(
-    () => natures.filter((option) => option.kinds.includes(kind)),
-    [natures, kind]
-  );
-
   const load = useCallback(async () => {
     try {
-      const result = await supplyApi.listChannels(kind);
+      const result = await supplyApi.listChannels();
       setChannels(toSupplyChannels(result.channels));
       setNatures(toNatureOptions(result.natures));
       setLoadError('');
@@ -120,120 +179,107 @@ export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyC
     } finally {
       setLoaded(true);
     }
-  }, [kind]);
+  }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  const openEditor = useCallback(
-    (channel: SupplyChannel | null) => {
-      setDraftError('');
-      if (channel) {
-        setDraft({
-          id: channel.id,
-          label: channel.label,
-          nature: channel.nature,
-          endpoint: channel.endpoint,
-          account: channel.account,
-          secret: channel.secret,
-          enabled: channel.enabled,
-          usage: channel.usage,
-          domain: channel.domain,
-        });
-        return;
-      }
-      // New channel: use the first allowed nature; for IMAP default to personal.
-      setDraft({ ...EMPTY_DRAFT, nature: allowedNatures[0]?.nature ?? EMPTY_DRAFT.nature });
-    },
-    [allowedNatures]
-  );
+  const openEditor = useCallback((channel: SupplyChannel | null) => {
+    setDraftError('');
+    if (channel) {
+      setDraft({
+        id: channel.id, label: channel.label, category: channel.category,
+        phone: kindDraftFromChannel(channel, 'phone'),
+        email: kindDraftFromChannel(channel, 'email'),
+        editTab: channel.phone ? 'phone' : 'email',
+      });
+    } else {
+      setDraft({ ...EMPTY_DRAFT, phone: emptyKindDraft(), email: emptyKindDraft() });
+    }
+  }, []);
 
   const saveDraft = useCallback(async () => {
     if (!draft) return;
     const label = draft.label.trim();
-    if (!label) {
-      setDraftError(t('sms_service.source_err_name'));
+    if (!label) { setDraftError(t('sms_service.source_err_name')); return; }
+    const phoneInput = kindDraftToInput(draft.phone);
+    const emailInput = kindDraftToInput(draft.email);
+    if (!phoneInput && !emailInput) {
+      setDraftError(t('sms_service.source_err_no_kind'));
       return;
     }
     const input: SupplyChannelInput = {
-      kind,
-      label,
-      nature: draft.nature,
-      endpoint: draft.endpoint.trim(),
-      account: draft.account.trim(),
-      secret: draft.secret.trim(),
-      enabled: draft.enabled,
-      usage: draft.nature === 'imap' ? draft.usage || 'personal' : undefined,
-      domain: draft.nature === 'imap' && draft.usage === 'self-domain'
-        ? draft.domain.trim()
-        : undefined,
+      label, category: draft.category,
+      phone: phoneInput, email: emailInput,
     };
     if (draft.id) input.id = draft.id;
     setSaving(true);
     const result = await supplyApi.saveChannel(input);
     setSaving(false);
-    if (!result.ok) {
-      setDraftError(result.message || t('sms_service.source_err_generic'));
-      return;
-    }
+    if (!result.ok) { setDraftError(result.message || t('sms_service.source_err_generic')); return; }
     setActionError('');
     setDraft(null);
     await load();
-    onChanged?.();
-  }, [draft, kind, load, onChanged, t]);
+  }, [draft, load, t]);
 
-  const remove = useCallback(
-    async (channel: SupplyChannel) => {
-      setActionError('');
-      setBusyId(channel.id);
-      const result = await supplyApi.removeChannel(channel.id);
-      setBusyId('');
-      if (!result.ok) {
-        setActionError(result.message);
-        return;
-      }
-      setActionError('');
-      await load();
-      onChanged?.();
-    },
-    [load, onChanged]
-  );
+  const remove = useCallback(async (channel: SupplyChannel) => {
+    setActionError('');
+    setBusyId(channel.id);
+    const result = await supplyApi.removeChannel(channel.id);
+    setBusyId('');
+    if (!result.ok) { setActionError(result.message); return; }
+    setActionError('');
+    await load();
+  }, [load]);
 
-  /**
-   * 一条来源的连接状态：关了 / 凭据没配 / 还没试过。
-   *
-   * 第三档**不写「就绪」**：页面上还没有「测试连接」这一步，没有任何人验证过它能否连上。
-   * 把没测过的东西说成「就绪」，就是拿状态词充数；「待测试」既是真的，也指出了下一步。
-   */
-  const stateOf = (channel: SupplyChannel) => {
-    if (!channel.enabled) return { key: 'off', className: styles.tagMuted };
-    if (channel.secret !== '' && !channel.secretPresent) {
-      return { key: 'missing_cred', className: styles.tagWarning };
-    }
-    return { key: 'untested', className: styles.tagMuted };
+  /** Update one field inside the current kind's draft. */
+  const updateKindDraft = (kind: 'phone' | 'email', updater: (kd: KindDraft) => KindDraft) => {
+    if (!draft) return;
+    setDraft({ ...draft, [kind]: updater(draft[kind]) });
   };
+
+  /** Toggle a nature in the current kind draft. */
+  const toggleNature = (kind: 'phone' | 'email', nature: SupplyNature) => {
+    updateKindDraft(kind, (kd) => {
+      const next = new Set(kd.natures);
+      if (next.has(nature)) next.delete(nature); else next.add(nature);
+      const connections = { ...kd.connections };
+      if (!connections[nature]) connections[nature] = emptyConnection();
+      return { ...kd, natures: next, connections };
+    });
+  };
+
+  /** Update a connection field for a nature. */
+  const updateConnection = (
+    kind: 'phone' | 'email', nature: SupplyNature,
+    field: keyof ConnectionDraft, value: string
+  ) => {
+    updateKindDraft(kind, (kd) => {
+      const conn = { ...(kd.connections[nature] ?? emptyConnection()), [field]: value };
+      return { ...kd, connections: { ...kd.connections, [nature]: conn } };
+    });
+  };
+
+  const currentKindDraft = draft ? draft[draft.editTab] : null;
+  const allowedNatures = draft ? naturesForKind(natures, draft.editTab) : [];
 
   return (
     <Card
       title={
         <span className={styles.cardTitle}>
           <IconPlug size={17} />
-          {t('sms_service.source_title')}
+          {t('sms_service.config_title')}
         </span>
       }
       extra={
         <div className={styles.headerActions}>
-          {/* 凭据入口常在：手机号的凭据是整类一份，与某条来源无关（见 onEditCredential 说明）。 */}
           {onEditCredential && (
             <button type="button" className={styles.actionPill} onClick={onEditCredential}>
-              <IconKey size={14} />
-              {t('sms_service.source_credential')}
+              {t('sms_service.phone_credential')}
             </button>
           )}
           <button type="button" className={styles.actionPill} onClick={() => openEditor(null)}>
             <IconPlus size={14} />
-            {t('sms_service.source_add')}
+            {t('sms_service.config_add')}
           </button>
         </div>
       }
@@ -249,7 +295,6 @@ export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyC
         </Notice>
       )}
 
-      {/* 加载完成前不画空表头：那是「还没有数据」和「还没读到」混在一起。 */}
       {!loaded ? null : channels.length === 0 ? (
         <EmptyState
           title={t('sms_service.source_empty')}
@@ -260,61 +305,63 @@ export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyC
           <TableHeader>
             <TableRow>
               <TableHead>{t('sms_service.source_col_name')}</TableHead>
-              <TableHead>{t('sms_service.source_col_type')}</TableHead>
+              <TableHead>{t('sms_service.source_col_service_type')}</TableHead>
+              <TableHead>{t('sms_service.source_col_category')}</TableHead>
+              <TableHead>{t('sms_service.source_col_connection')}</TableHead>
               <TableHead>{t('sms_service.source_col_state')}</TableHead>
+              <TableHead>{t('sms_service.source_col_enabled')}</TableHead>
               <TableHead alignRight aria-label={t('sms_service.col_actions')} />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {channels.map((channel) => {
-              const state = stateOf(channel);
-              return (
-                <TableRow key={channel.id}>
-                  <TableCell>
-                    <span className={styles.channelName}>{channel.label}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className={`${styles.tag} ${styles.tagMuted}`}>
-                      {t(NATURE_LABEL_KEY[channel.nature])}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className={`${styles.tag} ${state.className}`}>
-                      {t(`sms_service.source_state_${state.key}`)}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <div className={styles.channelActions}>
-                      <button
-                        type="button"
-                        className={styles.actionPill}
-                        onClick={() => openEditor(channel)}
-                      >
-                        <IconPencil size={14} />
-                        {t('sms_service.configure_edit')}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.actionPill}
-                        onClick={() => void remove(channel)}
-                        disabled={busyId === channel.id}
-                        title={t('sms_service.source_remove')}
-                        aria-label={t('sms_service.source_remove')}
-                      >
-                        <IconTrash2 size={14} />
-                      </button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {channels.map((channel) => (
+              <TableRow key={channel.id}>
+                <TableCell>
+                  <span className={styles.channelName}>{channel.label}</span>
+                </TableCell>
+                <TableCell>{kindsLabel(channel, t)}</TableCell>
+                <TableCell>
+                  <span className={`${styles.tag} ${styles.tagMuted}`}>
+                    {t(CATEGORY_LABEL[channel.category] ?? 'sms_service.category_third_party')}
+                  </span>
+                </TableCell>
+                <TableCell>{naturesLabel(allNaturesOf(channel), t)}</TableCell>
+                <TableCell>
+                  <span className={`${styles.tag} ${styles.tagMuted}`}>
+                    {t('sms_service.source_state_untested')}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <span className={`${styles.tag} ${isEnabled(channel) ? styles.tagGood : styles.tagMuted}`}>
+                    {isEnabled(channel) ? t('sms_service.source_state_on') : t('sms_service.source_state_off')}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <div className={styles.channelActions}>
+                    <button type="button" className={styles.actionPill} onClick={() => openEditor(channel)}>
+                      <IconPencil size={14} />
+                    </button>
+                    <button
+                      type="button" className={styles.actionPill}
+                      onClick={() => void remove(channel)}
+                      disabled={busyId === channel.id}
+                      title={t('sms_service.source_remove')}
+                      aria-label={t('sms_service.source_remove')}
+                    >
+                      <IconTrash2 size={14} />
+                    </button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
           </TableBody>
         </Table>
       )}
 
+      {/* ──── 编辑弹窗 ──── */}
       <Modal
         open={draft !== null}
-        title={t('sms_service.source_editor_title')}
+        title={draft?.id ? t('sms_service.config_edit') : t('sms_service.config_add')}
         onClose={() => setDraft(null)}
         footer={
           <>
@@ -334,65 +381,110 @@ export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyC
                 {draftError}
               </Notice>
             )}
+
             <Input
               label={t('sms_service.source_field_name')}
               placeholder={t('sms_service.source_ph_name')}
               value={draft.label}
-              onChange={(event) => setDraft({ ...draft, label: event.target.value })}
+              onChange={(e) => setDraft({ ...draft, label: e.target.value })}
             />
+
             <Select
-              value={draft.nature}
-              options={allowedNatures.map((option) => ({
-                value: option.nature,
-                label: t(NATURE_LABEL_KEY[option.nature]),
+              value={draft.category}
+              options={CATEGORY_OPTIONS.map((c) => ({
+                value: c, label: t(CATEGORY_LABEL[c]),
               }))}
-              onChange={(value) => setDraft({ ...draft, nature: value as SupplyNature })}
-              ariaLabel={t('sms_service.source_field_type')}
+              onChange={(v) => setDraft({ ...draft, category: v })}
+              ariaLabel={t('sms_service.field_category')}
             />
-            <Input
-              label={t('sms_service.source_field_endpoint')}
-              value={draft.endpoint}
-              onChange={(event) => setDraft({ ...draft, endpoint: event.target.value })}
+
+            {/* 手机号 / 邮箱 tab */}
+            <div className={styles.tabs} role="tablist">
+              {(['phone', 'email'] as const).map((kind) => (
+                <button
+                  key={kind}
+                  type="button" role="tab"
+                  aria-selected={draft.editTab === kind}
+                  className={`${styles.tab} ${draft.editTab === kind ? styles.tabActive : ''}`}
+                  onClick={() => setDraft({ ...draft, editTab: kind })}
+                >
+                  {t(kind === 'phone' ? 'sms_service.tab_phone' : 'sms_service.tab_email')}
+                </button>
+              ))}
+            </div>
+
+            {/* 当前 tab 的 active 开关 */}
+            <ToggleSwitch
+              checked={currentKindDraft?.active ?? false}
+              onChange={(v) => updateKindDraft(draft.editTab, (kd) => ({ ...kd, active: v }))}
+              label={t(draft.editTab === 'phone' ? 'sms_service.kind_enable_phone' : 'sms_service.kind_enable_email')}
             />
-            <Input
-              label={t('sms_service.source_field_account')}
-              value={draft.account}
-              onChange={(event) => setDraft({ ...draft, account: event.target.value })}
-            />
-            {draft.nature === 'imap' && (
+
+            {/* 连接方式多选 */}
+            {currentKindDraft?.active && (
               <>
-                <Select
-                  value={draft.usage || 'personal'}
-                  options={[
-                    { value: 'personal', label: t('sms_service.usage_personal') },
-                    { value: 'self-domain', label: t('sms_service.usage_self_domain') },
-                  ]}
-                  onChange={(value) => setDraft({ ...draft, usage: value })}
-                  ariaLabel={t('sms_service.field_usage')}
-                />
-                {draft.usage === 'self-domain' && (
-                  <Input
-                    label={t('sms_service.field_domain')}
-                    placeholder="ormnes.com"
-                    value={draft.domain}
-                    onChange={(event) => setDraft({ ...draft, domain: event.target.value })}
+                <div className={styles.statLabel}>{t('sms_service.field_natures')}</div>
+                {allowedNatures.map((nature) => (
+                  <ToggleSwitch
+                    key={nature}
+                    checked={currentKindDraft.natures.has(nature)}
+                    onChange={() => toggleNature(draft.editTab, nature)}
+                    label={t(NATURE_LABEL[nature])}
                   />
-                )}
+                ))}
+
+                {/* 每种勾选的连接方式的连接信息 */}
+                {[...currentKindDraft.natures].map((nature) => {
+                  const conn = currentKindDraft.connections[nature] ?? emptyConnection();
+                  return (
+                    <div key={nature} style={{ marginTop: 12, paddingLeft: 8, borderLeft: '2px solid var(--border)' }}>
+                      <div className={styles.statLabel}>{t(NATURE_LABEL[nature])}</div>
+                      {nature !== 'web' && (
+                        <Input
+                          label={t('sms_service.source_field_endpoint')}
+                          value={conn.endpoint}
+                          onChange={(e) => updateConnection(draft.editTab, nature, 'endpoint', e.target.value)}
+                        />
+                      )}
+                      <Input
+                        label={t('sms_service.source_field_account')}
+                        value={conn.account}
+                        onChange={(e) => updateConnection(draft.editTab, nature, 'account', e.target.value)}
+                      />
+                      <Input
+                        label={t('sms_service.source_field_secret')}
+                        labelExtra={
+                          <span className={styles.statLabel}>{t('sms_service.source_secret_hint')}</span>
+                        }
+                        value={conn.secret}
+                        onChange={(e) => updateConnection(draft.editTab, nature, 'secret', e.target.value)}
+                      />
+                      {nature === 'imap' && (
+                        <>
+                          <Select
+                            value={conn.usage || 'personal'}
+                            options={[
+                              { value: 'personal', label: t('sms_service.usage_personal') },
+                              { value: 'self-domain', label: t('sms_service.usage_self_domain') },
+                            ]}
+                            onChange={(v) => updateConnection(draft.editTab, nature, 'usage', v)}
+                            ariaLabel={t('sms_service.field_usage')}
+                          />
+                          {conn.usage === 'self-domain' && (
+                            <Input
+                              label={t('sms_service.field_domain')}
+                              placeholder="ormnes.com"
+                              value={conn.domain}
+                              onChange={(e) => updateConnection(draft.editTab, nature, 'domain', e.target.value)}
+                            />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </>
             )}
-            <Input
-              label={t('sms_service.source_field_secret')}
-              labelExtra={
-                <span className={styles.statLabel}>{t('sms_service.source_secret_hint')}</span>
-              }
-              value={draft.secret}
-              onChange={(event) => setDraft({ ...draft, secret: event.target.value })}
-            />
-            <ToggleSwitch
-              checked={draft.enabled}
-              onChange={(value) => setDraft({ ...draft, enabled: value })}
-              label={t('sms_service.source_enabled')}
-            />
           </>
         )}
       </Modal>
