@@ -132,39 +132,18 @@ describe('the over-ceiling count and the dot share one predicate', () => {
     expect(modal).toContain('endpointLocked ? (');
   });
 
-  test('the phone view has one way in to the credential modal', () => {
+  test('the channel modal has one entry per state, not three duplicates', () => {
     // The header "channel config" button, the card's "add channel" action and the
-    // row's "edit" action all opened the same modal. The modal is now reached from
-    // the source card's credential action, and that is the only opener — the page
-    // no longer restates a hardcoded platform row of its own.
+    // row's "edit" action all opened the same modal. The card action was removed:
+    // the empty state carries the "add" action and a configured row carries "edit".
     const page = readFileSync(
       new URL('../src/features/sms/PhoneSupplyView.tsx', import.meta.url),
       'utf8'
     );
     expect(page).not.toContain('sms_service.configure_channels');
-    expect(page.match(/setModalOpen\(true\)/g)?.length).toBe(1);
-    // The source and the pool are the shared cards, not a page-local copy.
-    expect(page).toContain('<SupplyChannelCard');
-    expect(page).toContain('<SupplyPoolCard');
-  });
-
-  test('the credential entry is reachable even with no source configured', () => {
-    // The credential entry used to sit on a channel row. The phone credentials are
-    // still one set for the whole kind, so a fresh install has no rows at all — and
-    // the entry then had nowhere to live. It belongs to the card header.
-    const card = readFileSync(
-      new URL('../src/features/sms/SupplyChannelCard.tsx', import.meta.url),
-      'utf8'
-    );
-    const callSite = /onClick=\{onEditCredential\}/g;
-    const entry = card.search(callSite);
-    const table = card.indexOf('<Table');
-    expect(entry).toBeGreaterThan(-1);
-    expect(table).toBeGreaterThan(-1);
-    // Rendered in the header, before the list it does not depend on.
-    expect(entry).toBeLessThan(table);
-    // Exactly one call site: no second, row-bound opener to drift apart.
-    expect(card.match(callSite)?.length).toBe(1);
+    // Two entries remain: the empty-state add and the configured-row edit.
+    expect(page.match(/sms_service\.configure_add/g)?.length).toBe(1);
+    expect(page.match(/sms_service\.configure_edit/g)?.length).toBe(1);
   });
 });
 
@@ -263,20 +242,11 @@ describe('the page carries both supply categories side by side', () => {
 
   test('the email view ships an honest empty state and invents no data', () => {
     const email = read('EmailSupplyView.tsx');
-    // The email category renders the same source-and-pool skeleton as the phone
-    // one, so the empty state lives in the shared cards; what must hold here is
-    // that this view invents nothing of its own.
-    expect(email).toContain('<SupplyChannelCard kind="email"');
-    expect(email).toContain('<SupplyPoolCard kind="email"');
+    expect(email).toContain('<EmptyState');
     // No fabricated email address, no placeholder counters, no backend calls.
     expect(email).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
     expect(email).not.toMatch(/\b\d+%/);
     expect(email).not.toContain('smsApi');
-  });
-
-  test('the shared source and pool cards fall back to an empty state, not fabricated rows', () => {
-    expect(read('SupplyChannelCard.tsx')).toContain('<EmptyState');
-    expect(read('SupplyPoolCard.tsx')).toContain('<EmptyState');
   });
 
   test('the phone view owns the phone data load', () => {

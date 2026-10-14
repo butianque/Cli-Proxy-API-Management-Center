@@ -1,12 +1,11 @@
 /**
  * 手机号接码视图（「接码服务」页的「手机号」类别）。
  *
- * 数据来源：基座 `/v8/management/supply/*` —— 来源（渠道）与池是两类身份**共用**的
- * 形状（`/supply/channels`、`/supply/ledger`）；余额、平台内部渠道与护栏是手机号这一
- * 类特有的（`/supply/phone/*`）。接码是**基座**能力，面板不再经过任何插件。
+ * 数据来源：基座 `/v8/management/supply/phone/*` —— 凭据是否已配、余额（真实联网）、
+ * 渠道列表与账本。接码是**基座**能力（`internal/supply/phone`），面板不再经过任何插件。
  * 后端字段的归一化**全部**在 `smsMapping.ts`（前后端唯一接缝），本文件只见界面类型。
  * **没有占位数据**：后端给什么就显示什么，没有就是空态（不编造，也不拿假数据兜底）。
- * 锁定态下的规则：能显示的真实数据照常显示（来源 / 池 / 单价上限 / 花费），
+ * 锁定态下的规则：能显示的真实数据照常显示（渠道列表 / 账本 / 单价上限 / 花费），
  * 只有**凭据相关**的读数（账号、会话、余额）不可读 —— 页面不为整体套一层「锁定」遮罩。
  *
  * 版面约定（遵循仓库 UI 原则 + 对齐 `ConfigHeader` 语汇）：
@@ -17,7 +16,7 @@
  * - 文案只讲状态与下一步，不讲实现（见 AGENTS.md「UI 设计原则」）。
  *
  * 页面的标题与「手机号 / 邮箱」类别切换由外层 `SmsServicePage` 负责；本视图只渲染
- * 手机号这一类的正文（来源 + 池 + 状态行 + 平台渠道 + 护栏）。
+ * 手机号这一类的正文（状态行 + 凭据 + 渠道 + 账本 + 护栏）。
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -37,23 +36,30 @@ import {
   IconAlertTriangle,
   IconCheckCircle2,
   IconDollarSign,
+  IconPlus,
   IconRefreshCw,
+  IconSettings,
   IconShield,
+  IconTimer,
 } from '@/components/ui/icons';
 import { smsApi } from '@/services/api/sms';
 import { useSecretGateStore } from '@/stores/useSecretGateStore';
 import { formatDateTimeValue } from '@/utils/format';
 import { ChannelConfigModal } from './ChannelConfigModal';
-import { SupplyChannelCard } from './SupplyChannelCard';
-import { SupplyPoolCard } from './SupplyPoolCard';
 import { EMPTY_SMS_VIEW, isOverCeiling, toChannels, toStatus } from './smsMapping';
-import type { ChannelHealth, SmsChannel, SmsStatusView } from './types';
+import type { ChannelHealth, PhoneLedgerEntry, SmsChannel, SmsStatusView } from './types';
 import styles from './SmsServicePage.module.scss';
 
 const healthClass: Record<ChannelHealth, string> = {
   good: styles.healthGood,
   warning: styles.healthWarning,
   critical: styles.healthCritical,
+};
+
+const ledgerStatusClass: Record<PhoneLedgerEntry['status'], string> = {
+  registered: styles.tagGood,
+  pending: styles.tagWarning,
+  failed: styles.tagMuted,
 };
 
 function formatCny(value: number) {
@@ -227,6 +233,19 @@ export function PhoneSupplyView() {
     }
   })();
 
+  const statusLabel = (() => {
+    switch (view.connection) {
+      case 'connected':
+        return t('sms_service.status_connected');
+      case 'failed':
+        return t('sms_service.status_failed');
+      case 'unavailable':
+        return t('sms_service.status_unavailable');
+      default:
+        return t('sms_service.status_unknown');
+    }
+  })();
+
   return (
     <div className={styles.page}>
       <header className={styles.pageHeader}>
@@ -272,12 +291,84 @@ export function PhoneSupplyView() {
         </Notice>
       )}
 
-      {/* 来源（渠道）：与邮箱一侧同一套骨架。凭据的值仍由下面的弹窗写入，这里只报有无。 */}
-      <SupplyChannelCard
-        kind="phone"
-        onEditCredential={() => setModalOpen(true)}
-        onChanged={loadStatus}
-      />
+      {/* 已配置渠道：L3（两张凭据表 + 真实连接状态）。 */}
+      <Card
+        title={
+          <span className={styles.cardTitle}>
+            <IconSettings size={17} />
+            {t('sms_service.configured_title')}
+          </span>
+        }
+      >
+        {!credsVisible ? (
+          <EmptyState
+            title={t('sms_service.configured_locked')}
+            description={t('sms_service.configured_locked_desc')}
+          />
+        ) : !view.accountPresent && !view.cookiePresent ? (
+          <EmptyState
+            title={t('sms_service.configured_empty')}
+            description={t('sms_service.configured_empty_desc')}
+            action={
+              <button
+                type="button"
+                className={styles.actionPill}
+                onClick={() => setModalOpen(true)}
+              >
+                <IconPlus size={14} />
+                {t('sms_service.configure_add')}
+              </button>
+            }
+          />
+        ) : (
+          <div className={styles.platformRows}>
+            <div className={styles.platformRow}>
+              <span
+                className={`${styles.healthDot} ${
+                  view.connection === 'connected' ? styles.healthGood : styles.healthCritical
+                }`}
+                aria-hidden="true"
+              />
+              <span className={styles.platformRowText}>
+                <span className={styles.platformRowName}>
+                  {t('sms_service.platform_haozhuma')}
+                  <span
+                    className={`${styles.tag} ${
+                      view.connection === 'connected' ? styles.tagGood : styles.tagMuted
+                    }`}
+                  >
+                    {statusLabel}
+                  </span>
+                </span>
+                <span className={styles.platformRowMeta}>
+                  <span className={view.accountPresent ? styles.metaOk : styles.metaMuted}>
+                    {t('sms_service.cred_account')}·{view.accountPresent ? '✓' : '—'}
+                  </span>
+                  <span className={styles.ledgerDot} aria-hidden="true" />
+                  <span className={view.cookiePresent ? styles.metaOk : styles.metaMuted}>
+                    {t('sms_service.cred_cookie')}·{view.cookiePresent ? '✓' : '—'}
+                  </span>
+                  {view.connectionReason && (
+                    <>
+                      <span className={styles.ledgerDot} aria-hidden="true" />
+                      <span className={styles.metaMuted}>{view.connectionReason}</span>
+                    </>
+                  )}
+                </span>
+              </span>
+              <div className={styles.platformRowActions}>
+                <button
+                  type="button"
+                  className={styles.actionPill}
+                  onClick={() => setModalOpen(true)}
+                >
+                  {t('sms_service.configure_edit')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
 
       <div className={styles.statusBar}>
         <div className={styles.statPill}>
@@ -400,7 +491,60 @@ export function PhoneSupplyView() {
             )}
           </Card>
 
-          <SupplyPoolCard kind="phone" />
+          <Card
+            title={
+              <span className={styles.cardTitle}>
+                <IconTimer size={17} />
+                {t('sms_service.ledger_title')}
+              </span>
+            }
+            extra={
+              <span className={styles.statLabel}>
+                {t('sms_service.ledger_extra', { count: view.ledger.length })}
+              </span>
+            }
+          >
+            {view.ledger.length === 0 ? (
+              <EmptyState
+                title={t('sms_service.ledger_empty')}
+                description={t('sms_service.ledger_empty_desc')}
+              />
+            ) : (
+              <div className={styles.ledger}>
+                {view.ledger.map((entry) => (
+                  <div key={`${entry.phone}@${entry.takenAt ?? ''}`} className={styles.ledgerRow}>
+                    <span className={styles.ledgerPhone}>{entry.phone}</span>
+                    <span className={`${styles.tag} ${ledgerStatusClass[entry.status]}`}>
+                      {t(`sms_service.ledger_status_${entry.status}`)}
+                    </span>
+                    <span className={styles.ledgerMeta}>
+                      <span>{entry.account}</span>
+                      {entry.target && (
+                        <>
+                          <span className={styles.ledgerDot} aria-hidden="true" />
+                          <span className={styles.tag}>{entry.target}</span>
+                        </>
+                      )}
+                      <span className={styles.ledgerDot} aria-hidden="true" />
+                      <span>{entry.channel}</span>
+                      {entry.costCny !== null && (
+                        <>
+                          <span className={styles.ledgerDot} aria-hidden="true" />
+                          <span className={styles.mono}>{formatCny(entry.costCny)}</span>
+                        </>
+                      )}
+                      {entry.takenAt !== null && (
+                        <>
+                          <span className={styles.ledgerDot} aria-hidden="true" />
+                          <span>{formatDateTimeValue(entry.takenAt)}</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
         </div>
 
         {/* 右栏（窄）：护栏 + 推荐渠道 */}
