@@ -130,3 +130,58 @@ export interface SmsStatusView {
   /** 数据快照时间（ISO 字符串）；`''` = 后端未给。 */
   updatedAt: string;
 }
+
+/* ---------------------------------------------------------------------------
+ * 来源（渠道）与池：手机号与邮箱**共用**的一套形状。
+ *
+ * 一条**来源** = 标签 + 性质 + 连接信息。标签是给人看、给人选的；性质（我们怎么连它）
+ * 决定连接表单，也决定池的样式 —— 所以两者分开，改名不动实现。
+ * ------------------------------------------------------------------------- */
+
+/** 身份种类。 */
+export type SupplyKind = 'phone' | 'email';
+
+/** 接入性质：我们怎么连它。 */
+export type SupplyNature = 'api' | 'imap' | 'web';
+
+/** 基座允许的一种性质，以及它能服务哪些身份种类（由后端给出，页面不自己维护一份）。 */
+export interface SupplyNatureOption {
+  nature: SupplyNature;
+  kinds: SupplyKind[];
+}
+
+/** 一条已配置的来源。 */
+export interface SupplyChannel {
+  id: string;
+  kind: SupplyKind;
+  label: string;
+  nature: SupplyNature;
+  /** 服务地址（网络类性质才有）；`''` = 未填。 */
+  endpoint: string;
+  /** 非密登录名；`''` = 未填。 */
+  account: string;
+  /** 凭据在密钥库里的**名字**，不是值；`''` = 未命名。 */
+  secret: string;
+  enabled: boolean;
+  /** 该凭据名在密钥库里是否存在。只报有无，值永不出现在页面上。 */
+  secretPresent: boolean;
+}
+
+/** 池里一条身份的处置。 */
+export type PoolState = 'registered' | 'pending' | 'released' | 'failed';
+
+/** 池里的一条身份记录（哪个身份、从哪来、注册了哪个账号）。 */
+export interface PoolEntry {
+  /** 身份本身：号码或地址。 */
+  identity: string;
+  /** 它来自哪条来源（后端记录的名字）；`''` = 未记录。 */
+  source: string;
+  /** 它注册的账号；`''` = 还没绑定。 */
+  account: string;
+  /** 它注册的平台（如 `loomy`）；`''` = 未绑定。 */
+  platform: string;
+  state: PoolState;
+  /** 最后一次使用时间（ISO 字符串）；`null` = 后端没记（不展示，不编造）。 */
+  lastUsedAt: string | null;
+}
+

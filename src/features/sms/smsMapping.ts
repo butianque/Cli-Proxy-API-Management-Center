@@ -11,12 +11,23 @@
 
 import type { SmsChannelWire, SmsLedgerWire, SmsStatusResponse } from '@/services/api/sms';
 import type {
+  SupplyChannelWire,
+  SupplyLedgerWire,
+  SupplyNatureWireInfo,
+} from '@/services/api/supply';
+import type {
   ChannelHealth,
   PhoneLedgerEntry,
   PlatformConnection,
+  PoolEntry,
+  PoolState,
   SmsChannel,
   SmsPlatform,
   SmsStatusView,
+  SupplyChannel,
+  SupplyKind,
+  SupplyNature,
+  SupplyNatureOption,
 } from './types';
 
 /** 可选平台（L1）。内置平台已知协议、地址固定；自定义平台由使用者自填。 */
@@ -242,4 +253,80 @@ function ledgerStatus(raw: SmsLedgerWire): PhoneLedgerEntry['status'] {
   if (raw.state === 'blacklisted') return 'failed';
   if (raw.account) return 'registered';
   return 'pending';
+}
+
+/* ---------------------------------------------------------------------------
+ * 来源（渠道）与池：手机号与邮箱共用。
+ *
+ * 与上面同一套规矩：后端字段名只出现在本文件，页面组件只见界面类型。
+ * ------------------------------------------------------------------------ */
+
+/**
+ * 基座声明的性质集合 → 页面选项。
+ *
+ * 「哪种性质能服务哪种身份」是**基座的规则**（`Nature.SupportsKind`），页面不自己
+ * 维护一份 —— 自己维护就会在两处漂移：后端拒了、页面还在让人选。
+ */
+export function toNatureOptions(list: SupplyNatureWireInfo[] | undefined): SupplyNatureOption[] {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((item) => typeof item?.nature === 'string')
+    .map((item) => ({
+      nature: item.nature as SupplyNature,
+      kinds: (Array.isArray(item.kinds) ? item.kinds : []) as SupplyKind[],
+    }));
+}
+
+/** 后端一条来源 → 页面形状。 */
+export function toSupplyChannel(raw: SupplyChannelWire): SupplyChannel {
+  return {
+    id: raw.id,
+    kind: raw.kind as SupplyKind,
+    label: raw.label ?? '',
+    nature: raw.nature as SupplyNature,
+    endpoint: raw.endpoint ?? '',
+    account: raw.account ?? '',
+    secret: raw.secret ?? '',
+    enabled: raw.enabled !== false,
+    secretPresent: raw.secret_present === true,
+  };
+}
+
+/** 批量归一化来源清单。 */
+export function toSupplyChannels(list: SupplyChannelWire[] | undefined): SupplyChannel[] {
+  if (!Array.isArray(list)) return [];
+  return list.map(toSupplyChannel);
+}
+
+/**
+ * 池里一条身份的处置。
+ *
+ * 与手机号账本同一个判据：拉黑=失败、已绑账号=已注册、其余=待用。判据写两遍就会
+ * 出现「同一行在两个页面上状态不一样」。
+ */
+function poolState(raw: SupplyLedgerWire): PoolState {
+  if (raw.state === 'blacklisted') return 'failed';
+  if (raw.state === 'released') return 'released';
+  if (raw.account) return 'registered';
+  return 'pending';
+}
+
+/** 后端一条身份 → 池里的一行。 */
+export function toPoolEntry(raw: SupplyLedgerWire): PoolEntry {
+  const used = typeof raw.last_used === 'number' ? raw.last_used : 0;
+  return {
+    identity: raw.address ?? '',
+    source: raw.source ?? '',
+    account: raw.account ?? '',
+    platform: raw.target ?? '',
+    state: poolState(raw),
+    // 后端没记时间就是没有（`null`），不拿 `now` 顶替 —— 那是编造数据。
+    lastUsedAt: used > 0 ? new Date(used * 1000).toISOString() : null,
+  };
+}
+
+/** 批量归一化池记录。 */
+export function toPool(list: SupplyLedgerWire[] | undefined): PoolEntry[] {
+  if (!Array.isArray(list)) return [];
+  return list.map(toPoolEntry);
 }
