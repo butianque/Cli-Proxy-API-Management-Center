@@ -49,7 +49,13 @@ export interface SupplyChannelCardProps {
   kind: SupplyKind;
   /** 数据变化后通知外层（手机号侧据此刷新状态行）。 */
   onChanged?: () => void;
-  /** 手机号侧：打开凭据弹窗。邮箱侧暂不传。 */
+  /**
+   * 手机号侧：打开凭据弹窗。邮箱侧暂不传。
+   *
+   * 入口摆在**卡头**、不挂在行上：手机号的凭据目前是**整类一份**（后端 `supply.phone`），
+   * 并不属于某一条来源。挂在行上的话，来源清单为空时这个入口就**没有落脚点**（点不到）。
+   * 等渠道成为唯一来源定义、凭据按来源存（下一步）后，它再移到行内与具体来源绑定。
+   */
   onEditCredential?: () => void;
 }
 
@@ -207,10 +213,19 @@ export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyC
         </span>
       }
       extra={
-        <button type="button" className={styles.actionPill} onClick={() => openEditor(null)}>
-          <IconPlus size={14} />
-          {t('sms_service.source_add')}
-        </button>
+        <div className={styles.headerActions}>
+          {/* 凭据入口常在：手机号的凭据是整类一份，与某条来源无关（见 onEditCredential 说明）。 */}
+          {onEditCredential && (
+            <button type="button" className={styles.actionPill} onClick={onEditCredential}>
+              <IconKey size={14} />
+              {t('sms_service.source_credential')}
+            </button>
+          )}
+          <button type="button" className={styles.actionPill} onClick={() => openEditor(null)}>
+            <IconPlus size={14} />
+            {t('sms_service.source_add')}
+          </button>
+        </div>
       }
     >
       {loadError && (
@@ -260,16 +275,6 @@ export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyC
                   </TableCell>
                   <TableCell>
                     <div className={styles.channelActions}>
-                      {onEditCredential && (
-                        <button
-                          type="button"
-                          className={styles.actionPill}
-                          onClick={onEditCredential}
-                        >
-                          <IconKey size={14} />
-                          {t('sms_service.source_credential')}
-                        </button>
-                      )}
                       <button
                         type="button"
                         className={styles.actionPill}

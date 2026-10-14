@@ -147,6 +147,25 @@ describe('the over-ceiling count and the dot share one predicate', () => {
     expect(page).toContain('<SupplyChannelCard');
     expect(page).toContain('<SupplyPoolCard');
   });
+
+  test('the credential entry is reachable even with no source configured', () => {
+    // The credential entry used to sit on a channel row. The phone credentials are
+    // still one set for the whole kind, so a fresh install has no rows at all — and
+    // the entry then had nowhere to live. It belongs to the card header.
+    const card = readFileSync(
+      new URL('../src/features/sms/SupplyChannelCard.tsx', import.meta.url),
+      'utf8'
+    );
+    const callSite = /onClick=\{onEditCredential\}/g;
+    const entry = card.search(callSite);
+    const table = card.indexOf('<Table');
+    expect(entry).toBeGreaterThan(-1);
+    expect(table).toBeGreaterThan(-1);
+    // Rendered in the header, before the list it does not depend on.
+    expect(entry).toBeLessThan(table);
+    // Exactly one call site: no second, row-bound opener to drift apart.
+    expect(card.match(callSite)?.length).toBe(1);
+  });
 });
 
 describe('the ledger never invents a timestamp', () => {
