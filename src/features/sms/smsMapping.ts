@@ -289,6 +289,8 @@ export function toSupplyChannel(raw: SupplyChannelWire): SupplyChannel {
     secret: raw.secret ?? '',
     enabled: raw.enabled !== false,
     secretPresent: raw.secret_present === true,
+    usage: raw.usage ?? '',
+    domain: raw.domain ?? '',
   };
 }
 

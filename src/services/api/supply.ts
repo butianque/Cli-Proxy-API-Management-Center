@@ -34,6 +34,10 @@ export interface SupplyChannelWire {
   enabled?: boolean;
   /** 该名字在密钥库里是否存在（只报有无，不见其值）。 */
   secret_present?: boolean;
+  /** IMAP 用途：自建域转发 / 个人邮箱（非 IMAP 时后端不返回）。 */
+  usage?: string;
+  /** 自建域的域名（仅 usage=self-domain 时有值）。 */
+  domain?: string;
   created?: number;
   updated?: number;
 }
@@ -60,6 +64,10 @@ export interface SupplyChannelInput {
   account?: string;
   secret?: string;
   enabled?: boolean;
+  /** IMAP 用途：'self-domain' / 'personal'（非 IMAP 时忽略）。 */
+  usage?: string;
+  /** 自建域的域名（仅 usage=self-domain）。 */
+  domain?: string;
 }
 
 /** 池里的一条身份（基座 `/supply/ledger` 的一行）。 */

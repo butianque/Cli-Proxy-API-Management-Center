@@ -75,6 +75,8 @@ interface ChannelDraft {
   account: string;
   secret: string;
   enabled: boolean;
+  usage: string;
+  domain: string;
 }
 
 const EMPTY_DRAFT: ChannelDraft = {
@@ -85,6 +87,8 @@ const EMPTY_DRAFT: ChannelDraft = {
   account: '',
   secret: '',
   enabled: true,
+  usage: '',
+  domain: '',
 };
 
 export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyChannelCardProps) {
@@ -134,10 +138,12 @@ export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyC
           account: channel.account,
           secret: channel.secret,
           enabled: channel.enabled,
+          usage: channel.usage,
+          domain: channel.domain,
         });
         return;
       }
-      // 新建时用**基座允许的第一个**性质起步，而不是写死一个可能不被接受的。
+      // New channel: use the first allowed nature; for IMAP default to personal.
       setDraft({ ...EMPTY_DRAFT, nature: allowedNatures[0]?.nature ?? EMPTY_DRAFT.nature });
     },
     [allowedNatures]
@@ -158,6 +164,10 @@ export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyC
       account: draft.account.trim(),
       secret: draft.secret.trim(),
       enabled: draft.enabled,
+      usage: draft.nature === 'imap' ? draft.usage || 'personal' : undefined,
+      domain: draft.nature === 'imap' && draft.usage === 'self-domain'
+        ? draft.domain.trim()
+        : undefined,
     };
     if (draft.id) input.id = draft.id;
     setSaving(true);
@@ -349,6 +359,27 @@ export function SupplyChannelCard({ kind, onChanged, onEditCredential }: SupplyC
               value={draft.account}
               onChange={(event) => setDraft({ ...draft, account: event.target.value })}
             />
+            {draft.nature === 'imap' && (
+              <>
+                <Select
+                  value={draft.usage || 'personal'}
+                  options={[
+                    { value: 'personal', label: t('sms_service.usage_personal') },
+                    { value: 'self-domain', label: t('sms_service.usage_self_domain') },
+                  ]}
+                  onChange={(value) => setDraft({ ...draft, usage: value })}
+                  ariaLabel={t('sms_service.field_usage')}
+                />
+                {draft.usage === 'self-domain' && (
+                  <Input
+                    label={t('sms_service.field_domain')}
+                    placeholder="ormnes.com"
+                    value={draft.domain}
+                    onChange={(event) => setDraft({ ...draft, domain: event.target.value })}
+                  />
+                )}
+              </>
+            )}
             <Input
               label={t('sms_service.source_field_secret')}
               labelExtra={

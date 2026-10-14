@@ -165,6 +165,10 @@ export interface SupplyChannel {
   enabled: boolean;
   /** 该凭据名在密钥库里是否存在。只报有无，值永不出现在页面上。 */
   secretPresent: boolean;
+  /** IMAP 用途：`'self-domain'`（自建域转发）/ `'personal'`（个人邮箱）；非 IMAP 为空。 */
+  usage: string;
+  /** 自建域的域名（仅 usage=self-domain）；`''` = 不适用。 */
+  domain: string;
 }
 
 /** 池里一条身份的处置。 */

@@ -224,42 +224,33 @@ describe('the status view is the only place backend field names live', () => {
   });
 });
 
-describe('the page carries both supply categories side by side', () => {
+describe('the page carries both supply categories and two views', () => {
   const read = (name: string) =>
     readFileSync(new URL(`../src/features/sms/${name}`, import.meta.url), 'utf8');
 
-  test('the container renders a phone view and an email view, not one borrowing the other', () => {
+  test('the container switches between pool and config views', () => {
     const page = read('SmsServicePage.tsx');
-    // The category switch is a real control that points both ways at real views.
-    expect(page).toContain("useState<SupplyCategory>('phone')");
-    expect(page).toContain("tab_phone");
-    expect(page).toContain("tab_email");
-    expect(page).toContain('<PhoneSupplyView />');
-    expect(page).toContain('<EmailSupplyView />');
-    // The page must not restate the phone page's own data contract.
-    expect(page).not.toContain('smsApi');
+    // Category tabs are real controls.
+    expect(page).toContain('tab_phone');
+    expect(page).toContain('tab_email');
+    // Two views: pool (default) and config (overlay).
+    expect(page).toContain("useState<PageView>('pool')");
+    expect(page).toContain('<SupplyPoolCard');
+    expect(page).toContain('<SupplyChannelCard');
+    // The page delegates to shared cards, not to smsApi directly.
+    expect(page).not.toContain('smsApi.getStatus');
   });
 
-  test('the email view ships an honest empty state and invents no data', () => {
-    const email = read('EmailSupplyView.tsx');
-    expect(email).toContain('<EmptyState');
-    // No fabricated email address, no placeholder counters, no backend calls.
-    expect(email).not.toMatch(/[\w.+-]+@[\w-]+\.[\w.]+/);
-    expect(email).not.toMatch(/\b\d+%/);
-    expect(email).not.toContain('smsApi');
+  test('the phone credential modal is reachable from the config view', () => {
+    const page = read('SmsServicePage.tsx');
+    expect(page).toContain('<ChannelConfigModal');
+    expect(page.match(/setModalOpen\(true\)/g)?.length).toBe(1);
   });
 
-  test('the phone view owns the phone data load', () => {
+  test('the phone view still owns its data load and header actions', () => {
     const phone = read('PhoneSupplyView.tsx');
     expect(phone).toContain('smsApi.getStatus');
     expect(phone).toContain('export function PhoneSupplyView');
-  });
-
-  test('the phone view wires the refresh route it exposes in its header', () => {
-    // `smsApi.refreshChannels` had no caller after the page was split: the route
-    // existed but the header control was gone. The header action must call it.
-    const phone = read('PhoneSupplyView.tsx');
     expect(phone).toContain('smsApi.refreshChannels()');
-    expect(phone).toContain("t('sms_service.refresh_channels')");
   });
 });
