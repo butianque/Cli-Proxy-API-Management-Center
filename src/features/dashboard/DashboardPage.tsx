@@ -186,13 +186,13 @@ export function DashboardPage() {
     {
       to: '/ai-providers',
       icon: <IconBot size={20} />,
-      title: t('nav.ai_providers'),
+      title: t('nav.provider_forwarding'),
       description: t('dashboard.cta_providers_desc'),
     },
     {
       to: '/auth-files',
       icon: <IconFileText size={20} />,
-      title: t('nav.auth_files'),
+      title: t('nav.account_pool'),
       description: t('dashboard.cta_auth_files_desc'),
     },
     {

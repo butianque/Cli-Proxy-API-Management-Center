@@ -862,7 +862,7 @@ export function OAuthPage() {
 
   return (
     <div className={styles.container}>
-      <h1 className={styles.pageTitle}>{t('nav.oauth', { defaultValue: 'OAuth' })}</h1>
+      <h1 className={styles.pageTitle}>{t('nav.add_account')}</h1>
 
       <div className={styles.content}>
         <section className={styles.providerSection}>

@@ -11,9 +11,7 @@ interface ProviderHeaderCardProps {
   isFetching?: boolean;
   isNewDisabled?: boolean;
   showNewAction?: boolean;
-  showSummary?: boolean;
   newLabel?: string;
-  variant?: 'quickStart';
   onRefresh: () => void;
   onNew: () => void;
 }
@@ -27,19 +25,14 @@ export function ProviderHeaderCard({
   isFetching = false,
   isNewDisabled = false,
   showNewAction = true,
-  showSummary = true,
   newLabel,
-  variant,
   onRefresh,
   onNew,
 }: ProviderHeaderCardProps) {
   const { t } = useTranslation();
-  const cardClassName = [styles.card, variant === 'quickStart' ? styles.quickStartCard : '']
-    .filter(Boolean)
-    .join(' ');
 
   return (
-    <section className={cardClassName}>
+    <section className={styles.card}>
       <div className={styles.row}>
         <div className={styles.titleArea}>
           <h1 className={styles.title}>{title ?? t('providersPage.header.title')}</h1>
@@ -75,22 +68,20 @@ export function ProviderHeaderCard({
         </div>
       </div>
 
-      {showSummary ? (
-        <div className={styles.chips}>
-          <span className={`${styles.chip} ${styles.chipPrimary}`}>
-            {t('providersPage.header.activeResources', {
-              active: totalActive,
-              total: totalResources,
-            })}
-          </span>
-          <span className={styles.chip}>
-            {t('providersPage.header.providerFamilies', { count: providerFamilies })}
-          </span>
-          <span className={styles.chip}>
-            {t('providersPage.header.updatedAt', { time: updatedAtLabel })}
-          </span>
-        </div>
-      ) : null}
+      <div className={styles.chips}>
+        <span className={`${styles.chip} ${styles.chipPrimary}`}>
+          {t('providersPage.header.activeResources', {
+            active: totalActive,
+            total: totalResources,
+          })}
+        </span>
+        <span className={styles.chip}>
+          {t('providersPage.header.providerFamilies', { count: providerFamilies })}
+        </span>
+        <span className={styles.chip}>
+          {t('providersPage.header.updatedAt', { time: updatedAtLabel })}
+        </span>
+      </div>
     </section>
   );
 }

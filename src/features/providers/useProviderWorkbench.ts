@@ -15,7 +15,6 @@ import type {
   ProviderKeyConfig,
 } from '@/types';
 import {
-  apiKeyFunToResource,
   claudeToResource,
   codexToResource,
   fennoAIToResource,
@@ -42,12 +41,6 @@ import type {
   SponsorProviderBrand,
   SponsorProviderRaw,
 } from './types';
-import {
-  buildApiKeyFunRaw,
-  isApiKeyFunClaudeProvider,
-  isApiKeyFunCodexProvider,
-  isApiKeyFunOpenAIProvider,
-} from './sponsor';
 import { buildFennoAIRaw, isFennoAIClaudeProvider, isFennoAICodexProvider } from './fennoAI';
 import {
   buildQiniuCloudRaw,
@@ -382,7 +375,6 @@ export const buildProviderGroups = (config: Config): ProviderGroup[] =>
       case 'codex':
         resources = (config.codexApiKeys ?? []).reduce<ProviderResource[]>((out, item, index) => {
           if (
-            !isApiKeyFunCodexProvider(item) &&
             !isFennoAICodexProvider(item) &&
             !isQiniuCloudCodexProvider(item) &&
             !isKimiCodexProvider(item)
@@ -401,7 +393,6 @@ export const buildProviderGroups = (config: Config): ProviderGroup[] =>
       case 'claude':
         resources = (config.claudeApiKeys ?? []).reduce<ProviderResource[]>((out, item, index) => {
           if (
-            !isApiKeyFunClaudeProvider(item) &&
             !isFennoAIClaudeProvider(item) &&
             !isQiniuCloudClaudeProvider(item) &&
             !isKimiClaudeProvider(item)
@@ -420,7 +411,6 @@ export const buildProviderGroups = (config: Config): ProviderGroup[] =>
         resources = (config.openaiCompatibility ?? []).reduce<ProviderResource[]>(
           (out, item, index) => {
             if (
-              !isApiKeyFunOpenAIProvider(item) &&
               !isQiniuCloudOpenAIProvider(item) &&
               !isKimiOpenAIProvider(item)
             ) {
@@ -431,11 +421,6 @@ export const buildProviderGroups = (config: Config): ProviderGroup[] =>
           []
         );
         break;
-      case 'apikeyFun': {
-        const sponsorResource = apiKeyFunToResource(buildApiKeyFunRaw(config));
-        resources = sponsorResource ? [sponsorResource] : [];
-        break;
-      }
       case 'fennoAI': {
         const sponsorResource = fennoAIToResource(buildFennoAIRaw(config));
         resources = sponsorResource ? [sponsorResource] : [];
@@ -536,11 +521,9 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
     async (brand: SponsorProviderBrand, input: ProviderEntryFormInput) => {
       const definition = getSponsorProviderDefinition(brand);
       const raw =
-        brand === 'apikeyFun'
-          ? buildApiKeyFunRaw(config)
-          : brand === 'fennoAI'
-            ? buildFennoAIRaw(config)
-            : brand === 'qiniuCloud'
+        brand === 'fennoAI'
+          ? buildFennoAIRaw(config)
+          : brand === 'qiniuCloud'
               ? buildQiniuCloudRaw(config)
               : buildKimiRaw(config);
       const entries = normalizeSponsorKeyEntries(input.sponsorKeyEntries);
@@ -689,7 +672,6 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
         } else if (brand === 'openaiCompatibility') {
           await providersApi.createOpenAIProvider(buildOpenAIConfig(input));
         } else if (
-          brand === 'apikeyFun' ||
           brand === 'fennoAI' ||
           brand === 'qiniuCloud' ||
           brand === 'kimi'
@@ -766,7 +748,6 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
             buildOpenAIConfig(input, resource.raw as OpenAIProviderConfig)
           );
         } else if (
-          brand === 'apikeyFun' ||
           brand === 'fennoAI' ||
           brand === 'qiniuCloud' ||
           brand === 'kimi'
@@ -852,7 +833,6 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
           );
           updateConfigValue('openai-compatibility', next);
         } else if (
-          sel.brand === 'apikeyFun' ||
           sel.brand === 'fennoAI' ||
           sel.brand === 'qiniuCloud' ||
           sel.brand === 'kimi'
@@ -953,7 +933,6 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
             (resource.raw as OpenAIProviderConfig).source
           );
         } else if (
-          brand === 'apikeyFun' ||
           brand === 'fennoAI' ||
           brand === 'qiniuCloud' ||
           brand === 'kimi'
