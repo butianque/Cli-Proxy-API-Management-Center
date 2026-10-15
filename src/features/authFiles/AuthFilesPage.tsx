@@ -720,7 +720,7 @@ export function AuthFilesPage() {
               <AuthFileCard
                 key={getQuotaCacheKey(file)}
                 file={file}
-                account={accountIndex.get(file.name)}
+                account={accountIndex.get(getQuotaCacheKey(file))}
                 compact={compactMode}
                 selected={selectedFiles.has(file.name)}
                 resolvedTheme={resolvedTheme}

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { buildAccountIndex, policyI18nSuffix } from '../src/features/authFiles/accountPool';
 import type { AccountView } from '../src/types/accounts';
 import type { AuthFileItem } from '../src/types';
+import { getQuotaCacheKey } from '../src/utils/quota/identity';
 
 const account = (overrides: Partial<AccountView> = {}): AccountView => ({
   provider: 'codex',
@@ -111,6 +112,37 @@ describe('buildAccountIndex', () => {
     expect(index.get('a.json')).toBe(first);
     expect(index.get('b.json')).toBe(second);
     expect(index.size).toBe(2);
+  });
+
+  test('gives each identity of one multi-identity file its own account', () => {
+    const first = account({ authId: 'devin.json', authIndex: '1' });
+    const second = account({ authId: 'devin.json', authIndex: '2' });
+    const rows = [
+      authFile({ name: 'devin.json', provider: 'devin', authIndex: '1' }),
+      authFile({ name: 'devin.json', provider: 'devin', authIndex: '2' }),
+    ];
+    const index = buildAccountIndex(rows, [first, second]);
+
+    expect(index.get(getQuotaCacheKey(rows[0]))).toBe(first);
+    expect(index.get(getQuotaCacheKey(rows[1]))).toBe(second);
+    expect(index.size).toBe(2);
+  });
+
+  test('resolves a name shared by several accounts through authIndex', () => {
+    const first = account({ authId: 'sub/x.json', authIndex: '1' });
+    const second = account({ authId: 'other/x.json', authIndex: '2' });
+    const index = buildAccountIndex([authFile({ authIndex: '2' })], [first, second]);
+
+    expect(index.get('x.json')).toBe(second);
+  });
+
+  test('never hands a shared name to one of several accounts', () => {
+    const first = account({ authId: 'sub/x.json', authIndex: '1' });
+    const second = account({ authId: 'other/x.json', authIndex: '2' });
+    const index = buildAccountIndex([authFile()], [first, second]);
+
+    expect(index.has('x.json')).toBe(false);
+    expect(index.size).toBe(0);
   });
 });
 
