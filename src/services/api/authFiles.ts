@@ -48,6 +48,8 @@ export type AuthFileFieldsPatch = {
   excluded_models?: string[];
   'excluded-models'?: string[];
   expired?: string;
+  /** 账号路由策略；`null` = 清除已有策略。 */
+  policy?: string | null;
 };
 type AuthFileBatchFailure = { name: string; error: string };
 type AuthFileBatchUploadResponse = {

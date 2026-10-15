@@ -54,6 +54,7 @@ import {
   type AuthFilesStatusFilterMode,
   type AuthFilesSortMode,
 } from '@/features/authFiles/uiState';
+import type { AccountPolicy } from '@/types/accounts';
 import { useAuthStore, useNotificationStore, useThemeStore } from '@/stores';
 import styles from './AuthFilesPage.module.scss';
 
@@ -119,6 +120,7 @@ export function AuthFilesPage() {
 
   const {
     files,
+    accountIndex,
     selectedFiles,
     selectionCount,
     loading,
@@ -144,6 +146,7 @@ export function AuthFilesPage() {
     handleDownload,
     handleManualRefresh,
     handleCooldownReset,
+    updateAccountPolicy,
     handleStatusToggle,
     toggleSelect,
     selectAllVisible,
@@ -518,6 +521,18 @@ export function AuthFilesPage() {
     [showNotification, t]
   );
 
+  /** 策略改动失败由页面兜住：卡片只管把选择回传上来。 */
+  const handleAccountPolicyChange = useCallback(
+    async (name: string, policy: AccountPolicy | null) => {
+      try {
+        await updateAccountPolicy(name, policy);
+      } catch {
+        showNotification(t('account_pool.policy_save_failed'), 'error');
+      }
+    },
+    [showNotification, t, updateAccountPolicy]
+  );
+
   const openExcludedEditor = useCallback(
     (provider?: string) => {
       const providerValue = (provider || (filter !== 'all' ? String(filter) : '')).trim();
@@ -705,6 +720,7 @@ export function AuthFilesPage() {
               <AuthFileCard
                 key={getQuotaCacheKey(file)}
                 file={file}
+                account={accountIndex.get(file.name)}
                 compact={compactMode}
                 selected={selectedFiles.has(file.name)}
                 resolvedTheme={resolvedTheme}
@@ -720,6 +736,7 @@ export function AuthFilesPage() {
                 onDownload={handleDownload}
                 onManualRefresh={handleManualRefresh}
                 onCooldownReset={handleCooldownReset}
+                onPolicyChange={(policy) => void handleAccountPolicyChange(file.name, policy)}
                 onOpenPrefixProxyEditor={openPrefixProxyEditor}
                 onDelete={handleDelete}
                 onToggleStatus={handleStatusToggle}

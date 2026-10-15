@@ -89,10 +89,14 @@ export interface AccountView {
   provider: string;
   authIndex: string;
   /**
-   * 凭证标识，直接就是 `GET /credentials` 的 `name`：文件后端的
-   * `sdk/auth/filestore.go:337-340` 同时把 `ID` 与 `FileName` 赋成同一个 id，
-   * 而 `auth_files.go:650-653` 的 `name` 取 `FileName` 回落 `ID`。
-   * ⇒ 按文件操作的既有接口（status / fields / refresh / delete）可直接用 authId 作键。
+   * 凭证标识（宿主 `auth.ID`，`account_view.go:158`）。**它不等于**
+   * `GET /credentials` 的 `name`，只在 filestore 路径下恰好相等：
+   * `sdk/auth/filestore.go:337-340` 把 `ID` 与 `FileName` 赋成同一个 id，
+   * 但 watcher 路径（`internal/watcher/synthesizer/file.go:197-199`）的 `ID`
+   * 是相对路径且 Windows 下转小写，而 `FileName` 是 `filepath.Base`。
+   * ⇒ 跨两个接口关联必须容错匹配（精确 → basename 忽略大小写 → authIndex），
+   * 见 `features/authFiles/accountPool.ts` 的 `buildAccountIndex`。
+   * 单接口内按文件操作（status / fields / refresh / delete）仍可直接用 authId 作键。
    */
   authId: string;
   /** 上游账号标识（email 优先，回落 project_id）；两者皆空时缺省。 */

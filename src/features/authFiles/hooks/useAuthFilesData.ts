@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiClient, authFilesApi } from '@/services/api';
+import { accountsApi } from '@/services/api/accounts';
 import type { AuthFileRefreshResult } from '@/services/api/authFiles';
 import { getAuthFileRefreshKey } from '@/features/authFiles/manualRefresh';
 import { notifyAuthFilesChanged } from '@/features/authFiles/authFilesEvents';
+import { buildAccountIndex } from '@/features/authFiles/accountPool';
 import { useNotificationStore } from '@/stores';
 import type { AuthFileItem } from '@/types';
+import type { AccountPolicy, AccountView } from '@/types/accounts';
 import { formatFileSize } from '@/utils/format';
 import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
 import { downloadBlob } from '@/utils/download';
@@ -40,6 +43,8 @@ export type UseAuthFilesDataOptions = {
 
 export type UseAuthFilesDataResult = {
   files: AuthFileItem[];
+  /** 账号池视图，键 = `AuthFileItem.name`；`/accounts` 不可用时为空 Map。 */
+  accountIndex: Map<string, AccountView>;
   selectedFiles: Set<string>;
   selectionCount: number;
   loading: boolean;
@@ -66,6 +71,8 @@ export type UseAuthFilesDataResult = {
   handleManualRefresh: (item: AuthFileItem) => Promise<void>;
   handleCooldownReset: (item: AuthFileItem) => void;
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
+  /** 写账号路由策略；`null` 清除策略。失败时 reject，由调用方提示。 */
+  updateAccountPolicy: (name: string, policy: AccountPolicy | null) => Promise<void>;
   toggleSelect: (name: string) => void;
   selectAllVisible: (visibleFiles: AuthFileItem[]) => void;
   invertVisibleSelection: (visibleFiles: AuthFileItem[]) => void;
@@ -96,6 +103,7 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
   const [cooldownResetting, setCooldownResetting] = useState<Record<string, boolean>>({});
   const [batchStatusUpdating, setBatchStatusUpdating] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [accountIndex, setAccountIndex] = useState<Map<string, AccountView>>(new Map());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadPendingRef = useRef(false);
@@ -222,9 +230,20 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
       }
 
       try {
-        const data = await authFilesApi.list();
+        // 账号池视图是增强信息：`/accounts` 失败（旧宿主未挂载）不得连带把凭证列表判成错误。
+        const [filesResult, accountsResult] = await Promise.allSettled([
+          authFilesApi.list(),
+          accountsApi.list(),
+        ]);
         if (!isCurrentRequest()) return; // 已被更新的请求/连接/变更取代
-        setFiles(data?.files || []);
+        if (filesResult.status !== 'fulfilled') throw filesResult.reason;
+        const nextFiles = filesResult.value?.files || [];
+        setFiles(nextFiles);
+        // `/accounts` 失败时保留上次成功索引（与 `files` 一致），否则一次瞬时故障
+        // 会让整页卡片的池区块一起消失。
+        if (accountsResult.status === 'fulfilled') {
+          setAccountIndex(buildAccountIndex(nextFiles, accountsResult.value.accounts));
+        }
         setError('');
       } catch (err: unknown) {
         if (!isCurrentRequest()) return;
@@ -238,6 +257,17 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
       }
     },
     [t]
+  );
+
+  const updateAccountPolicy = useCallback(
+    async (name: string, policy: AccountPolicy | null) => {
+      const connectionRevision = apiClient.getConnectionRevision();
+      await authFilesApi.patchFields(name, { policy });
+      if (connectionRevision !== apiClient.getConnectionRevision()) return;
+      invalidateInFlightLoads();
+      await loadFiles({ background: true });
+    },
+    [invalidateInFlightLoads, loadFiles]
   );
 
   const handleUploadClick = useCallback(() => {
@@ -944,6 +974,7 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
 
   return {
     files,
+    accountIndex,
     selectedFiles,
     selectionCount,
     loading,
@@ -970,6 +1001,7 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
     handleManualRefresh,
     handleCooldownReset,
     handleStatusToggle,
+    updateAccountPolicy,
     toggleSelect,
     selectAllVisible,
     invertVisibleSelection,

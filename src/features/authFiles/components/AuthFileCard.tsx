@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/icons';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
 import type { AuthFileItem } from '@/types';
+import type { AccountPolicy, AccountView } from '@/types/accounts';
 import { statusBarDataFromRecentRequests } from '@/utils/recentRequests';
 import { formatFileSize } from '@/utils/format';
 import {
@@ -34,10 +35,13 @@ import { resolveAuthFileQuotaType } from '@/features/authFiles/logic';
 import type { AuthFileStatusBarData } from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
 import { AuthFileQuotaSection } from '@/features/authFiles/components/AuthFileQuotaSection';
 import { AuthFileCooldownSection } from './AuthFileCooldownSection';
+import { AuthFilePoolSection } from './AuthFilePoolSection';
 import styles from './AuthFileCard.module.scss';
 
 export type AuthFileCardProps = {
   file: AuthFileItem;
+  /** `GET /accounts` 的账号视图；三级匹配未命中时缺省，卡片不显示账号池区块。 */
+  account?: AccountView;
   compact: boolean;
   selected: boolean;
   resolvedTheme: ResolvedTheme;
@@ -54,6 +58,8 @@ export type AuthFileCardProps = {
   onDownload: (name: string) => void;
   onManualRefresh: (file: AuthFileItem) => void;
   onCooldownReset: (file: AuthFileItem) => void;
+  /** 路由策略改动的回传；`null` = 清除策略（回到默认）。 */
+  onPolicyChange?: (policy: AccountPolicy | null) => void;
   onOpenPrefixProxyEditor: (file: AuthFileItem) => void;
   onDelete: (name: string) => void;
   onToggleStatus: (file: AuthFileItem, enabled: boolean) => void;
@@ -64,6 +70,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const { t } = useTranslation();
   const {
     file,
+    account,
     compact,
     selected,
     resolvedTheme,
@@ -79,6 +86,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
     onDownload,
     onManualRefresh,
     onCooldownReset,
+    onPolicyChange,
     onOpenPrefixProxyEditor,
     onDelete,
     onToggleStatus,
@@ -249,6 +257,12 @@ export function AuthFileCard(props: AuthFileCardProps) {
       {showQuotaLayout && quotaType && (
         <AuthFileQuotaSection file={file} quotaType={quotaType} disableControls={disableControls} />
       )}
+
+      <AuthFilePoolSection
+        account={account}
+        mutating={disableControls}
+        onPolicyChange={onPolicyChange}
+      />
 
       <footer className={styles.actions}>
         <div className={styles.actionsMain}>
