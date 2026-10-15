@@ -40,6 +40,10 @@ export interface PluginListEntry {
   effectiveEnabled: boolean;
   supportsOAuth: boolean;
   oauthProvider?: string;
+  /** 宿主是否为该插件注册了额度通道（`quota_provider` 非空即为真）。 */
+  supportsQuota: boolean;
+  /** 该插件负责额度的 provider 键；缺省即无额度通道。 */
+  quotaProvider?: string;
   logo: string;
   configFields: PluginConfigField[];
   menus: PluginMenu[];

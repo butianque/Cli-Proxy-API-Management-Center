@@ -467,6 +467,9 @@
     "prefix_proxy_saved_success": "已更新驗證檔案「{{name}}」",
     "quota_refresh_single": "重新整理配額",
     "quota_refresh_hint": "僅重新整理該驗證檔案的配額",
+    "quota_refresh_all": "重新整理全部配額",
+    "quota_refresh_all_done": "已重新整理 {{count}} 個帳號的配額",
+    "quota_refresh_all_partial": "已重新整理 {{total}} 個帳號中 {{ok}} 個的配額",
     "quota_refresh_success": "已重新整理「{{name}}」的配額",
     "quota_refresh_failed": "重新整理「{{name}}」的配額失敗：{{message}}"
   },

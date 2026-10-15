@@ -39,12 +39,15 @@ export type AuthFilePoolSectionProps = {
   account?: AccountView;
   mutating?: boolean;
   onPolicyChange?: (policy: AccountPolicy | null) => void;
+  /** 该账号是否有宿主额度通道。false/缺省 ⇒ 不渲染额度区块。 */
+  quotaCapable?: boolean;
 };
 
 export function AuthFilePoolSection({
   account,
   mutating = false,
   onPolicyChange,
+  quotaCapable = false,
 }: AuthFilePoolSectionProps) {
   const { t, i18n } = useTranslation();
   const policyLabelId = useId();
@@ -94,35 +97,37 @@ export function AuthFilePoolSection({
         <p className={styles.hint}>{t('account_pool.policy_hint')}</p>
       </div>
 
-      <div className={styles.quotaBlock}>
-        <div className={styles.quotaHead}>
-          <span className={styles.fieldLabel}>{t('account_pool.quota_label')}</span>
-          {account.fetchedAt && (
-            <span className={styles.quotaUpdated}>
-              {t('account_pool.quota_updated', {
-                time: formatDateTimeValue(account.fetchedAt, i18n.language),
-              })}
-            </span>
-          )}
-        </div>
-        <QuotaSummary account={account} />
-        {showQuotaMeta && (
-          <div className={styles.quotaMeta}>
-            {account.planId && (
-              <span className={styles.metaItem}>
-                <span className={styles.metaLabel}>{t('account_pool.quota_plan')}</span>
-                <span className={styles.metaValue}>{account.planId}</span>
-              </span>
-            )}
-            {account.channel && (
-              <span className={styles.metaItem}>
-                <span className={styles.metaLabel}>{t('account_pool.quota_channel')}</span>
-                <span className={styles.metaValue}>{account.channel}</span>
+      {quotaCapable && (
+        <div className={styles.quotaBlock}>
+          <div className={styles.quotaHead}>
+            <span className={styles.fieldLabel}>{t('account_pool.quota_label')}</span>
+            {account.fetchedAt && (
+              <span className={styles.quotaUpdated}>
+                {t('account_pool.quota_updated', {
+                  time: formatDateTimeValue(account.fetchedAt, i18n.language),
+                })}
               </span>
             )}
           </div>
-        )}
-      </div>
+          <QuotaSummary account={account} />
+          {showQuotaMeta && (
+            <div className={styles.quotaMeta}>
+              {account.planId && (
+                <span className={styles.metaItem}>
+                  <span className={styles.metaLabel}>{t('account_pool.quota_plan')}</span>
+                  <span className={styles.metaValue}>{account.planId}</span>
+                </span>
+              )}
+              {account.channel && (
+                <span className={styles.metaItem}>
+                  <span className={styles.metaLabel}>{t('account_pool.quota_channel')}</span>
+                  <span className={styles.metaValue}>{account.channel}</span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {account.failureClass && (
         <div className={styles.row}>

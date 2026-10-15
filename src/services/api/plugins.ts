@@ -101,6 +101,7 @@ const normalizePluginEntry = (value: unknown): PluginListEntry | null => {
   const configFields = normalizeConfigFields(value.config_fields);
   const supportsOAuth = asBoolean(value.supports_oauth);
   const oauthProvider = normalizePluginOAuthProvider(value.oauth_provider);
+  const quotaProvider = asString(value.quota_provider).trim();
 
   return {
     id,
@@ -111,6 +112,8 @@ const normalizePluginEntry = (value: unknown): PluginListEntry | null => {
     effectiveEnabled: asBoolean(value.effective_enabled),
     supportsOAuth,
     oauthProvider,
+    supportsQuota: asBoolean(value.supports_quota) && quotaProvider !== '',
+    quotaProvider: quotaProvider || undefined,
     logo: asString(value.logo || metadata?.logo).trim(),
     configFields: configFields.length > 0 ? configFields : (metadata?.configFields ?? []),
     menus: normalizeMenus(value.menus),
@@ -260,6 +263,13 @@ export const pluginsApi = {
     const data = await apiClient.get('/plugins');
     return normalizePluginList(data);
   },
+
+  /**
+   * 触发宿主探测某凭据的额度。宿主把结果写进自己的快照缓存，
+   * 之后 `GET /accounts` 才会带上额度；面板不直接探测上游，也不另存一份额度。
+   */
+  fetchQuota: (id: string, authIndex: string) =>
+    apiClient.post(`/plugins/${encodeURIComponent(id)}/quota`, { auth_index: authIndex }),
 
   updateEnabled: (id: string, enabled: boolean) =>
     apiClient.put(`/config/plugins/configs/${encodeURIComponent(id)}/enabled`, enabled),

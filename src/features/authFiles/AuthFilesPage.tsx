@@ -6,6 +6,7 @@ import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useRevealOnScroll } from '@/hooks/motion';
 import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
 import { Button } from '@/components/ui/Button';
+import { findQuotaPluginId } from '@/services/api/accountQuota';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { copyToClipboard } from '@/utils/clipboard';
@@ -121,6 +122,7 @@ export function AuthFilesPage() {
   const {
     files,
     accountIndex,
+    quotaPluginIndex,
     selectedFiles,
     selectionCount,
     loading,
@@ -147,6 +149,7 @@ export function AuthFilesPage() {
     handleManualRefresh,
     handleCooldownReset,
     updateAccountPolicy,
+    refreshQuotas,
     handleStatusToggle,
     toggleSelect,
     selectAllVisible,
@@ -533,6 +536,30 @@ export function AuthFilesPage() {
     [showNotification, t, updateAccountPolicy]
   );
 
+  const [quotaRefreshing, setQuotaRefreshing] = useState(false);
+
+  /**
+   * 刷新当前筛选结果的额度。宿主的额度快照只能由插件额度通道写入，
+   * 所以这里只负责触发 + 重读，结果条数由 hook 回报。
+   */
+  const handleRefreshQuotas = useCallback(async () => {
+    if (quotaRefreshing) return;
+    setQuotaRefreshing(true);
+    try {
+      const { ok, total } = await refreshQuotas(filtered);
+      if (total === 0) return;
+      if (ok === total) {
+        showNotification(t('auth_files.quota_refresh_all_done', { count: ok }), 'success');
+      } else {
+        showNotification(t('auth_files.quota_refresh_all_partial', { ok, total }), 'error');
+      }
+    } catch {
+      showNotification(t('common.unknown_error'), 'error');
+    } finally {
+      setQuotaRefreshing(false);
+    }
+  }, [filtered, quotaRefreshing, refreshQuotas, showNotification, t]);
+
   const openExcludedEditor = useCallback(
     (provider?: string) => {
       const providerValue = (provider || (filter !== 'all' ? String(filter) : '')).trim();
@@ -671,6 +698,9 @@ export function AuthFilesPage() {
               onResetEnabledOnly: () => setStatusFilterMode('all'),
             })
           }
+          onRefreshQuotas={() => void handleRefreshQuotas()}
+          quotaRefreshing={quotaRefreshing}
+          quotaRefreshAvailable={quotaPluginIndex.size > 0}
         />
 
         {error && (
@@ -730,6 +760,12 @@ export function AuthFilesPage() {
                 manualRefreshing={manualRefreshing}
                 cooldownResetting={cooldownResetting}
                 quotaFilterType={activeQuotaFilter}
+                quotaCapable={
+                  findQuotaPluginId(
+                    quotaPluginIndex,
+                    [file.provider ?? '', file.type ?? ''].map(String)
+                  ) !== undefined
+                }
                 statusBarCache={statusBarCache}
                 entranceDelayMs={cardEntranceDelay(index)}
                 onShowModels={showModels}

@@ -2,13 +2,15 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObj
 import { useTranslation } from 'react-i18next';
 import { apiClient, authFilesApi } from '@/services/api';
 import { accountsApi } from '@/services/api/accounts';
+import { findQuotaPluginId, loadQuotaPluginIndex } from '@/services/api/accountQuota';
+import { pluginsApi } from '@/services/api/plugins';
 import type { AuthFileRefreshResult } from '@/services/api/authFiles';
 import { getAuthFileRefreshKey } from '@/features/authFiles/manualRefresh';
 import { notifyAuthFilesChanged } from '@/features/authFiles/authFilesEvents';
 import { buildAccountIndex } from '@/features/authFiles/accountPool';
 import { useNotificationStore } from '@/stores';
 import type { AuthFileItem } from '@/types';
-import type { AccountPolicy, AccountView } from '@/types/accounts';
+import type { AccountPolicy, AccountsResponse, AccountView } from '@/types/accounts';
 import { formatFileSize } from '@/utils/format';
 import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
 import { downloadBlob } from '@/utils/download';
@@ -45,6 +47,8 @@ export type UseAuthFilesDataResult = {
   files: AuthFileItem[];
   /** 账号池视图，键 = `AuthFileItem.name`；`/accounts` 不可用时为空 Map。 */
   accountIndex: Map<string, AccountView>;
+  /** provider 键（小写）→ 提供额度的插件 id；空 Map = 宿主没有额度通道。 */
+  quotaPluginIndex: Map<string, string>;
   selectedFiles: Set<string>;
   selectionCount: number;
   loading: boolean;
@@ -73,6 +77,11 @@ export type UseAuthFilesDataResult = {
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
   /** 写账号路由策略；`null` 清除策略。失败时 reject，由调用方提示。 */
   updateAccountPolicy: (name: string, policy: AccountPolicy | null) => Promise<void>;
+  /**
+   * 触发宿主探测这些凭据的额度（宿主快照只能由插件额度通道写入），随后重读 `/accounts`。
+   * `total` 只计入选的凭据——取不到额度插件或没有 `authIndex` 的跳过。不弹通知。
+   */
+  refreshQuotas: (targets: readonly AuthFileItem[]) => Promise<{ ok: number; total: number }>;
   toggleSelect: (name: string) => void;
   selectAllVisible: (visibleFiles: AuthFileItem[]) => void;
   invertVisibleSelection: (visibleFiles: AuthFileItem[]) => void;
@@ -104,6 +113,7 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
   const [batchStatusUpdating, setBatchStatusUpdating] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [accountIndex, setAccountIndex] = useState<Map<string, AccountView>>(new Map());
+  const [quotaPluginIndex, setQuotaPluginIndex] = useState<Map<string, string>>(new Map());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const uploadPendingRef = useRef(false);
@@ -118,6 +128,18 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
     setLoading(false);
     setRefreshing(false);
   }, []);
+  /**
+   * 写入账号索引。**只在 `/accounts` 成功时写入**——失败保留上次结果，
+   * 与 `files` 同一约定：一次瞬时故障不得让整页卡片的池区块一起消失。
+   */
+  const applyAccounts = useCallback(
+    (nextFiles: AuthFileItem[], result: PromiseSettledResult<AccountsResponse>) => {
+      if (result.status === 'fulfilled') {
+        setAccountIndex(buildAccountIndex(nextFiles, result.value.accounts));
+      }
+    },
+    []
+  );
   const onFilesMutatedRef = useRef(onFilesMutated);
   useEffect(() => {
     onFilesMutatedRef.current = onFilesMutated;
@@ -230,10 +252,12 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
       }
 
       try {
-        // 账号池视图是增强信息：`/accounts` 失败（旧宿主未挂载）不得连带把凭证列表判成错误。
-        const [filesResult, accountsResult] = await Promise.allSettled([
+        // 账号池视图与额度通道都是增强信息：`/accounts` 或插件清单失败
+        // （旧宿主未挂载）不得连带把凭证列表判成错误。
+        const [filesResult, accountsResult, quotaPluginsResult] = await Promise.allSettled([
           authFilesApi.list(),
           accountsApi.list(),
+          loadQuotaPluginIndex(),
         ]);
         if (!isCurrentRequest()) return; // 已被更新的请求/连接/变更取代
         if (filesResult.status !== 'fulfilled') throw filesResult.reason;
@@ -241,8 +265,10 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
         setFiles(nextFiles);
         // `/accounts` 失败时保留上次成功索引（与 `files` 一致），否则一次瞬时故障
         // 会让整页卡片的池区块一起消失。
-        if (accountsResult.status === 'fulfilled') {
-          setAccountIndex(buildAccountIndex(nextFiles, accountsResult.value.accounts));
+        applyAccounts(nextFiles, accountsResult);
+        // 额度通道索引同理：宿主不可用/插件清单取不到时保留上次索引，绝不退回空 Map。
+        if (quotaPluginsResult.status === 'fulfilled') {
+          setQuotaPluginIndex(quotaPluginsResult.value);
         }
         setError('');
       } catch (err: unknown) {
@@ -256,7 +282,7 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
         }
       }
     },
-    [t]
+    [applyAccounts, t]
   );
 
   const updateAccountPolicy = useCallback(
@@ -268,6 +294,43 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
       await loadFiles({ background: true });
     },
     [invalidateInFlightLoads, loadFiles]
+  );
+
+  /**
+   * 触发宿主探测这些凭据的额度，再重读 `/accounts`。
+   *
+   * 宿主的额度快照**只能**由插件额度通道写入（`POST /plugins/{id}/quota`），面板不直接
+   * 探测上游也不另存一份额度——所以逐个触发后必须重读，额度才在池区块里可见。
+   * 通知归调用方（与 `updateAccountPolicy` 同一约定）。
+   */
+  const refreshQuotas = useCallback(
+    async (targets: readonly AuthFileItem[]) => {
+      const connectionRevision = apiClient.getConnectionRevision();
+      const requests: Array<Promise<unknown>> = [];
+      for (const file of targets) {
+        // 候选键的先后即优先级；取不到插件 id 或宿主没给 authIndex 的凭据不参与，
+        // 不计入 total——宿主无处落快照，算进分母只会让结果看起来更差。
+        const pluginId = findQuotaPluginId(quotaPluginIndex, [
+          String(file.provider ?? ''),
+          String(file.type ?? ''),
+        ]);
+        const authIndex = String(file.authIndex ?? '').trim();
+        if (!pluginId || !authIndex) continue;
+        requests.push(pluginsApi.fetchQuota(pluginId, authIndex));
+      }
+
+      const results = await Promise.allSettled(requests);
+      const ok = results.filter((result) => result.status === 'fulfilled').length;
+
+      // 无论成败都重读一次：成功的那部分已经把额度写进宿主快照，只有重读才看得见。
+      const [accountsResult] = await Promise.allSettled([accountsApi.list()]);
+      if (connectionRevision === apiClient.getConnectionRevision()) {
+        applyAccounts(files, accountsResult);
+      }
+
+      return { ok, total: requests.length };
+    },
+    [applyAccounts, files, quotaPluginIndex]
   );
 
   const handleUploadClick = useCallback(() => {
@@ -975,6 +1038,7 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
   return {
     files,
     accountIndex,
+    quotaPluginIndex,
     selectedFiles,
     selectionCount,
     loading,
@@ -1002,6 +1066,7 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
     handleCooldownReset,
     handleStatusToggle,
     updateAccountPolicy,
+    refreshQuotas,
     toggleSelect,
     selectAllVisible,
     invertVisibleSelection,

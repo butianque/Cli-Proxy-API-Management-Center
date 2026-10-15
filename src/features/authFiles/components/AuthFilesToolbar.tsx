@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
@@ -33,6 +34,10 @@ export type AuthFilesToolbarProps = {
   deleteDisabled: boolean;
   deleteLoading: boolean;
   onDelete: () => void;
+  /** 刷新当前筛选结果的额度；仅当宿主提供额度通道时才渲染按钮。 */
+  onRefreshQuotas?: () => void;
+  quotaRefreshing?: boolean;
+  quotaRefreshAvailable?: boolean;
 };
 
 /**
@@ -58,6 +63,9 @@ export function AuthFilesToolbar(props: AuthFilesToolbarProps) {
     deleteDisabled,
     deleteLoading,
     onDelete,
+    onRefreshQuotas,
+    quotaRefreshing = false,
+    quotaRefreshAvailable = false,
   } = props;
   const { t } = useTranslation();
   const [displaySettingsOpen, setDisplaySettingsOpen] = useState(false);
@@ -176,6 +184,19 @@ export function AuthFilesToolbar(props: AuthFilesToolbarProps) {
           </div>
         )}
       </div>
+
+      {/* 额度通道由宿主插件提供，取不到通道时这个动作无处落数据——不渲染。 */}
+      {quotaRefreshAvailable && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={onRefreshQuotas}
+          disabled={quotaRefreshing}
+          loading={quotaRefreshing}
+        >
+          {t('auth_files.quota_refresh_all')}
+        </Button>
+      )}
 
       <button
         type="button"

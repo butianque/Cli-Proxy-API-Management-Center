@@ -472,6 +472,9 @@
     "prefix_proxy_saved_success": "Файл авторизации \"{{name}}\" успешно обновлён",
     "quota_refresh_single": "Обновить квоту",
     "quota_refresh_hint": "Обновить квоту только для этих учётных данных",
+    "quota_refresh_all": "Обновить все квоты",
+    "quota_refresh_all_done": "Квоты обновлены для {{count}} аккаунтов",
+    "quota_refresh_all_partial": "Квоты обновлены для {{ok}} из {{total}} аккаунтов",
     "quota_refresh_success": "Квота для \"{{name}}\" обновлена",
     "quota_refresh_failed": "Не удалось обновить квоту для \"{{name}}\": {{message}}"
   },

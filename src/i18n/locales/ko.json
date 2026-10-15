@@ -469,6 +469,9 @@
     "prefix_proxy_saved_success": "인증 파일 \"{{name}}\"을(를) 성공적으로 업데이트했습니다",
     "quota_refresh_single": "할당량 새로 고침",
     "quota_refresh_hint": "이 자격 증명의 할당량만 새로 고침합니다",
+    "quota_refresh_all": "전체 할당량 새로 고침",
+    "quota_refresh_all_done": "{{count}}개 계정의 할당량을 새로 고쳤습니다",
+    "quota_refresh_all_partial": "{{total}}개 계정 중 {{ok}}개의 할당량을 새로 고쳤습니다",
     "quota_refresh_success": "\"{{name}}\"의 할당량을 새로 고쳤습니다",
     "quota_refresh_failed": "\"{{name}}\"의 할당량 새로 고침 실패: {{message}}"
   },

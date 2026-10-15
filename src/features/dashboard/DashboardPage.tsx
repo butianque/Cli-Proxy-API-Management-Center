@@ -6,7 +6,6 @@ import {
   IconFileText,
   IconSidebarConfig,
   IconSidebarLogs,
-  IconSidebarQuota,
   IconSidebarSystem,
 } from '@/components/ui/icons';
 import { useAuthStore } from '@/stores';
@@ -200,12 +199,6 @@ export function DashboardPage() {
       icon: <IconSidebarConfig size={20} />,
       title: t('nav.config_management'),
       description: t('dashboard.cta_config_desc'),
-    },
-    {
-      to: '/quota',
-      icon: <IconSidebarQuota size={20} />,
-      title: t('nav.quota_management'),
-      description: t('dashboard.cta_quota_desc'),
     },
     {
       to: '/logs',
