@@ -220,28 +220,6 @@
   font-weight: 600;
 }
 
-:global(.sms-editor-kind-tabs) {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-:global(.sms-editor-kind-tabs button) {
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 9px 14px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-:global(.sms-editor-kind-tabs button.active) {
-  border-bottom-color: var(--primary-color);
-  color: var(--text-primary);
-}
-
 :global(.sms-editor-methods) {
   display: flex;
   flex-direction: column;
@@ -321,8 +299,7 @@
 @media (prefers-reduced-motion: reduce) {
   .viewContent,
   .panelTransition,
-  .tab,
-  :global(.sms-editor-kind-tabs button) {
+  .tab {
     animation: none;
     transition: none;
   }

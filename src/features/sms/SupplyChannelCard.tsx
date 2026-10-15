@@ -1,10 +1,9 @@
 /**
- * 渠道配置卡：所有来源的列表 + 编辑弹窗。
+ * 邮箱来源卡：邮箱来源的列表 + 编辑弹窗。
  *
- * 一条来源可以同时服务手机号和邮箱。表格把所有来源混在一起，每行显示：
- * 名称 | 服务类型（手机/邮箱）| 类别 | 连接方式 | 状态 | 启用开关
- *
- * 编辑弹窗：名称 + 类别 + 手机号/邮箱 tab + 每 tab 多选连接方式 + 各自连接信息。
+ * 表格每行显示：名称 | 服务类型 | 类别 | 连接方式 | 状态 | 启用开关。
+ * 后端一条来源仍可同时带手机号与邮箱块；本卡只列出邮箱来源，编辑器也只改邮箱块
+ * （手机号的凭据走密钥库，由 `PhoneSupplyView` 负责）。
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -34,16 +33,9 @@ import {
   type SupplyConnectionInput,
 } from '@/services/api/supply';
 import { toNatureOptions, toSupplyChannels } from './smsMapping';
-import type { SupplyChannel, SupplyKind, SupplyNature, SupplyNatureOption } from './types';
+import type { SupplyChannel, SupplyNature, SupplyNatureOption } from './types';
 import { ChannelEditorModal } from './ChannelEditorModal';
 import styles from './SmsServicePage.module.scss';
-
-export interface SupplyChannelCardProps {
-  /** 当前正在配置的身份种类。 */
-  kind: SupplyKind;
-  categories: { id: SupplyKind; label: string }[];
-  onCategoryChange: (kind: SupplyKind) => void;
-}
 
 const NATURE_LABEL: Record<SupplyNature, string> = {
   api: 'sms_service.nature_api',
@@ -162,7 +154,7 @@ function isEnabled(channel: SupplyChannel): boolean {
   return (channel.phone?.enabled ?? false) || (channel.email?.enabled ?? false);
 }
 
-export function SupplyChannelCard({ kind, categories, onCategoryChange }: SupplyChannelCardProps) {
+export function SupplyChannelCard() {
   const { t } = useTranslation();
   const [channels, setChannels] = useState<SupplyChannel[]>([]);
   const [natures, setNatures] = useState<SupplyNatureOption[]>([]);
@@ -171,13 +163,12 @@ export function SupplyChannelCard({ kind, categories, onCategoryChange }: Supply
   const [actionError, setActionError] = useState('');
   const [busyId, setBusyId] = useState('');
   const [draft, setDraft] = useState<ChannelDraft | null>(null);
-  const [initialEditorKind, setInitialEditorKind] = useState<SupplyKind>(kind);
   const [saving, setSaving] = useState(false);
   const [draftError, setDraftError] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const result = await supplyApi.listChannels(kind);
+      const result = await supplyApi.listChannels('email');
       setChannels(toSupplyChannels(result.channels));
       setNatures(toNatureOptions(result.natures));
       setLoadError('');
@@ -186,7 +177,7 @@ export function SupplyChannelCard({ kind, categories, onCategoryChange }: Supply
     } finally {
       setLoaded(true);
     }
-  }, [kind]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -195,20 +186,19 @@ export function SupplyChannelCard({ kind, categories, onCategoryChange }: Supply
   const openEditor = useCallback((channel: SupplyChannel | null) => {
     setDraftError('');
     if (channel) {
-      const preferredKind = channel[kind] ? kind : channel.phone ? 'phone' : channel.email ? 'email' : kind;
-      setInitialEditorKind(preferredKind);
       setDraft({
         id: channel.id,
         label: channel.label,
         category: channel.category,
+        // The phone block rides along untouched. This card cannot edit it, and dropping it
+        // would silently delete a block the operator had already saved.
         phone: kindDraftFromChannel(channel, 'phone'),
         email: kindDraftFromChannel(channel, 'email'),
       });
     } else {
-      setInitialEditorKind(kind);
       setDraft({ ...EMPTY_DRAFT, phone: emptyKindDraft(), email: emptyKindDraft() });
     }
-  }, [kind]);
+  }, []);
 
   const saveDraft = useCallback(async () => {
     if (!draft) return;
@@ -289,35 +279,16 @@ export function SupplyChannelCard({ kind, categories, onCategoryChange }: Supply
   return (
     <Card
       title={
-        <div className={styles.cardHeading}>
-          <span className={styles.cardTitle}>
-            <IconPlug size={17} />
-            {t('sms_service.config_title')}
-          </span>
-          <div className={styles.tabs} role="tablist" aria-label={t('sms_service.tabs_label')}>
-            {categories.map((item) => {
-              const active = item.id === kind;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  className={`${styles.tab} ${active ? styles.tabActive : ''}`}
-                  onClick={() => onCategoryChange(item.id)}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <span className={styles.cardTitle}>
+          <IconPlug size={17} />
+          {t('sms_service.source_title')}
+        </span>
       }
       extra={
         <div className={styles.headerActions}>
           <button type="button" className={styles.actionPill} onClick={() => openEditor(null)}>
             <IconPlus size={14} />
-            {t(kind === 'phone' ? 'sms_service.config_add_phone' : 'sms_service.config_add_email')}
+            {t('sms_service.config_add_email')}
           </button>
         </div>
       }
@@ -407,15 +378,12 @@ export function SupplyChannelCard({ kind, categories, onCategoryChange }: Supply
 
       <ChannelEditorModal
         draft={draft}
-        kind={kind}
-        initialKind={initialEditorKind}
         natures={natures}
         error={draftError}
         saving={saving}
         onClose={() => setDraft(null)}
         onSave={() => void saveDraft()}
         onDraftChange={(next) => setDraft(next)}
-        onKindChange={updateKindDraft}
         onNatureToggle={toggleNature}
         onConnectionChange={updateConnection}
       />

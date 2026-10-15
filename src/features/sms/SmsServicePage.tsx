@@ -2,14 +2,19 @@
  * 接码服务页 —— 两个视图：**号码池**（默认）与**渠道配置**（覆盖）。
  *
  * 号码池是统一台账（手机号 + 邮箱同一张 ledger，按 kind 过滤），进来就看到。
- * 右上角「⚙ 配置」切到渠道配置页（来源登记），左上角「← 返回」切回。
+ * 右上角「⚙ 配置」切到配置页，左上角「← 返回」切回。
  *
- * 配置页按身份类别展示对应的渠道编辑器；手机号和邮箱使用各自允许的连接方式。
+ * 配置页按身份类别切换，两类各有自己的正文：
+ * - 手机号 → `PhoneSupplyView`（凭据 + 平台渠道 + 账本 + 护栏）；
+ * - 邮箱 → `SupplyChannelCard`（来源登记；IMAP 实现尚未落地）。
+ *
+ * 类别切换属于**页面导航**，因此由本文件持有；两个视图各自只渲染正文。
  */
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { IconChevronLeft, IconSettings } from '@/components/ui/icons';
+import { PhoneSupplyView } from './PhoneSupplyView';
 import { SupplyChannelCard } from './SupplyChannelCard';
 import { SupplyPoolCard } from './SupplyPoolCard';
 import type { SupplyKind } from './types';
@@ -59,8 +64,25 @@ export function SmsServicePage() {
           <SupplyPoolCard />
         ) : (
           <>
+            <div className={styles.tabs} role="tablist" aria-label={t('sms_service.tabs_label')}>
+              {categories.map((item) => {
+                const active = item.id === category;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={`${styles.tab} ${active ? styles.tabActive : ''}`}
+                    onClick={() => setCategory(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
             <div key={category} className={styles.panelTransition}>
-              <SupplyChannelCard kind={category} categories={categories} onCategoryChange={setCategory} />
+              {category === 'phone' ? <PhoneSupplyView /> : <SupplyChannelCard />}
             </div>
           </>
         )}

@@ -178,23 +178,42 @@ describe('the page carries both supply categories and two views', () => {
 
   test('the container switches between pool and config views', () => {
     const page = read('SmsServicePage.tsx');
-    // Category tabs are real controls.
-    expect(read('SupplyChannelCard.tsx')).toContain('tab_phone');
-    expect(read('SupplyChannelCard.tsx')).toContain('tab_email');
     // Two views: pool (default) and config (overlay).
     expect(page).toContain("useState<PageView>('pool')");
     expect(page).toContain('<SupplyPoolCard');
-    expect(page).toContain('<SupplyChannelCard');
-    // The page delegates to shared cards, not to smsApi directly.
+    // The page delegates to shared views, not to smsApi directly.
     expect(page).not.toContain('smsApi.getStatus');
   });
 
-  test('the selected category owns the channel editor in the config view', () => {
+  test('the config view switches category and hands each one its own view', () => {
     const page = read('SmsServicePage.tsx');
+    // The category switch is a real control, and the page owns it so the two
+    // views cannot each render a second tablist for the same decision.
+    expect(page).toContain('sms_service.tab_phone');
+    expect(page).toContain('sms_service.tab_email');
+    expect(page).toContain('<PhoneSupplyView />');
+    expect(page).toContain('<SupplyChannelCard />');
+    // Credentials are opened by the phone view, never by the container.
     expect(page).not.toContain('<ChannelConfigModal');
-    expect(page).toContain('<SupplyChannelCard kind={category} categories={categories}');
-    expect(read('SupplyChannelCard.tsx')).toContain('sms_service.tab_phone');
-    expect(read('SupplyChannelCard.tsx')).toContain('sms_service.tab_email');
+  });
+
+  test('the phone view owns the credential entry and the platform channel list', () => {
+    const phone = read('PhoneSupplyView.tsx');
+    expect(phone).toContain('<ChannelConfigModal');
+    expect(phone).toContain('smsApi.getStatus');
+  });
+
+  test('the channel card and its editor stay email-only, with no category switch', () => {
+    const card = read('SupplyChannelCard.tsx');
+    expect(card).not.toContain('onCategoryChange');
+    expect(card).not.toContain('role="tablist"');
+    // The card lists one kind and the editor edits one kind, so neither takes a kind prop.
+    expect(card).toContain("listChannels('email')");
+    expect(card).not.toContain('SupplyChannelCardProps');
+    const editor = read('ChannelEditorModal.tsx');
+    expect(editor).not.toContain('role="tablist"');
+    expect(editor).toContain("const editorKind: SupplyKind = 'email'");
+    expect(editor).not.toContain("['phone', 'email']");
   });
 
 });

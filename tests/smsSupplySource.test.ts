@@ -34,7 +34,12 @@ describe('the phone category reads the base supply routes', () => {
   });
 
   test('the active supply page reaches no plugin sms route', () => {
-    for (const name of ['SmsServicePage.tsx', 'SupplyChannelCard.tsx', 'ChannelEditorModal.tsx']) {
+    for (const name of [
+      'SmsServicePage.tsx',
+      'PhoneSupplyView.tsx',
+      'SupplyChannelCard.tsx',
+      'ChannelEditorModal.tsx',
+    ]) {
       const source = read(`features/sms/${name}`);
       expect(source).not.toContain('/v0/management/plugins/loomy/sms');
     }
@@ -44,12 +49,18 @@ describe('the phone category reads the base supply routes', () => {
     // These routes are under the client's own management prefix, so the pages
     // must not thread `apiBase` into the calls any more. The `apiBase` identifier
     // and any `smsApi.*(...)` call carrying it are the regression signals.
-    for (const name of ['SmsServicePage.tsx', 'SupplyChannelCard.tsx', 'ChannelEditorModal.tsx']) {
+    for (const name of [
+      'SmsServicePage.tsx',
+      'PhoneSupplyView.tsx',
+      'SupplyChannelCard.tsx',
+      'ChannelEditorModal.tsx',
+    ]) {
       const source = read(`features/sms/${name}`);
       expect(source).not.toContain('apiBase');
       expect(source).not.toMatch(/smsApi\.\w+\(\s*apiBase/);
     }
     const page = read('features/sms/SmsServicePage.tsx');
-    expect(page).toContain('<SupplyChannelCard kind={category} categories={categories}');
+    expect(page).toContain('<SupplyChannelCard />');
+    expect(page).toContain('<PhoneSupplyView />');
   });
 });

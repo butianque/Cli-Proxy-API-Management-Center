@@ -137,10 +137,14 @@ describe('the source surface keeps backend field names out of the components', (
     expect(source).not.toMatch(/\bnatures\s*=\s*\[\s*'api'/);
   });
 
-  test('phone and email share one editor with their supported connection methods', () => {
+  test('the editor edits one kind and offers the connection methods that kind supports', () => {
     const editor = read('features/sms/ChannelEditorModal.tsx');
-    expect(editor).toContain("['phone', 'email']");
-    expect(editor).toContain("item.kinds.includes(editorKind)");
+    // No category tabs: the editor edits the email block, so the email page cannot
+    // build a phone block that nothing consumes.
+    expect(editor).not.toContain("['phone', 'email']");
+    expect(editor).toContain("const editorKind: SupplyKind = 'email'");
+    // The methods offered still come from the backend's per-nature capability list.
+    expect(editor).toContain('item.kinds.includes(editorKind)');
     expect(editor).toContain("nature === 'imap'");
     expect(editor).toContain("nature !== 'web'");
     expect(read('features/sms/SupplyChannelCard.tsx')).toContain('ChannelEditorModal');

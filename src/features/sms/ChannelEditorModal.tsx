@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -7,7 +7,7 @@ import { Select } from '@/components/ui/Select';
 import { IconAlertTriangle } from '@/components/ui/icons';
 import { Sheet } from '@/components/ui/Sheet';
 import type { SupplyKind, SupplyNature, SupplyNatureOption } from './types';
-import type { ChannelDraft, ConnectionDraft, KindDraft } from './SupplyChannelCard';
+import type { ChannelDraft, ConnectionDraft } from './SupplyChannelCard';
 
 const NATURE_LABEL: Record<SupplyNature, string> = {
   api: 'sms_service.nature_api',
@@ -21,30 +21,30 @@ const CATEGORY_LABEL: Record<string, string> = {
   'self-built': 'sms_service.category_self_built',
 };
 
+/**
+ * 邮箱来源编辑器：名称 + 类别 + 连接方式多选 + 各连接方式的信息。
+ *
+ * 只编辑邮箱块 —— 手机号的凭据走密钥库，由 `PhoneSupplyView` 负责，这里不再提供
+ * 类别切换，因此也从构造上不可能建出一条无人消费的 phone 来源块。
+ */
 interface Props {
   draft: ChannelDraft | null;
-  kind: SupplyKind;
-  initialKind: SupplyKind;
   natures: SupplyNatureOption[];
   error: string;
   saving: boolean;
   onClose: () => void;
   onSave: () => void;
   onDraftChange: (draft: ChannelDraft | null) => void;
-  onKindChange: (kind: SupplyKind, updater: (draft: KindDraft) => KindDraft) => void;
   onNatureToggle: (kind: SupplyKind, nature: SupplyNature) => void;
   onConnectionChange: (kind: SupplyKind, nature: SupplyNature, field: keyof ConnectionDraft, value: string) => void;
 }
 
 export function ChannelEditorModal(props: Props) {
   const { t } = useTranslation();
-  const [editorKind, setEditorKind] = useState<SupplyKind>(props.initialKind);
   const [categoryPointer, setCategoryPointer] = useState({ x: 50, y: 50 });
   const { draft } = props;
-  useEffect(() => {
-    if (draft) setEditorKind(props.initialKind);
-  }, [draft?.id, props.initialKind]);
   if (!draft) return null;
+  const editorKind: SupplyKind = 'email';
   const current = draft[editorKind];
   const allowed = props.natures.filter((item) => item.kinds.includes(editorKind));
   return (
@@ -81,10 +81,7 @@ export function ChannelEditorModal(props: Props) {
              </span>
            </label>
         </div>
-        <div className="sms-editor-kind-tabs" role="tablist" aria-label={t('sms_service.tabs_label')}>
-          {(['phone', 'email'] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={editorKind === value} className={editorKind === value ? 'active' : ''} onClick={() => setEditorKind(value)}>{t(`sms_service.tab_${value}`)}</button>)}
-        </div>
-         <div className="sms-editor-methods">
+        <div className="sms-editor-methods">
           <div className="sms-editor-label">{t('sms_service.field_natures')}</div>
            <div className="sms-editor-method-cards">
              {allowed.map(({ nature }) => {
