@@ -215,25 +215,10 @@ export function PhoneSupplyView() {
   // 累计上限是否真的存在：还没加载、或后端确实没配上限时，都谈不上「用了多少 / 超没超」。
   const capConfigured = view.loaded && view.maxTotalCny > 0;
 
-  // 页头状态词只在**能确认**时给；凭据不可见时不猜，交给顶部那条主密码提示。
-  const headerStatus = (() => {
-    if (!credsVisible) return null;
-    // `enabled` 是后端的真实开关（sms_provider 已配置）；未配置时先报「未配置」。
-    if (!view.accountPresent) {
-      return { label: t('sms_service.status_not_configured'), ok: false };
-    }
-    if (!view.enabled) return { label: t('sms_service.status_disabled'), ok: false };
-    switch (view.connection) {
-      case 'connected':
-        return { label: t('sms_service.status_connected'), ok: true };
-      case 'failed':
-        return { label: t('sms_service.status_failed'), ok: false };
-      default:
-        return { label: t('sms_service.status_unknown'), ok: false };
-    }
-  })();
-
+  // 连接状态词归「渠道池」卡片（页头那行已去重）。凭据不可见时不猜，交给卡片空态与顶部主密码提示。
   const statusLabel = (() => {
+    // 后端没配接码平台 = 服务是停的。凭据可能还在，所以这句必须在这儿说，不能只靠空态。
+    if (!view.enabled) return t('sms_service.status_disabled');
     switch (view.connection) {
       case 'connected':
         return t('sms_service.status_connected');
@@ -249,23 +234,6 @@ export function PhoneSupplyView() {
   return (
     <div className={styles.page}>
       <header className={styles.pageHeader}>
-        <div className={styles.headerCopy}>
-          <p className={styles.meta}>
-            {headerStatus && (
-              <>
-                <span className={headerStatus.ok ? styles.metaOk : styles.metaMuted}>
-                  {headerStatus.label}
-                </span>
-                <span className={styles.metaDot}>·</span>
-              </>
-            )}
-            {view.loaded && (
-              <span className={styles.metaMuted}>
-                {t('sms_service.header_channels', { count: availableChannels })}
-              </span>
-            )}
-          </p>
-        </div>
         <div className={styles.headerActions}>
           <button
             type="button"

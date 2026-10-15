@@ -155,6 +155,9 @@ describe('the source surface keeps backend field names out of the components', (
       const messages = await Bun.file(`src/i18n/locales/${locale}.json`).json();
       expect(messages.sms_service.config_editor_desc).toBeString();
       expect(messages.sms_service.config_editor_desc.trim()).not.toBe('');
+      // The phone card's heading is a product term, so every locale must carry it.
+      expect(messages.sms_service.configured_title).toBeString();
+      expect(messages.sms_service.configured_title.trim()).not.toBe('');
       expect(messages.sms_service.phone_credential).toBeUndefined();
     }
   });

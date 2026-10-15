@@ -44,35 +44,6 @@
   letter-spacing: -0.02em;
 }
 
-.meta {
-  margin: 0;
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  color: var(--text-secondary);
-  font-family: $font-mono;
-  font-size: 13px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-
-  /* 终端游标：与全站页头 meta 行同记号 */
-  &::before {
-    content: '▍';
-    color: var(--viz-success);
-    font-size: 13px;
-    line-height: 1;
-    align-self: center;
-    margin-right: 1px;
-  }
-}
-
-.metaDot {
-  color: var(--text-quaternary);
-  user-select: none;
-}
-
 /* ---------- 页副标题 ---------- */
 
 .pageSubtitle {
@@ -319,6 +290,8 @@
   gap: 6px;
   flex-shrink: 0;
   flex-wrap: wrap;
+  /* 页头可能只有这一侧（状态文字已由卡片与状态带各自表述），靠右对齐。 */
+  margin-left: auto;
 }
 
 /* 次按钮：安静的文字链接（与 ConfigHeader.ghostAction 同形） */

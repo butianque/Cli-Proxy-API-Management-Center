@@ -2019,7 +2019,7 @@
     "refresh_channels": "Refresh channels",
     "configure_add": "Add channel",
     "configure_edit": "Edit",
-    "configured_title": "Configured channels",
+    "configured_title": "Channel pool",
     "configured_empty": "No channel configured",
     "configured_empty_desc": "Add and configure a channel to receive numbers.",
     "configured_locked": "Credentials hidden",

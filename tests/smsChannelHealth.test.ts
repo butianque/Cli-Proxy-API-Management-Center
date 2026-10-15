@@ -216,4 +216,31 @@ describe('the page carries both supply categories and two views', () => {
     expect(editor).not.toContain("['phone', 'email']");
   });
 
+  test('the phone header keeps only its action, with nothing said twice', () => {
+    const phone = read('PhoneSupplyView.tsx');
+    // The connection state and the channel count already have a home each (the
+    // 渠道池 card and the status band), so the header must not repeat them.
+    expect(phone).not.toContain('sms_service.header_channels');
+    expect(phone).not.toContain('styles.metaDot');
+    expect(phone).not.toContain('className={styles.meta}');
+    // The row stays as the action slot.
+    expect(phone).toContain('sms_service.refresh_channels');
+    expect(phone).toContain('styles.headerActions');
+    // The state keeps one home — the card — and that home keeps the full vocabulary.
+    expect(phone).toContain('sms_service.status_disabled');
+    expect(phone).toContain('sms_service.status_connected');
+  });
+
+  test('the email view is laid out like the phone page', () => {
+    const card = read('SupplyChannelCard.tsx');
+    // Same skeleton: the page wrapper plus a header action row.
+    expect(card).toContain('styles.pageHeader');
+    expect(card).toContain('styles.headerActions');
+    // Same row shape as the phone page's channel pool instead of a table.
+    expect(card).toContain('styles.platformRows');
+    expect(card).toContain('styles.platformRowName');
+    expect(card).not.toContain('<Table');
+    expect(card).not.toContain('source_col_name');
+  });
+
 });

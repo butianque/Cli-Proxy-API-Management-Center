@@ -2043,7 +2043,7 @@
     "refresh_channels": "重新整理管道",
     "configure_add": "新增管道",
     "configure_edit": "編輯",
-    "configured_title": "已設定管道",
+    "configured_title": "管道池",
     "configured_empty": "尚未設定管道",
     "configured_empty_desc": "新增並設定管道後即可取號。",
     "configured_locked": "憑證已隱藏",

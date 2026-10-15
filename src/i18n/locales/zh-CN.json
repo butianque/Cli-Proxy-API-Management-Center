@@ -2017,7 +2017,7 @@
     "refresh_channels": "刷新渠道",
     "configure_add": "添加渠道",
     "configure_edit": "编辑",
-    "configured_title": "已配置渠道",
+    "configured_title": "渠道池",
     "configured_empty": "尚未配置渠道",
     "configured_empty_desc": "添加并配置渠道后即可取号。",
     "configured_locked": "凭据已隐藏",

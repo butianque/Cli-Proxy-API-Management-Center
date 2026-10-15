@@ -2013,7 +2013,7 @@
     "refresh_channels": "Обновить каналы",
     "configure_add": "Добавить канал",
     "configure_edit": "Изменить",
-    "configured_title": "Настроенные каналы",
+    "configured_title": "Пул каналов",
     "configured_empty": "Каналы не настроены",
     "configured_empty_desc": "Добавьте и настройте канал, чтобы получать номера.",
     "configured_locked": "Данные скрыты",

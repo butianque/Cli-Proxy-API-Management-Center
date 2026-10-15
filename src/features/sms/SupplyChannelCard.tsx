@@ -1,7 +1,8 @@
 /**
  * 邮箱来源卡：邮箱来源的列表 + 编辑弹窗。
  *
- * 表格每行显示：名称 | 服务类型 | 类别 | 连接方式 | 状态 | 启用开关。
+ * 版面与手机号页对齐：同一条页头操作行 + 同一套卡片节奏；列表用与「渠道池」
+ * 同形的行式（状态点 + 名称 + 状态标签 + 元信息 + 编辑/删除），不再用表格。
  * 后端一条来源仍可同时带手机号与邮箱块；本卡只列出邮箱来源，编辑器也只改邮箱块
  * （手机号的凭据走密钥库，由 `PhoneSupplyView` 负责）。
  */
@@ -11,14 +12,6 @@ import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Notice } from '@/components/ui/Notice';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/Table';
 import {
   IconAlertTriangle,
   IconPencil,
@@ -132,26 +125,9 @@ function naturesLabel(natures: SupplyNature[], t: (key: string) => string): stri
   return natures.map((n) => t(NATURE_LABEL[n])).join(' + ') || '—';
 }
 
-/** Summarize which kinds a channel serves. */
-function kindsLabel(channel: SupplyChannel, t: (key: string) => string): string {
-  const parts: string[] = [];
-  if (channel.phone) parts.push(t('sms_service.tab_phone'));
-  if (channel.email) parts.push(t('sms_service.tab_email'));
-  return parts.join(' + ') || '—';
-}
-
-/** All natures across all kind blocks. */
-function allNaturesOf(channel: SupplyChannel): SupplyNature[] {
-  const set = new Set<SupplyNature>();
-  for (const kc of [channel.phone, channel.email]) {
-    if (kc) kc.natures.forEach((n) => set.add(n));
-  }
-  return [...set];
-}
-
-/** Is the channel fully enabled (at least one kind block is enabled)? */
+/** Is the email block enabled? This card lists email sources only. */
 function isEnabled(channel: SupplyChannel): boolean {
-  return (channel.phone?.enabled ?? false) || (channel.email?.enabled ?? false);
+  return channel.email?.enabled ?? false;
 }
 
 export function SupplyChannelCard() {
@@ -277,86 +253,83 @@ export function SupplyChannelCard() {
   };
 
   return (
-    <Card
-      title={
-        <span className={styles.cardTitle}>
-          <IconPlug size={17} />
-          {t('sms_service.source_title')}
-        </span>
-      }
-      extra={
+    <div className={styles.page}>
+      <header className={styles.pageHeader}>
         <div className={styles.headerActions}>
           <button type="button" className={styles.actionPill} onClick={() => openEditor(null)}>
             <IconPlus size={14} />
             {t('sms_service.config_add_email')}
           </button>
         </div>
-      }
-    >
-      {loadError && (
-        <Notice tone="danger" role="alert" icon={<IconAlertTriangle size={15} />}>
-          {t('sms_service.source_error_load', { message: loadError })}
-        </Notice>
-      )}
-      {actionError && (
-        <Notice tone="danger" role="alert" icon={<IconAlertTriangle size={15} />}>
-          {t('sms_service.source_error_change', { message: actionError })}
-        </Notice>
-      )}
+      </header>
 
-      {!loaded ? null : channels.length === 0 ? (
-        <EmptyState
-          title={t('sms_service.source_empty')}
-          description={t('sms_service.source_empty_desc')}
-        />
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('sms_service.source_col_name')}</TableHead>
-              <TableHead>{t('sms_service.source_col_service_type')}</TableHead>
-              <TableHead>{t('sms_service.source_col_category')}</TableHead>
-              <TableHead>{t('sms_service.source_col_connection')}</TableHead>
-              <TableHead>{t('sms_service.source_col_state')}</TableHead>
-              <TableHead>{t('sms_service.source_col_enabled')}</TableHead>
-              <TableHead alignRight aria-label={t('sms_service.col_actions')} />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {channels.map((channel) => (
-              <TableRow key={channel.id}>
-                <TableCell>
-                  <span className={styles.channelName}>{channel.label}</span>
-                </TableCell>
-                <TableCell>{kindsLabel(channel, t)}</TableCell>
-                <TableCell>
-                  <span className={`${styles.tag} ${styles.tagMuted}`}>
-                    {t(CATEGORY_LABEL[channel.category] ?? 'sms_service.category_third_party')}
-                  </span>
-                </TableCell>
-                <TableCell>{naturesLabel(allNaturesOf(channel), t)}</TableCell>
-                <TableCell>
-                  <span className={`${styles.tag} ${styles.tagMuted}`}>
-                    {t('sms_service.source_state_untested')}
-                  </span>
-                </TableCell>
-                <TableCell>
+      <Card
+        title={
+          <span className={styles.cardTitle}>
+            <IconPlug size={17} />
+            {t('sms_service.source_title')}
+          </span>
+        }
+      >
+        {loadError && (
+          <Notice tone="danger" role="alert" icon={<IconAlertTriangle size={15} />}>
+            {t('sms_service.source_error_load', { message: loadError })}
+          </Notice>
+        )}
+        {actionError && (
+          <Notice tone="danger" role="alert" icon={<IconAlertTriangle size={15} />}>
+            {t('sms_service.source_error_change', { message: actionError })}
+          </Notice>
+        )}
+
+        {!loaded ? null : channels.length === 0 ? (
+          <EmptyState
+            title={t('sms_service.source_empty')}
+            description={t('sms_service.source_empty_desc')}
+          />
+        ) : (
+          <div className={styles.platformRows}>
+            {channels.map((channel) => {
+              const enabled = isEnabled(channel);
+              return (
+                <div key={channel.id} className={styles.platformRow}>
                   <span
-                    className={`${styles.tag} ${isEnabled(channel) ? styles.tagGood : styles.tagMuted}`}
-                  >
-                    {isEnabled(channel)
-                      ? t('sms_service.source_state_on')
-                      : t('sms_service.source_state_off')}
+                    className={`${styles.healthDot} ${
+                      enabled ? styles.healthGood : styles.healthCritical
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span className={styles.platformRowText}>
+                    <span className={styles.platformRowName}>
+                      {channel.label}
+                      <span
+                        className={`${styles.tag} ${enabled ? styles.tagGood : styles.tagMuted}`}
+                      >
+                        {enabled
+                          ? t('sms_service.source_state_on')
+                          : t('sms_service.source_state_off')}
+                      </span>
+                    </span>
+                    <span className={styles.platformRowMeta}>
+                      <span className={`${styles.tag} ${styles.tagMuted}`}>
+                        {t(CATEGORY_LABEL[channel.category] ?? 'sms_service.category_third_party')}
+                      </span>
+                      <span className={styles.ledgerDot} aria-hidden="true" />
+                      <span>{naturesLabel(channel.email?.natures ?? [], t)}</span>
+                      <span className={styles.ledgerDot} aria-hidden="true" />
+                      <span className={styles.metaMuted}>
+                        {t('sms_service.source_state_untested')}
+                      </span>
+                    </span>
                   </span>
-                </TableCell>
-                <TableCell>
-                  <div className={styles.channelActions}>
+                  <div className={styles.platformRowActions}>
                     <button
                       type="button"
                       className={styles.actionPill}
                       onClick={() => openEditor(channel)}
                     >
                       <IconPencil size={14} />
+                      {t('sms_service.configure_edit')}
                     </button>
                     <button
                       type="button"
@@ -369,24 +342,24 @@ export function SupplyChannelCard() {
                       <IconTrash2 size={14} />
                     </button>
                   </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
-      <ChannelEditorModal
-        draft={draft}
-        natures={natures}
-        error={draftError}
-        saving={saving}
-        onClose={() => setDraft(null)}
-        onSave={() => void saveDraft()}
-        onDraftChange={(next) => setDraft(next)}
-        onNatureToggle={toggleNature}
-        onConnectionChange={updateConnection}
-      />
-    </Card>
+        <ChannelEditorModal
+          draft={draft}
+          natures={natures}
+          error={draftError}
+          saving={saving}
+          onClose={() => setDraft(null)}
+          onSave={() => void saveDraft()}
+          onDraftChange={(next) => setDraft(next)}
+          onNatureToggle={toggleNature}
+          onConnectionChange={updateConnection}
+        />
+      </Card>
+    </div>
   );
 }
