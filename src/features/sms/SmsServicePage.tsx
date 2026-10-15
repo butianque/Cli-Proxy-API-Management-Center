@@ -4,13 +4,12 @@
  * 号码池是统一台账（手机号 + 邮箱同一张 ledger，按 kind 过滤），进来就看到。
  * 右上角「⚙ 配置」切到渠道配置页（来源登记），左上角「← 返回」切回。
  *
- * 手机号的凭据弹窗（ChannelConfigModal）在配置页里打开，因为凭据属于配置。
+ * 配置页按身份类别展示对应的渠道编辑器；手机号和邮箱使用各自允许的连接方式。
  */
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { IconChevronLeft, IconSettings } from '@/components/ui/icons';
-import { ChannelConfigModal } from './ChannelConfigModal';
 import { SupplyChannelCard } from './SupplyChannelCard';
 import { SupplyPoolCard } from './SupplyPoolCard';
 import type { SupplyKind } from './types';
@@ -22,7 +21,6 @@ export function SmsServicePage() {
   const { t } = useTranslation();
   const [view, setView] = useState<PageView>('pool');
   const [category, setCategory] = useState<SupplyKind>('phone');
-  const [modalOpen, setModalOpen] = useState(false);
 
   const categories: { id: SupplyKind; label: string }[] = [
     { id: 'phone', label: t('sms_service.tab_phone') },
@@ -34,11 +32,7 @@ export function SmsServicePage() {
       <header className={styles.pageHeader}>
         <div className={styles.headerCopy}>
           {view === 'config' ? (
-            <button
-              type="button"
-              className={styles.ghostAction}
-              onClick={() => setView('pool')}
-            >
+            <button type="button" className={styles.ghostAction} onClick={() => setView('pool')}>
               <IconChevronLeft size={14} />
               {t('sms_service.config_back')}
             </button>
@@ -48,17 +42,11 @@ export function SmsServicePage() {
               <p className={styles.pageSubtitle}>{t('sms_service.subtitle')}</p>
             </>
           )}
-          {view === 'config' && (
-            <h1 className={styles.title}>{t('sms_service.config_title')}</h1>
-          )}
+          {view === 'config' && <h1 className={styles.title}>{t('sms_service.config_title')}</h1>}
         </div>
         {view === 'pool' && (
           <div className={styles.headerActions}>
-            <button
-              type="button"
-              className={styles.ghostAction}
-              onClick={() => setView('config')}
-            >
+            <button type="button" className={styles.ghostAction} onClick={() => setView('config')}>
               <IconSettings size={14} />
               {t('sms_service.config_button')}
             </button>
@@ -66,43 +54,17 @@ export function SmsServicePage() {
         )}
       </header>
 
-      <div className={styles.tabs} role="tablist" aria-label={t('sms_service.tabs_label')}>
-        {categories.map((item) => {
-          const active = item.id === category;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              className={`${styles.tab} ${active ? styles.tabActive : ''}`}
-              onClick={() => setCategory(item.id)}
-            >
-              {item.label}
-            </button>
-          );
-        })}
+      <div key={view} className={styles.viewContent}>
+        {view === 'pool' ? (
+          <SupplyPoolCard />
+        ) : (
+          <>
+            <div key={category} className={styles.panelTransition}>
+              <SupplyChannelCard kind={category} categories={categories} onCategoryChange={setCategory} />
+            </div>
+          </>
+        )}
       </div>
-
-      {view === 'pool' ? (
-        <SupplyPoolCard kind={category} />
-      ) : (
-        <>
-          <SupplyChannelCard
-            onEditCredential={
-              category === 'phone' ? () => setModalOpen(true) : undefined
-            }
-          />
-          {category === 'phone' && (
-            <ChannelConfigModal
-              open={modalOpen}
-              existing={null}
-              onClose={() => setModalOpen(false)}
-              onSaved={() => setModalOpen(false)}
-            />
-          )}
-        </>
-      )}
     </div>
   );
 }

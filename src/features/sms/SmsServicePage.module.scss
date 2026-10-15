@@ -96,6 +96,38 @@
   align-self: flex-start;
 }
 
+.viewContent {
+  animation: sms-view-enter 220ms ease-out;
+}
+
+.panelTransition {
+  animation: sms-panel-enter 180ms ease-out;
+}
+
+@keyframes sms-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sms-view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .tab {
   appearance: none;
   border: none;
@@ -125,6 +157,175 @@
   background: var(--bg-primary);
   color: var(--text-primary);
   box-shadow: var(--shadow);
+}
+
+/* 渠道编辑器：沿用本页的间距、边框和颜色，不引入新的 UI 组件。 */
+:global(.sms-editor-body) {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+}
+
+:global(.sms-editor-grid) {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-md;
+}
+
+.cardHeading {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  flex-wrap: wrap;
+}
+
+:global(.sms-category-field) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+:global(.sms-category-select) {
+  position: relative;
+  display: block;
+  border-radius: $radius-md;
+  isolation: isolate;
+
+  &::before {
+    position: absolute;
+    z-index: -1;
+    inset: -5px;
+    border-radius: inherit;
+    background: radial-gradient(
+      circle at var(--pointer-x) var(--pointer-y),
+      color-mix(in srgb, var(--primary-color) 22%, transparent),
+      transparent 62%
+    );
+    box-shadow: 0 5px 18px color-mix(in srgb, var(--primary-color) 18%, transparent);
+    content: '';
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity $transition-fast;
+  }
+
+  &:hover::before {
+    opacity: 1;
+  }
+}
+
+:global(.sms-field-label) {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+:global(.sms-editor-kind-tabs) {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+:global(.sms-editor-kind-tabs button) {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+:global(.sms-editor-kind-tabs button.active) {
+  border-bottom-color: var(--primary-color);
+  color: var(--text-primary);
+}
+
+:global(.sms-editor-methods) {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-md;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+}
+
+:global(.sms-editor-method-cards) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: $spacing-sm;
+}
+
+:global(.sms-editor-method-card) {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color $transition-fast, background-color $transition-fast, box-shadow $transition-fast;
+
+  &:has(input:checked) {
+    border-color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 8%, var(--bg-primary));
+    box-shadow: var(--shadow);
+    color: var(--text-primary);
+  }
+
+  &:focus-within {
+    outline: 2px solid var(--success-color);
+    outline-offset: 1px;
+  }
+
+  input {
+    accent-color: var(--primary-color);
+    inline-size: 16px;
+    block-size: 16px;
+    margin: 0;
+  }
+}
+
+:global(.sms-editor-label) {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+:global(.sms-editor-connection) {
+  display: grid;
+  gap: $spacing-sm;
+  margin-top: $spacing-sm;
+  padding: $spacing-md;
+  border-left: 2px solid var(--primary-color);
+  background: color-mix(in srgb, var(--bg-primary) 60%, transparent);
+}
+
+:global(.sms-editor-footer) {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-sm;
+}
+
+@media (max-width: 640px) {
+  :global(.sms-editor-grid) {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viewContent,
+  .panelTransition,
+  .tab,
+  :global(.sms-editor-kind-tabs button) {
+    animation: none;
+    transition: none;
+  }
 }
 
 .metaMuted {

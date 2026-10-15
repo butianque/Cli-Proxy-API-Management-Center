@@ -30,7 +30,7 @@ import styles from './SmsServicePage.module.scss';
 
 export interface SupplyPoolCardProps {
   /** 这一类身份（手机号 / 邮箱）。 */
-  kind: SupplyKind;
+  kind?: SupplyKind;
 }
 
 /** 池里一行状态的着色：已注册=好、待用=中性、失败=警告。 */
@@ -49,7 +49,9 @@ export function SupplyPoolCard({ kind }: SupplyPoolCardProps) {
 
   const load = useCallback(async () => {
     try {
-      setEntries(toPool(await supplyApi.listPool(kind)));
+      const kinds = kind ? [kind] : (['phone', 'email'] as const);
+      const records = (await Promise.all(kinds.map((item) => supplyApi.listPool(item)))).flat();
+      setEntries(toPool(records));
       setLoadError('');
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error));
@@ -94,9 +96,7 @@ export function SupplyPoolCard({ kind }: SupplyPoolCardProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>
-                {t(kind === 'phone' ? 'sms_service.pool_col_number' : 'sms_service.pool_col_address')}
-              </TableHead>
+              <TableHead>{t('sms_service.pool_col_identity')}</TableHead>
               <TableHead>{t('sms_service.pool_col_source')}</TableHead>
               <TableHead>{t('sms_service.pool_col_account')}</TableHead>
               <TableHead>{t('sms_service.pool_col_state')}</TableHead>

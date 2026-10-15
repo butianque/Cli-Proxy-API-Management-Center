@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
 import { toNatureOptions, toPool, toSupplyChannels } from '../src/features/sms/smsMapping';
 import type { SupplyChannelWire, SupplyLedgerWire } from '../src/services/api/supply';
+import { SUPPLY_POOL_BASE } from '../src/services/api/supply';
 
 const read = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8');
 
@@ -20,6 +21,11 @@ const channel = (over: Partial<SupplyChannelWire> = {}): SupplyChannelWire => ({
 });
 
 describe('a source can serve one or both kinds with multiple natures', () => {
+  test('the supply pool uses the pool endpoint', () => {
+    expect(SUPPLY_POOL_BASE).toBe('/supply/pool');
+    expect(read('services/api/supply.ts')).not.toContain('/supply/ledger');
+  });
+
   test('a channel with email only maps correctly', () => {
     const mapped = toSupplyChannels([channel()])[0];
     expect(mapped.label).toBe('Ormnes');
@@ -129,5 +135,23 @@ describe('the source surface keeps backend field names out of the components', (
     const source = read('features/sms/SupplyChannelCard.tsx');
     expect(source).toContain('toNatureOptions(');
     expect(source).not.toMatch(/\bnatures\s*=\s*\[\s*'api'/);
+  });
+
+  test('phone and email share one editor with their supported connection methods', () => {
+    const editor = read('features/sms/ChannelEditorModal.tsx');
+    expect(editor).toContain("['phone', 'email']");
+    expect(editor).toContain("item.kinds.includes(editorKind)");
+    expect(editor).toContain("nature === 'imap'");
+    expect(editor).toContain("nature !== 'web'");
+    expect(read('features/sms/SupplyChannelCard.tsx')).toContain('ChannelEditorModal');
+  });
+
+  test('the shared editor description is localized and phone credentials are not a separate label', async () => {
+    for (const locale of ['en', 'zh-CN', 'zh-TW', 'ru', 'ko', 'vi']) {
+      const messages = await Bun.file(`src/i18n/locales/${locale}.json`).json();
+      expect(messages.sms_service.config_editor_desc).toBeString();
+      expect(messages.sms_service.config_editor_desc.trim()).not.toBe('');
+      expect(messages.sms_service.phone_credential).toBeUndefined();
+    }
   });
 });

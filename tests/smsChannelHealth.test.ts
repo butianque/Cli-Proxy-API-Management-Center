@@ -88,63 +88,11 @@ describe('the over-ceiling count and the dot share one predicate', () => {
     }
   });
 
-  test('the page uses that predicate and hides the chip when no ceiling is set', () => {
-    // The phone category view owns the channel table now; the page is only the
-    // category container. The predicate contract follows the logic.
-    const page = readFileSync(
-      new URL('../src/features/sms/PhoneSupplyView.tsx', import.meta.url),
-      'utf8'
-    );
-    expect(page).toContain('isOverCeiling(');
-    expect(page).not.toContain('channel.priceCny > ');
-    expect(page).toContain('view.ceilingCny > 0 ?');
-  });
-
-  test('an unloaded snapshot is never rendered as ¥0.00', () => {
-    // The guardrail card read `¥0.00` from the empty view before the backend
-    // answered, i.e. it invented a real spend and a real cap. Every money and
-    // count reading now goes through the `loaded` flag, and the good/warn colour
-    // is only applied when a cumulative cap actually exists.
-    const page = readFileSync(
-      new URL('../src/features/sms/PhoneSupplyView.tsx', import.meta.url),
-      'utf8'
-    );
-    expect(page).toContain("view.loaded ? formatCny(view.spentCny) : '—'");
-    expect(page).toContain("spent: view.loaded ? formatCny(view.spentCny) : '—'");
-    expect(page).toContain('const capConfigured = view.loaded && view.maxTotalCny > 0;');
-    expect(page).not.toContain('view.spentCny >= view.maxTotalCny ?');
-  });
-
   test('the empty view is unloaded, not a zero reading', () => {
     expect(EMPTY_SMS_VIEW.loaded).toBe(false);
     expect(toStatus({ status: 'ok' }, '号段').loaded).toBe(true);
   });
 
-  test('the custom platform endpoint the operator typed is actually submitted', () => {
-    // The field was editable but `handleSave` always sent `endpoint: ''`, so the
-    // control could not change anything while the backend does accept the field.
-    const modal = readFileSync(
-      new URL('../src/features/sms/ChannelConfigModal.tsx', import.meta.url),
-      'utf8'
-    );
-    expect(modal).toContain("endpoint: endpointLocked ? '' : endpoint.trim()");
-    // The built-in platform's address stays read-only, so it must not be sent.
-    expect(modal).toContain('endpointLocked ? (');
-  });
-
-  test('the channel modal has one entry per state, not three duplicates', () => {
-    // The header "channel config" button, the card's "add channel" action and the
-    // row's "edit" action all opened the same modal. The card action was removed:
-    // the empty state carries the "add" action and a configured row carries "edit".
-    const page = readFileSync(
-      new URL('../src/features/sms/PhoneSupplyView.tsx', import.meta.url),
-      'utf8'
-    );
-    expect(page).not.toContain('sms_service.configure_channels');
-    // Two entries remain: the empty-state add and the configured-row edit.
-    expect(page.match(/sms_service\.configure_add/g)?.length).toBe(1);
-    expect(page.match(/sms_service\.configure_edit/g)?.length).toBe(1);
-  });
 });
 
 describe('the ledger never invents a timestamp', () => {
@@ -231,8 +179,8 @@ describe('the page carries both supply categories and two views', () => {
   test('the container switches between pool and config views', () => {
     const page = read('SmsServicePage.tsx');
     // Category tabs are real controls.
-    expect(page).toContain('tab_phone');
-    expect(page).toContain('tab_email');
+    expect(read('SupplyChannelCard.tsx')).toContain('tab_phone');
+    expect(read('SupplyChannelCard.tsx')).toContain('tab_email');
     // Two views: pool (default) and config (overlay).
     expect(page).toContain("useState<PageView>('pool')");
     expect(page).toContain('<SupplyPoolCard');
@@ -241,16 +189,12 @@ describe('the page carries both supply categories and two views', () => {
     expect(page).not.toContain('smsApi.getStatus');
   });
 
-  test('the phone credential modal is reachable from the config view', () => {
+  test('the selected category owns the channel editor in the config view', () => {
     const page = read('SmsServicePage.tsx');
-    expect(page).toContain('<ChannelConfigModal');
-    expect(page.match(/setModalOpen\(true\)/g)?.length).toBe(1);
+    expect(page).not.toContain('<ChannelConfigModal');
+    expect(page).toContain('<SupplyChannelCard kind={category} categories={categories}');
+    expect(read('SupplyChannelCard.tsx')).toContain('sms_service.tab_phone');
+    expect(read('SupplyChannelCard.tsx')).toContain('sms_service.tab_email');
   });
 
-  test('the phone view still owns its data load and header actions', () => {
-    const phone = read('PhoneSupplyView.tsx');
-    expect(phone).toContain('smsApi.getStatus');
-    expect(phone).toContain('export function PhoneSupplyView');
-    expect(phone).toContain('smsApi.refreshChannels()');
-  });
 });

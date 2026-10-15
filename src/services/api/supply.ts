@@ -8,7 +8,7 @@
 import { apiClient } from './client';
 
 export const SUPPLY_CHANNELS_BASE = '/supply/channels';
-export const SUPPLY_LEDGER_BASE = '/supply/ledger';
+export const SUPPLY_POOL_BASE = '/supply/pool';
 
 export type SupplyKindWire = 'phone' | 'email';
 export type SupplyNatureWire = 'api' | 'imap' | 'web';
@@ -78,7 +78,7 @@ export interface SupplyChannelInput {
   email?: SupplyKindConfigInput;
 }
 
-/** 池里的一条身份（基座 `/supply/ledger` 的一行）。 */
+/** 池里的一条身份（基座 `/supply/pool` 的一行）。 */
 export interface SupplyLedgerWire {
   kind: SupplyKindWire;
   address: string;
@@ -130,7 +130,7 @@ export const supplyApi = {
 
   async listPool(kind: SupplyKindWire): Promise<SupplyLedgerWire[]> {
     const result = await apiClient.get<{ records?: SupplyLedgerWire[] }>(
-      `${SUPPLY_LEDGER_BASE}?kind=${kind}`
+      `${SUPPLY_POOL_BASE}?kind=${kind}`
     );
     return Array.isArray(result?.records) ? result.records : [];
   },
