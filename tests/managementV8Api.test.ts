@@ -10,6 +10,12 @@ import { logsApi } from '@/services/api/logs';
 import { versionApi } from '@/services/api/version';
 import { vertexApi } from '@/services/api/vertex';
 import { apiKeyUsageApi } from '@/services/api/apiKeyUsage';
+import {
+  accountsApi,
+  normalizeAccountsResponse,
+  normalizeAccountView,
+} from '@/services/api/accounts';
+import type { AccountFailureClass, AccountQuotaState } from '@/types/accounts';
 
 const spies: Array<{ mockRestore(): void }> = [];
 const mock = (
@@ -321,5 +327,268 @@ describe('v8 management API contracts', () => {
     expect(raw.mock.calls.at(-1)?.[0]).toBe('/config.yaml');
     await configFileApi.saveConfigYaml('config: yaml');
     expect(put.mock.calls.at(-1)?.slice(0, 2)).toEqual(['/config.yaml', 'config: yaml']);
+  });
+});
+
+// The aggregate account view is one row per credential: identity, pool state,
+// routing policy, quota snapshot and request heat. Its contract is
+// internal/api/handlers/management/account_view.go, and its two non-negotiable
+// rules are that an undeterminable value is omitted (never 0/false) and that a
+// read never probes upstream.
+describe('account view API (GET /v8/management/accounts)', () => {
+  const ACCOUNT_VIEW_FIXTURE = {
+    provider: 'claude',
+    auth_index: 'claude:index-1',
+    auth_id: 'claude-primary.json',
+    account_id: 'operator@example.test',
+    display_name: 'Primary account',
+    source_kind: 'email',
+    parsed: true,
+    enabled: true,
+    auth_state: 'active',
+    eligible: true,
+    manually_disabled: false,
+    cooldown_until: '2026-10-15T00:00:00Z',
+    failure_class: 'quota',
+    failure_reason: 'quota exhausted',
+    failure_retryable: false,
+    plan_id: 'pro',
+    channel: 'start-plan',
+    policy: 'start-plan-first',
+    quota_state: 'exhausted',
+    fetched_at: '2026-10-14T23:00:00Z',
+    quota: [
+      {
+        group: 'Claude',
+        model: '',
+        window: 'hourly',
+        remaining_fraction: 0,
+        remaining: 0,
+        total: 40,
+        reset_at: '2026-10-15T01:00:00Z',
+        description: 'hourly window',
+      },
+      { window: 'plan', remaining_fraction: 0.5 },
+    ],
+    request_count: 12,
+    success_count: 9,
+    failure_count: 3,
+    heatmap: [
+      { bucket: '2026-10-14T23:00:00Z', success: 4, failed: 0, success_rate: 1 },
+      { bucket: '2026-10-15T00:00:00Z', success: 0, failed: 0, success_rate: null },
+    ],
+  };
+
+  test('reads the aggregate route without repeating the management prefix', async () => {
+    const get = mock('get', { status: 'ok', accounts: [], counts: { total: 0 } });
+    await accountsApi.list();
+    expect(get).toHaveBeenLastCalledWith('/accounts', undefined);
+    await accountsApi.list({ provider: 'claude' });
+    expect(get).toHaveBeenLastCalledWith('/accounts', { params: { provider: 'claude' } });
+    await accountsApi.list({ kind: 'phone' });
+    expect(get).toHaveBeenLastCalledWith('/accounts', { params: { kind: 'phone' } });
+    await accountsApi.list({ provider: ' claude ', kind: 'email' });
+    expect(get).toHaveBeenLastCalledWith('/accounts', {
+      params: { provider: 'claude', kind: 'email' },
+    });
+    await accountsApi.list({ provider: '   ' });
+    expect(get).toHaveBeenLastCalledWith('/accounts', undefined);
+  });
+
+  test('normalizes identity, pool state, quota buckets, heatmap and counts', async () => {
+    mock('get', {
+      status: 'ok',
+      accounts: [ACCOUNT_VIEW_FIXTURE],
+      counts: { total: 1, by_provider: { claude: 1 }, by_state: { active: 1 } },
+    });
+    const result = await accountsApi.list({ provider: 'claude', kind: 'email' });
+    expect(result.status).toBe('ok');
+    expect(result.counts).toEqual({
+      total: 1,
+      byProvider: { claude: 1 },
+      byState: { active: 1 },
+    });
+    const [account] = result.accounts;
+    expect(account).toEqual({
+      provider: 'claude',
+      authIndex: 'claude:index-1',
+      authId: 'claude-primary.json',
+      accountId: 'operator@example.test',
+      displayName: 'Primary account',
+      sourceKind: 'email',
+      parsed: true,
+      enabled: true,
+      authState: 'active',
+      eligible: true,
+      manuallyDisabled: false,
+      cooldownUntil: '2026-10-15T00:00:00Z',
+      failureClass: 'quota',
+      failureReason: 'quota exhausted',
+      failureRetryable: false,
+      planId: 'pro',
+      channel: 'start-plan',
+      policy: 'start-plan-first',
+      quotaState: 'exhausted',
+      fetchedAt: '2026-10-14T23:00:00Z',
+      quota: [
+        {
+          group: 'Claude',
+          window: 'hourly',
+          remainingFraction: 0,
+          remaining: 0,
+          total: 40,
+          resetAt: '2026-10-15T01:00:00Z',
+          description: 'hourly window',
+        },
+        { window: 'plan', remainingFraction: 0.5 },
+      ],
+      requestCount: 12,
+      successCount: 9,
+      failureCount: 3,
+      heatmap: [
+        { bucket: '2026-10-14T23:00:00Z', success: 4, failed: 0, successRate: 1 },
+        { bucket: '2026-10-15T00:00:00Z', success: 0, failed: 0 },
+      ],
+    });
+    // auth_id is the credential's file identity, so it is the key the existing
+    // per-file routes (status / fields / refresh / delete) accept.
+    expect(account.authId).toBe(ACCOUNT_VIEW_FIXTURE.auth_id);
+    // An empty model is "no model scope" and the backend omits it too.
+    expect('model' in account.quota[0]).toBe(false);
+  });
+
+  test('unwired and null fields stay absent instead of being faked', () => {
+    const absent = normalizeAccountView(ACCOUNT_VIEW_FIXTURE);
+    // F1 never assigns site / supports_refresh / entitlement (F3 wires them).
+    expect('site' in absent).toBe(false);
+    expect('supportsRefresh' in absent).toBe(false);
+    expect('entitlement' in absent).toBe(false);
+
+    const nulled = normalizeAccountView({
+      site: null,
+      supports_refresh: null,
+      entitlement: null,
+      account_id: null,
+      policy: null,
+      source_kind: null,
+    });
+    expect('site' in nulled).toBe(false);
+    expect('supportsRefresh' in nulled).toBe(false);
+    expect('entitlement' in nulled).toBe(false);
+    expect('accountId' in nulled).toBe(false);
+    expect('policy' in nulled).toBe(false);
+    expect('sourceKind' in nulled).toBe(false);
+
+    // A real value still passes through once the backend provides one.
+    const wired = normalizeAccountView({
+      site: 'ap-southeast-1',
+      supports_refresh: true,
+      entitlement: 'ent-1',
+    });
+    expect(wired).toMatchObject({
+      site: 'ap-southeast-1',
+      supportsRefresh: true,
+      entitlement: 'ent-1',
+    });
+  });
+
+  test('unreported quota and heat values stay absent while real zeros survive', () => {
+    const account = normalizeAccountView({
+      provider: 'codex',
+      auth_index: 'codex:index-1',
+      auth_id: 'codex-primary.json',
+      display_name: 'Codex account',
+      parsed: true,
+      enabled: false,
+      auth_state: 'error',
+      eligible: false,
+      manually_disabled: true,
+      quota_state: 'query-error',
+      quota: [{ remaining_fraction: 1, remaining: 0 }],
+      request_count: 0,
+      success_count: 0,
+      failure_count: 0,
+      heatmap: [{ bucket: '2026-10-15T00:00:00Z', success: 0, failed: 7, success_rate: 0 }],
+    });
+    const [bucket] = account.quota;
+    expect(bucket).toEqual({ remainingFraction: 1, remaining: 0 });
+    expect(Object.keys(bucket)).toEqual(['remainingFraction', 'remaining']);
+    // "all failed" (0) and "no requests" (absent) are different facts.
+    expect(account.heatmap).toEqual([
+      { bucket: '2026-10-15T00:00:00Z', success: 0, failed: 7, successRate: 0 },
+    ]);
+    expect(account.enabled).toBe(false);
+    expect(account.manuallyDisabled).toBe(true);
+    expect(account.quotaState).toBe('query-error');
+    expect(account.quota).toHaveLength(1);
+    expect(normalizeAccountView({ heatmap: null }).heatmap).toEqual([]);
+    expect(normalizeAccountView({}).quota).toEqual([]);
+    // A bucket without remaining_fraction is a contract violation: drop it rather than invent 0.
+    expect(normalizeAccountView({ quota: [{ window: 'plan' }] }).quota).toEqual([]);
+    // An explicit 0 is a real value and must survive.
+    expect(normalizeAccountView({ quota: [{ remaining_fraction: 0 }] }).quota).toEqual([
+      { remainingFraction: 0 },
+    ]);
+  });
+
+  test('quota_state and failure_class keep their source value domains', () => {
+    const quotaStates: AccountQuotaState[] = ['unknown', 'query-error', 'exhausted', 'entitled'];
+    quotaStates.forEach((state) => {
+      expect(normalizeAccountView({ quota_state: state }).quotaState).toBe(state);
+    });
+    const failureClasses: AccountFailureClass[] = [
+      'auth',
+      'quota',
+      'risk',
+      'rate',
+      'network',
+      'request',
+      'upstream',
+    ];
+    failureClasses.forEach((failureClass) => {
+      expect(normalizeAccountView({ failure_class: failureClass }).failureClass).toBe(failureClass);
+    });
+    // Values outside the vocabulary are not guessed: quota_state falls back to
+    // unknown and failure_class stays absent, which is what the backend sends.
+    for (const value of ['probing', 'not-entitled', 'future-state', '', null, 42, {}]) {
+      const account = normalizeAccountView({ quota_state: value, failure_class: value });
+      expect(account.quotaState).toBe('unknown');
+      expect(account.failureClass).toBeUndefined();
+      expect('failureClass' in account).toBe(false);
+    }
+    expect(normalizeAccountView({ auth_state: 'disabled' }).authState).toBe('disabled');
+    expect(normalizeAccountView({ auth_state: 'probing' }).authState).toBe('unknown');
+    expect(normalizeAccountView({ policy: 'future-policy' }).policy).toBeUndefined();
+    expect(normalizeAccountView({ source_kind: 'sms' }).sourceKind).toBeUndefined();
+  });
+
+  test('empty and malformed payloads yield empty lists instead of a crash', () => {
+    // The early-return branch (account_view.go:101) sends counts.total only.
+    const earlyReturn = normalizeAccountsResponse({
+      status: 'ok',
+      accounts: [],
+      counts: { total: 0 },
+    });
+    expect(earlyReturn).toEqual({
+      status: 'ok',
+      accounts: [],
+      counts: { total: 0, byProvider: {}, byState: {} },
+    });
+    for (const payload of [null, undefined, 'nope', 42, [], { accounts: 'nope' }]) {
+      expect(normalizeAccountsResponse(payload)).toEqual({
+        status: '',
+        accounts: [],
+        counts: { total: 0, byProvider: {}, byState: {} },
+      });
+    }
+    const mixed = normalizeAccountsResponse({ accounts: [null, 'nope', 42, {}] });
+    expect(mixed.accounts).toHaveLength(1);
+    expect(mixed.accounts[0]).toMatchObject({
+      authId: '',
+      authState: 'unknown',
+      quotaState: 'unknown',
+      quota: [],
+      heatmap: [],
+    });
   });
 });
