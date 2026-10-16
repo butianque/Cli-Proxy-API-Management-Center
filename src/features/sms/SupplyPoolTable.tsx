@@ -6,8 +6,9 @@
  * **真发一次探活请求**得到，启动开关真写启用位，删除真删。没有一格是占位，也没有
  * 不能改变任何东西的假控件。
  *
- * 表只管「列出 + 改」；添加与编辑的弹窗由调用方给（手机号是平台凭据弹窗，邮箱是
- * 渠道编辑器），因为两者的表单完全不同。
+ * 表只管「列出 + 改」：**添加**的入口由调用方给（页头那一个按钮），编辑的弹窗也由
+ * 调用方给。表里不再放第二个「添加」入口 —— 它在有数据后就消失，只会让「去哪加」
+ * 变成一个本来不存在的问题。
  *
  * 探活是**只读**的：进页面探一次，探不动就如实显示「未检查」，不把「探不了」说成
  * 「连不上」。
@@ -27,13 +28,9 @@ import {
   TableRow,
 } from '@/components/ui/Table';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { IconAlertTriangle, IconPencil, IconPlug, IconPlus, IconTrash2 } from '@/components/ui/icons';
-import {
-  supplyApi,
-  type SupplyChannelInput,
-  type SupplyKindConfigInput,
-  type SupplyConnectionInput,
-} from '@/services/api/supply';
+import { IconAlertTriangle, IconPencil, IconPlug, IconTrash2 } from '@/components/ui/icons';
+import { supplyApi, type SupplyChannelInput } from '@/services/api/supply';
+import { kindBlockInput } from './channelDraft';
 import { toNatureOptions, toProbes, toSupplyChannels, CATEGORY_LABEL, NATURE_LABEL } from './smsMapping';
 import type {
   SupplyChannel,
@@ -49,41 +46,12 @@ export interface SupplyPoolTableProps {
   kind: SupplyKind;
   /** 调用方保存成功后 +1，表据此重新拉一次。 */
   reloadKey?: number;
-  onAdd: () => void;
   onEdit: (channel: SupplyChannel) => void;
   /** 表每次拉到「哪种连接方式能服务哪种身份」后回传，调用方不必再拉一次同一份。 */
   onNatures?: (natures: SupplyNatureOption[]) => void;
 }
 
-/** 一个种类块 → 提交体。原样回填，避免开关顺手改掉别的字段。 */
-function kindBlockInput(
-  channel: SupplyChannel,
-  kind: SupplyKind,
-  enabled: boolean
-): SupplyKindConfigInput | undefined {
-  const block = kind === 'phone' ? channel.phone : channel.email;
-  if (!block) return undefined;
-  const connections: Record<string, SupplyConnectionInput> = {};
-  for (const nature of block.natures) {
-    const conn = block.connections[nature];
-    connections[nature] = {
-      endpoint: conn?.endpoint ?? '',
-      account: conn?.account ?? '',
-      secret: conn?.secret ?? '',
-      usage: conn?.usage ?? '',
-      domain: conn?.domain ?? '',
-    };
-  }
-  return { enabled, natures: [...block.natures], connections };
-}
-
-export function SupplyPoolTable({
-  kind,
-  reloadKey = 0,
-  onAdd,
-  onEdit,
-  onNatures,
-}: SupplyPoolTableProps) {
+export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: SupplyPoolTableProps) {
   const { t } = useTranslation();
   const [channels, setChannels] = useState<SupplyChannel[]>([]);
   const [probes, setProbes] = useState<SupplyProbeResult[]>([]);
@@ -246,14 +214,6 @@ export function SupplyPoolTable({
         <EmptyState
           title={t('sms_service.pool_empty_channels')}
           description={t('sms_service.pool_empty_channels_desc')}
-          action={
-            <button type="button" className={styles.actionPill} onClick={onAdd}>
-              <IconPlus size={14} />
-              {kind === 'phone'
-                ? t('sms_service.config_add_phone')
-                : t('sms_service.config_add_email')}
-            </button>
-          }
         />
       ) : (
         <Table>

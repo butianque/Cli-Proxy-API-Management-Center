@@ -193,13 +193,14 @@ describe('the page carries both supply categories and two views', () => {
     expect(page).toContain('sms_service.tab_email');
     expect(page).toContain('<PhoneSupplyView />');
     expect(page).toContain('<SupplyChannelCard />');
-    // Credentials are opened by the phone view, never by the container.
+    // Credentials are opened by the views, never by the container.
     expect(page).not.toContain('<ChannelConfigModal');
+    expect(page).not.toContain('<ChannelEditorModal');
   });
 
   test('the phone view owns the credential entry, not the platform data panels', () => {
     const phone = read('PhoneSupplyView.tsx');
-    expect(phone).toContain('<ChannelConfigModal');
+    expect(phone).toContain('<ChannelEditorModal');
     expect(phone).toContain('smsApi.getStatus');
     // The platform-side readouts (balance / platform channels / ledger / guardrail /
     // tips) were taken off this page; where they land is still to be decided.
@@ -225,15 +226,28 @@ describe('the page carries both supply categories and two views', () => {
     expect(card).toContain('kind="email"');
     expect(phone).not.toContain('listChannels(');
     expect(card).not.toContain('listChannels(');
-    // The email card keeps its editor, and the editor edits one kind only.
+    // Both kinds open the same editor; the kind arrives as a prop, so neither view
+    // can grow a second editor that only its own category understands.
     expect(card).toContain('ChannelEditorModal');
     expect(card).not.toContain('onCategoryChange');
     expect(card).not.toContain('role="tablist"');
     expect(card).not.toContain('SupplyChannelCardProps');
+    expect(phone).toContain('ChannelEditorModal');
     const editor = read('ChannelEditorModal.tsx');
     expect(editor).not.toContain('role="tablist"');
-    expect(editor).toContain("const editorKind: SupplyKind = 'email'");
+    expect(editor).toContain('kind: SupplyKind;');
     expect(editor).not.toContain("['phone', 'email']");
+  });
+
+  test('the pool table has exactly one add entry, and it lives in the page header', () => {
+    const table = read('SupplyPoolTable.tsx');
+    // The empty state used to carry a second "add channel" button, which disappeared
+    // as soon as the first row existed — so "where do I add one" depended on the data.
+    expect(table).not.toContain('onAdd');
+    expect(table).not.toContain('config_add_phone');
+    expect(table).not.toContain('config_add_email');
+    expect(read('PhoneSupplyView.tsx')).toContain('config_add_phone');
+    expect(read('SupplyChannelCard.tsx')).toContain('config_add_email');
   });
 
   test('the channel pool is a table with the seven columns and a real switch', () => {

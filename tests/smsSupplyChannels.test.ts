@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
 import { toNatureOptions, toPool, toSupplyChannels } from '../src/features/sms/smsMapping';
+import {
+  channelDraftFromChannel,
+  channelDraftToInput,
+  kindBlockInput,
+} from '../src/features/sms/channelDraft';
 import type { SupplyChannelWire, SupplyLedgerWire } from '../src/services/api/supply';
 import { SUPPLY_POOL_BASE } from '../src/services/api/supply';
 
@@ -149,36 +154,101 @@ describe('the source surface keeps backend field names out of the components', (
     const mapping = read('features/sms/smsMapping.ts');
     expect(mapping).toContain('export const NATURE_LABEL');
     expect(mapping).toContain('export const CATEGORY_LABEL');
+    // The list of selectable categories lives next to the labels for the same reason:
+    // "what the table can render" and "what the editor can pick" must not drift.
+    expect(mapping).toContain('export const CATEGORY_OPTIONS');
     for (const component of ['features/sms/SupplyPoolTable.tsx', 'features/sms/ChannelEditorModal.tsx']) {
       const source = read(component);
       expect(source).toContain('from \'./smsMapping\'');
       expect(source).not.toContain('const NATURE_LABEL');
       expect(source).not.toContain('const CATEGORY_LABEL');
+      expect(source).not.toContain('const CATEGORY_OPTIONS');
     }
   });
 
-  test('the editor edits one kind and offers the connection methods that kind supports', () => {
+  test('both categories are edited by the same component, differing only by kind', () => {
     const editor = read('features/sms/ChannelEditorModal.tsx');
-    // No category tabs: the editor edits the email block, so the email page cannot
-    // build a phone block that nothing consumes.
+    // The kind arrives as a prop; there is no second editor and no per-kind fork.
+    expect(editor).toContain('kind: SupplyKind;');
+    expect(editor).not.toContain('const editorKind');
     expect(editor).not.toContain("['phone', 'email']");
-    expect(editor).toContain("const editorKind: SupplyKind = 'email'");
     // The methods offered still come from the backend's per-nature capability list.
-    expect(editor).toContain('item.kinds.includes(editorKind)');
+    expect(editor).toContain('item.kinds.includes(kind)');
     expect(editor).toContain("nature === 'imap'");
     expect(editor).toContain("nature !== 'web'");
+    // Both views open it.
     expect(read('features/sms/SupplyChannelCard.tsx')).toContain('ChannelEditorModal');
+    expect(read('features/sms/PhoneSupplyView.tsx')).toContain('ChannelEditorModal');
   });
 
-  test('the shared editor description is localized and phone credentials are not a separate label', async () => {
+  test('the editor sections are localized and the phone credential is not a separate label', async () => {
     for (const locale of ['en', 'zh-CN', 'zh-TW', 'ru', 'ko', 'vi']) {
       const messages = await Bun.file(`src/i18n/locales/${locale}.json`).json();
-      expect(messages.sms_service.config_editor_desc).toBeString();
-      expect(messages.sms_service.config_editor_desc.trim()).not.toBe('');
+      for (const key of ['config_step_identity', 'config_step_natures', 'config_step_connection']) {
+        expect(messages.sms_service[key]).toBeString();
+        expect(messages.sms_service[key].trim()).not.toBe('');
+      }
       // The phone card's heading is a product term, so every locale must carry it.
       expect(messages.sms_service.configured_title).toBeString();
       expect(messages.sms_service.configured_title.trim()).not.toBe('');
       expect(messages.sms_service.phone_credential).toBeUndefined();
     }
+  });
+});
+
+describe('a draft submits the whole channel, never half of it', () => {
+  // The backend replaces the whole channel on save, so a submit that carries only the
+  // kind being edited silently deletes the other one.
+  const both = (over: Partial<SupplyChannelWire> = {}) =>
+    toSupplyChannels([
+      channel({
+        phone: {
+          enabled: true,
+          natures: ['api', 'web'],
+          connections: { api: { secret: 'hz-key' }, web: { secret: 'web-key' } },
+        },
+        ...over,
+      }),
+    ])[0];
+
+  test('editing one kind carries the other kind back unchanged', () => {
+    const draft = channelDraftFromChannel(both());
+    draft.label = 'Renamed';
+    const input = channelDraftToInput(draft);
+    expect(input.label).toBe('Renamed');
+    expect(input.phone!.natures).toEqual(['api', 'web']);
+    expect(input.phone!.connections.api!.secret).toBe('hz-key');
+    expect(input.email!.connections.imap!.secret).toBe('imap-pass');
+    expect(input.email!.connections.imap!.domain).toBe('ormnes.com');
+  });
+
+  test('a kind with no access method selected is omitted, not sent as an empty shell', () => {
+    const input = channelDraftToInput(channelDraftFromChannel(toSupplyChannels([channel()])[0]));
+    expect(input.phone).toBeUndefined();
+    expect(input.email).toBeDefined();
+  });
+
+  test('the enable switch keeps the other kind and rewrites only its own flag', () => {
+    const mapped = both();
+    const input = kindBlockInput(mapped, 'phone', false);
+    expect(input!.enabled).toBe(false);
+    expect(input!.natures).toEqual(['api', 'web']);
+    expect(input!.connections.api!.secret).toBe('hz-key');
+    // The email block is untouched by the phone switch.
+    expect(mapped.email!.connections.imap!.secret).toBe('imap-pass');
+  });
+
+  test('a disabled block survives an edit round-trip instead of being switched on', () => {
+    const mapped = toSupplyChannels([
+      channel({ email: { enabled: false, natures: ['imap'], connections: { imap: { account: 'me@qq.com' } } } }),
+    ])[0];
+    expect(channelDraftToInput(channelDraftFromChannel(mapped)).email!.enabled).toBe(false);
+    expect(kindBlockInput(mapped, 'email', mapped.email!.enabled)!.enabled).toBe(false);
+  });
+
+  test('a blank field is trimmed, never sent as whitespace', () => {
+    const draft = channelDraftFromChannel(both());
+    draft.email.connections.imap!.account = '  me@qq.com  ';
+    expect(channelDraftToInput(draft).email!.connections.imap!.account).toBe('me@qq.com');
   });
 });

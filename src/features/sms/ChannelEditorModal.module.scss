@@ -1,0 +1,338 @@
+/* ============================================================
+ * 渠道编辑器（手机号与邮箱共用同一个弹窗）。
+ *
+ * 层级只有三层，且用间距与边框说清楚，不靠颜色堆叠：
+ *   段（section）→ 连接块（block）→ 字段（field）
+ *
+ * 颜色只承担状态：主色 = 选中 / 强调，警示色 = 出错，成功色 = 已保存。
+ * ============================================================ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- 段 ---------- */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding-top: $spacing-md;
+  border-top: 1px solid var(--border-color);
+
+  &:first-child {
+    padding-top: 0;
+    border-top: none;
+  }
+}
+
+.sectionLabel {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+/* ---------- 字段 ---------- */
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-md;
+  align-items: start;
+}
+
+/* `Select` 原语不带标签，这里补一个与 `Input` 的 label 同规格的行。 */
+.selectField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fieldLabel {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.fieldNote {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fieldNoteWarn {
+  color: var(--danger-color, #d9534f);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/*
+ * 只读事实（内置平台固定地址）：不是「填不了的空框」，所以不画成输入框，
+ * 但占同一格高度，保证与旁边的输入框对齐。
+ */
+.staticField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--bg-secondary) 45%, transparent);
+}
+
+.staticLabel {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.staticValue {
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.staticNote {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* ---------- 平台（仅手机号） ---------- */
+
+.platformList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: $spacing-sm;
+}
+
+.platformCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color $transition-fast, background-color $transition-fast,
+    box-shadow $transition-fast;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--primary-color) 45%, var(--border-color));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+}
+
+.platformCardActive {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--bg-primary));
+  box-shadow: var(--shadow);
+  color: var(--text-primary);
+}
+
+/* 单选标记：不引组件，只用边框画，选中时中心填实。 */
+.platformRadio {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  border: 1.5px solid var(--border-color);
+  border-radius: 50%;
+  background: var(--bg-primary);
+
+  .platformCardActive & {
+    border-color: var(--primary-color);
+    box-shadow: inset 0 0 0 4px var(--bg-primary);
+    background: var(--primary-color);
+  }
+}
+
+.platformText {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.platformName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.platformTag {
+  padding: 1px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.platformSummary {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ---------- 接入方式（多选） ---------- */
+
+.natureCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: $spacing-sm;
+}
+
+.natureCard {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color $transition-fast, background-color $transition-fast,
+    box-shadow $transition-fast;
+
+  &:has(input:checked) {
+    border-color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 8%, var(--bg-primary));
+    box-shadow: var(--shadow);
+    color: var(--text-primary);
+  }
+
+  &:focus-within {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+
+  input {
+    margin: 0;
+    inline-size: 16px;
+    block-size: 16px;
+    accent-color: var(--primary-color);
+  }
+}
+
+/* ---------- 连接块 ---------- */
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+  padding: $spacing-md;
+  border: 1px solid var(--border-color);
+  border-left: 2px solid var(--primary-color);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--bg-secondary) 35%, transparent);
+}
+
+.blockTitle {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* 块内的一句引导：说清「这两个框填哪个账号」，不解释实现。 */
+.blockLead {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 块内的验证动作 + 结果：动作在左，结果紧跟，说明落在同一行的末尾。 */
+.blockActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.result {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.resultOk {
+  color: var(--success-color, #2f9e44);
+}
+
+.resultFail {
+  color: var(--danger-color, #d9534f);
+}
+
+.resultWarn {
+  color: var(--warning-color, #b8860b);
+}
+
+.resultNote {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* ---------- 底栏 ---------- */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-md;
+  width: 100%;
+}
+
+.footerStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.footerActions {
+  display: flex;
+  flex: none;
+  gap: $spacing-sm;
+}
+
+.noticeOk {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--success-color, #2f9e44);
+  font-weight: 600;
+}
+
+.noticeWarn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--danger-color, #d9534f);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .fieldGrid {
+    grid-template-columns: 1fr;
+  }
+}

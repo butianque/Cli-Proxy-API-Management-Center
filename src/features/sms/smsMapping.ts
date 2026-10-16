@@ -54,6 +54,14 @@ export const CATEGORY_LABEL: Record<string, string> = {
   'self-built': 'sms_service.category_self_built',
 };
 
+/**
+ * 可选的渠道类别，顺序即选择器里的顺序。
+ *
+ * 与 `CATEGORY_LABEL` 放一起：类别这套词汇只有一个出处，编辑器与表都从这里取，
+ * 免得「表里认识的值」和「能选的值」各写一份、慢慢漂移。
+ */
+export const CATEGORY_OPTIONS = ['third-party', 'self-owned', 'self-built'] as const;
+
 /** 可选平台（L1）。内置平台已知协议、地址固定；自定义平台由使用者自填。 */
 export const SMS_PLATFORMS: SmsPlatform[] = [
   {
@@ -81,6 +89,7 @@ export const EMPTY_SMS_VIEW: SmsStatusView = {
   webPresent: false,
   apiUserHint: '',
   webUserHint: '',
+  provider: '',
   connection: 'unchecked',
   balanceCny: null,
   spentCny: 0,
@@ -136,6 +145,7 @@ export function toStatus(raw: SmsStatusResponse, prefixLabel: string): SmsStatus
     webPresent: raw.web_present === true,
     apiUserHint: raw.api_user_hint ?? '',
     webUserHint: raw.web_user_hint ?? '',
+    provider: raw.provider ?? '',
     connection,
     connectionReason,
     // 只有**凭据相关**读数在锁定时不可读：余额置空（而非沿用旧值）。
