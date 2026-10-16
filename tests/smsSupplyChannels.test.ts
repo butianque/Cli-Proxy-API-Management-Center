@@ -26,6 +26,11 @@ describe('a source can serve one or both kinds with multiple natures', () => {
     expect(read('services/api/supply.ts')).not.toContain('/supply/ledger');
   });
 
+  test('the probe rides the channel route instead of a guessed one', () => {
+    const api = read('services/api/supply.ts');
+    expect(api).toContain('${SUPPLY_CHANNELS_BASE}/probe');
+  });
+
   test('a channel with email only maps correctly', () => {
     const mapped = toSupplyChannels([channel()])[0];
     expect(mapped.label).toBe('Ormnes');
@@ -113,6 +118,7 @@ describe('the source surface keeps backend field names out of the components', (
   const components = [
     'features/sms/SupplyChannelCard.tsx',
     'features/sms/SupplyPoolCard.tsx',
+    'features/sms/SupplyPoolTable.tsx',
   ];
 
   test('the wire field names appear in the mapping module only', () => {
@@ -131,10 +137,24 @@ describe('the source surface keeps backend field names out of the components', (
     expect(source).not.toMatch(/channel\.secret(Value|Plain)/);
   });
 
-  test('the source card takes the natures it offers from the backend response', () => {
-    const source = read('features/sms/SupplyChannelCard.tsx');
-    expect(source).toContain('toNatureOptions(');
-    expect(source).not.toMatch(/\bnatures\s*=\s*\[\s*'api'/);
+  test('the channel table takes the natures it offers from the backend response', () => {
+    const table = read('features/sms/SupplyPoolTable.tsx');
+    expect(table).toContain('toNatureOptions(');
+    expect(table).not.toMatch(/\bnatures\s*=\s*\[\s*'api'/);
+  });
+
+  test('the connection and category labels have one home', () => {
+    // They used to be copied per file. The credential modal, the channel table and
+    // the editor all name the same concepts, so a copy is how the words drift apart.
+    const mapping = read('features/sms/smsMapping.ts');
+    expect(mapping).toContain('export const NATURE_LABEL');
+    expect(mapping).toContain('export const CATEGORY_LABEL');
+    for (const component of ['features/sms/SupplyPoolTable.tsx', 'features/sms/ChannelEditorModal.tsx']) {
+      const source = read(component);
+      expect(source).toContain('from \'./smsMapping\'');
+      expect(source).not.toContain('const NATURE_LABEL');
+      expect(source).not.toContain('const CATEGORY_LABEL');
+    }
   });
 
   test('the editor edits one kind and offers the connection methods that kind supports', () => {

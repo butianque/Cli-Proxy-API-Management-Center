@@ -78,6 +78,25 @@ export interface SupplyChannelInput {
   email?: SupplyKindConfigInput;
 }
 
+/** 一条渠道某一种连接方式的探活结果（基座 `POST /supply/channels/probe` 的一行）。 */
+export interface SupplyProbeNatureWire {
+  /** `online` / `offline` / `unready` / `unsupported`；未知值一律不猜。 */
+  state?: string;
+  /** 一句人类可读的补充（例如余额）；**不含任何凭据值**。 */
+  detail?: string;
+}
+
+/** 一条渠道的探活结果。 */
+export interface SupplyProbeWire {
+  id?: string;
+  natures?: Record<string, SupplyProbeNatureWire>;
+}
+
+export interface SupplyProbeResponse {
+  status?: string;
+  probes?: SupplyProbeWire[];
+}
+
 /** 池里的一条身份（基座 `/supply/pool` 的一行）。 */
 export interface SupplyLedgerWire {
   kind: SupplyKindWire;
@@ -126,6 +145,19 @@ export const supplyApi = {
     } catch (error) {
       return { ok: false, message: errorMessage(error, 'failed to remove the source') };
     }
+  },
+
+  /**
+   * 探活：让基座真的去连一次这些渠道，按连接方式回报状态。
+   *
+   * 只读，不需要主密码。基座还没上线这个接口时调用会抛错，调用方按「未检查」显示 ——
+   * 不把「探不了」渲染成「连不上」。
+   */
+  async probeChannels(ids?: string[]): Promise<SupplyProbeWire[]> {
+    const result = await apiClient.post<SupplyProbeResponse>(`${SUPPLY_CHANNELS_BASE}/probe`, {
+      ids: ids ?? [],
+    });
+    return Array.isArray(result?.probes) ? result.probes : [];
   },
 
   async listPool(kind: SupplyKindWire): Promise<SupplyLedgerWire[]> {

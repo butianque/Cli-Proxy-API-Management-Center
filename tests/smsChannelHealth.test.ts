@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
-import { isOverCeiling, toChannel, toLedger, toStatus, EMPTY_SMS_VIEW } from '../src/features/sms/smsMapping';
+import { EMPTY_SMS_VIEW, isOverCeiling, toChannel, toLedger, toProbes, toStatus } from '../src/features/sms/smsMapping';
 import type { SmsChannelWire, SmsLedgerWire } from '../src/services/api/sms';
 
 /**
@@ -197,18 +197,38 @@ describe('the page carries both supply categories and two views', () => {
     expect(page).not.toContain('<ChannelConfigModal');
   });
 
-  test('the phone view owns the credential entry and the platform channel list', () => {
+  test('the phone view owns the credential entry, not the platform data panels', () => {
     const phone = read('PhoneSupplyView.tsx');
     expect(phone).toContain('<ChannelConfigModal');
     expect(phone).toContain('smsApi.getStatus');
+    // The platform-side readouts (balance / platform channels / ledger / guardrail /
+    // tips) were taken off this page; where they land is still to be decided.
+    expect(phone).not.toContain('sms_service.stat_balance');
+    expect(phone).not.toContain('sms_service.channels_title');
+    expect(phone).not.toContain('sms_service.ledger_title');
+    expect(phone).not.toContain('sms_service.guardrail_title');
+    expect(phone).not.toContain('sms_service.tips_title');
+    expect(phone).not.toContain('sms_service.refresh_channels');
   });
 
-  test('the channel card and its editor stay email-only, with no category switch', () => {
+  test('both kinds list their channels through the same table', () => {
+    const phone = read('PhoneSupplyView.tsx');
     const card = read('SupplyChannelCard.tsx');
+    // Same skeleton: the page wrapper plus a header action row.
+    for (const view of [phone, card]) {
+      expect(view).toContain('styles.pageHeader');
+      expect(view).toContain('styles.headerActions');
+      expect(view).toContain('<SupplyPoolTable');
+    }
+    // One shared table per kind. Neither view lists channels itself.
+    expect(phone).toContain('kind="phone"');
+    expect(card).toContain('kind="email"');
+    expect(phone).not.toContain('listChannels(');
+    expect(card).not.toContain('listChannels(');
+    // The email card keeps its editor, and the editor edits one kind only.
+    expect(card).toContain('ChannelEditorModal');
     expect(card).not.toContain('onCategoryChange');
     expect(card).not.toContain('role="tablist"');
-    // The card lists one kind and the editor edits one kind, so neither takes a kind prop.
-    expect(card).toContain("listChannels('email')");
     expect(card).not.toContain('SupplyChannelCardProps');
     const editor = read('ChannelEditorModal.tsx');
     expect(editor).not.toContain('role="tablist"');
@@ -216,31 +236,37 @@ describe('the page carries both supply categories and two views', () => {
     expect(editor).not.toContain("['phone', 'email']");
   });
 
-  test('the phone header keeps only its action, with nothing said twice', () => {
-    const phone = read('PhoneSupplyView.tsx');
-    // The connection state and the channel count already have a home each (the
-    // 渠道池 card and the status band), so the header must not repeat them.
-    expect(phone).not.toContain('sms_service.header_channels');
-    expect(phone).not.toContain('styles.metaDot');
-    expect(phone).not.toContain('className={styles.meta}');
-    // The row stays as the action slot.
-    expect(phone).toContain('sms_service.refresh_channels');
-    expect(phone).toContain('styles.headerActions');
-    // The state keeps one home — the card — and that home keeps the full vocabulary.
-    expect(phone).toContain('sms_service.status_disabled');
-    expect(phone).toContain('sms_service.status_connected');
+  test('the channel pool is a table with the seven columns and a real switch', () => {
+    const table = read('SupplyPoolTable.tsx');
+    for (const key of [
+      'pool_col_name',
+      'pool_col_category',
+      'pool_col_natures',
+      'pool_col_connection',
+      'pool_col_switch',
+      'pool_col_edit',
+      'pool_col_remove',
+    ]) {
+      expect(table).toContain(key);
+    }
+    // Every control changes something real: the switch writes the enabled flag, the
+    // delete deletes, and the state comes from a real probe. No local-only state.
+    expect(table).toContain('supplyApi.saveChannel');
+    expect(table).toContain('supplyApi.removeChannel');
+    expect(table).toContain('supplyApi.probeChannels');
+    expect(table).toContain('<ToggleSwitch');
+    // The methods a channel offers still come from the backend, not a page-local list.
+    expect(table).toContain('toNatureOptions(');
+    // Wire field names stay in the mapping module.
+    expect(table).not.toContain('secret_present');
   });
 
-  test('the email view is laid out like the phone page', () => {
-    const card = read('SupplyChannelCard.tsx');
-    // Same skeleton: the page wrapper plus a header action row.
-    expect(card).toContain('styles.pageHeader');
-    expect(card).toContain('styles.headerActions');
-    // Same row shape as the phone page's channel pool instead of a table.
-    expect(card).toContain('styles.platformRows');
-    expect(card).toContain('styles.platformRowName');
-    expect(card).not.toContain('<Table');
-    expect(card).not.toContain('source_col_name');
+  test('the probe seam keeps unknown states out of the page', () => {
+    expect(
+      toProbes([{ id: 'a', natures: { api: { state: 'online' }, web: { state: 'nonsense' } } }])
+    ).toEqual([{ id: 'a', natures: { api: 'online' } }]);
+    expect(toProbes([{ id: '', natures: { api: { state: 'online' } } }])).toEqual([]);
+    expect(toProbes(undefined)).toEqual([]);
   });
 
 });

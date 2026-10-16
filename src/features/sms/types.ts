@@ -167,13 +167,30 @@ export interface SupplyKindConfig {
   connections: Partial<Record<SupplyNature, SupplyConnection>>;
 }
 
-/** 一条已配置的来源。可以同时服务手机号和邮箱。 */
+/** 一条已配置的渠道。可以同时服务手机号和邮箱。 */
 export interface SupplyChannel {
   id: string;
   label: string;
   category: string;
   phone: SupplyKindConfig | null;
   email: SupplyKindConfig | null;
+}
+
+/** 一条渠道的某一种连接方式**能不能真连上**（由基座真发一次请求得到）。 */
+export type SupplyProbeState =
+  /** 真发了一次请求且成功。 */
+  | 'online'
+  /** 真发了但失败。 */
+  | 'offline'
+  /** 这一种连接方式需要的凭据读不到（没存 / 密钥库锁着）—— 不等于连不上。 */
+  | 'unready'
+  /** 基座还没有这一类连接方式的探活实现（邮箱那类尚未落地）。 */
+  | 'unsupported';
+
+/** 一条渠道的探活结果：按连接方式分别给状态。 */
+export interface SupplyProbeResult {
+  id: string;
+  natures: Partial<Record<SupplyNature, SupplyProbeState>>;
 }
 
 /** 池里一条身份的处置。 */

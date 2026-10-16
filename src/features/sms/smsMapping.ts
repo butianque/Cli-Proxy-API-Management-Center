@@ -16,6 +16,7 @@ import type {
   SupplyKindConfigWire,
   SupplyLedgerWire,
   SupplyNatureWireInfo,
+  SupplyProbeWire,
 } from '@/services/api/supply';
 import type {
   ChannelHealth,
@@ -32,7 +33,26 @@ import type {
   SupplyKindConfig,
   SupplyNature,
   SupplyNatureOption,
+  SupplyProbeResult,
+  SupplyProbeState,
 } from './types';
+
+/**
+ * 连接方式的显示名。手机号与邮箱共用同一套词：凭据弹窗的 Tab、渠道池的「连接方式」
+ * 列、邮箱编辑器的勾选列表说的都是同一件事，所以用同一份标签。
+ */
+export const NATURE_LABEL: Record<SupplyNature, string> = {
+  api: 'sms_service.nature_api',
+  imap: 'sms_service.nature_imap',
+  web: 'sms_service.nature_web',
+};
+
+/** 渠道类别的显示名。键是后端给的值，认不出的值不猜（调用方按缺省处理）。 */
+export const CATEGORY_LABEL: Record<string, string> = {
+  'third-party': 'sms_service.category_third_party',
+  'self-owned': 'sms_service.category_self_owned',
+  'self-built': 'sms_service.category_self_built',
+};
 
 /** 可选平台（L1）。内置平台已知协议、地址固定；自定义平台由使用者自填。 */
 export const SMS_PLATFORMS: SmsPlatform[] = [
@@ -320,10 +340,32 @@ export function toSupplyChannel(raw: SupplyChannelWire): SupplyChannel {
   };
 }
 
-/** 批量归一化来源清单。 */
+/** 批量归一化渠道清单。 */
 export function toSupplyChannels(list: SupplyChannelWire[] | undefined): SupplyChannel[] {
   if (!Array.isArray(list)) return [];
   return list.map(toSupplyChannel);
+}
+
+/**
+ * 探活响应 → 页面形状。
+ *
+ * 只认基座声明的四种状态，其余一律**不猜**：认不出的状态当作「没探到」，页面显示
+ * 「未检查」。把未知值渲染成「连不上」就是把「我不知道」说成了「它坏了」。
+ */
+export function toProbes(list: SupplyProbeWire[] | undefined): SupplyProbeResult[] {
+  if (!Array.isArray(list)) return [];
+  const known: SupplyProbeState[] = ['online', 'offline', 'unready', 'unsupported'];
+  const result: SupplyProbeResult[] = [];
+  for (const item of list) {
+    if (typeof item?.id !== 'string' || item.id === '') continue;
+    const natures: Partial<Record<SupplyNature, SupplyProbeState>> = {};
+    for (const [nature, probe] of Object.entries(item.natures ?? {})) {
+      const state = known.find((candidate) => candidate === probe?.state);
+      if (state) natures[nature as SupplyNature] = state;
+    }
+    result.push({ id: item.id, natures });
+  }
+  return result;
 }
 
 /**

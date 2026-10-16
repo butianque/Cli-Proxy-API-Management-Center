@@ -1,47 +1,24 @@
 /**
- * 邮箱来源卡：邮箱来源的列表 + 编辑弹窗。
+ * 邮箱来源视图：邮箱这一类渠道的列表 + 编辑弹窗。
  *
- * 版面与手机号页对齐：同一条页头操作行 + 同一套卡片节奏；列表用与「渠道池」
- * 同形的行式（状态点 + 名称 + 状态标签 + 元信息 + 编辑/删除），不再用表格。
- * 后端一条来源仍可同时带手机号与邮箱块；本卡只列出邮箱来源，编辑器也只改邮箱块
- * （手机号的凭据走密钥库，由 `PhoneSupplyView` 负责）。
+ * 版面与手机号视图对齐：同一条页头操作行（添加渠道）+ 同一张渠道池表
+ * （`SupplyPoolTable`，表头与手机号页完全一致）。
+ *
+ * 本文件只剩两件事：邮箱渠道的**草稿模型**（`ChannelDraft` / `ConnectionDraft`，
+ * 编辑器要用）与**编辑器弹窗**的接线。列表、开关、删除都在共享的表里。
+ *
+ * 后端一条来源仍可同时带手机号与邮箱块；本视图只列与只改邮箱块
+ * （手机号的凭据走密钥库，由 `PhoneSupplyView` 负责），手机号块原样带回，不丢。
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { Notice } from '@/components/ui/Notice';
-import {
-  IconAlertTriangle,
-  IconPencil,
-  IconPlug,
-  IconPlus,
-  IconTrash2,
-} from '@/components/ui/icons';
-import {
-  supplyApi,
-  type SupplyChannelInput,
-  type SupplyKindConfigInput,
-  type SupplyConnectionInput,
-} from '@/services/api/supply';
-import { toNatureOptions, toSupplyChannels } from './smsMapping';
+import { IconPlus } from '@/components/ui/icons';
+import { supplyApi, type SupplyChannelInput, type SupplyKindConfigInput, type SupplyConnectionInput } from '@/services/api/supply';
+import { SupplyPoolTable } from './SupplyPoolTable';
 import type { SupplyChannel, SupplyNature, SupplyNatureOption } from './types';
 import { ChannelEditorModal } from './ChannelEditorModal';
 import styles from './SmsServicePage.module.scss';
-
-const NATURE_LABEL: Record<SupplyNature, string> = {
-  api: 'sms_service.nature_api',
-  imap: 'sms_service.nature_imap',
-  web: 'sms_service.nature_web',
-};
-
-const CATEGORY_LABEL: Record<string, string> = {
-  'third-party': 'sms_service.category_third_party',
-  'self-owned': 'sms_service.category_self_owned',
-  'self-built': 'sms_service.category_self_built',
-};
-
 
 /** Draft for one kind's connection to a specific nature. */
 export interface ConnectionDraft {
@@ -54,6 +31,8 @@ export interface ConnectionDraft {
 
 /** Draft for one kind block. */
 export interface KindDraft {
+  /** 启用位：编辑器不展示它，但要原样带回，否则「编辑一次」会把停用的渠道悄悄打开。 */
+  enabled: boolean;
   natures: Set<SupplyNature>;
   connections: Partial<Record<SupplyNature, ConnectionDraft>>;
 }
@@ -75,6 +54,7 @@ export const emptyConnection = (): ConnectionDraft => ({
 });
 
 export const emptyKindDraft = (): KindDraft => ({
+  enabled: true,
   natures: new Set(),
   connections: {},
 });
@@ -100,7 +80,7 @@ function kindDraftFromChannel(channel: SupplyChannel, kind: 'phone' | 'email'): 
       domain: conn.domain,
     };
   }
-  return { natures: new Set(kc.natures), connections: conns };
+  return { enabled: kc.enabled, natures: new Set(kc.natures), connections: conns };
 }
 
 function kindDraftToInput(draft: KindDraft): SupplyKindConfigInput | undefined {
@@ -117,47 +97,16 @@ function kindDraftToInput(draft: KindDraft): SupplyKindConfigInput | undefined {
       domain: c.domain.trim(),
     };
   }
-  return { enabled: true, natures, connections };
-}
-
-/** Summarize natures as a label string. */
-function naturesLabel(natures: SupplyNature[], t: (key: string) => string): string {
-  return natures.map((n) => t(NATURE_LABEL[n])).join(' + ') || '—';
-}
-
-/** Is the email block enabled? This card lists email sources only. */
-function isEnabled(channel: SupplyChannel): boolean {
-  return channel.email?.enabled ?? false;
+  return { enabled: draft.enabled, natures, connections };
 }
 
 export function SupplyChannelCard() {
   const { t } = useTranslation();
-  const [channels, setChannels] = useState<SupplyChannel[]>([]);
   const [natures, setNatures] = useState<SupplyNatureOption[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [loadError, setLoadError] = useState('');
-  const [actionError, setActionError] = useState('');
-  const [busyId, setBusyId] = useState('');
   const [draft, setDraft] = useState<ChannelDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [draftError, setDraftError] = useState('');
-
-  const load = useCallback(async () => {
-    try {
-      const result = await supplyApi.listChannels('email');
-      setChannels(toSupplyChannels(result.channels));
-      setNatures(toNatureOptions(result.natures));
-      setLoadError('');
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setLoaded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const openEditor = useCallback((channel: SupplyChannel | null) => {
     setDraftError('');
@@ -166,7 +115,7 @@ export function SupplyChannelCard() {
         id: channel.id,
         label: channel.label,
         category: channel.category,
-        // The phone block rides along untouched. This card cannot edit it, and dropping it
+        // The phone block rides along untouched. This view cannot edit it, and dropping it
         // would silently delete a block the operator had already saved.
         phone: kindDraftFromChannel(channel, 'phone'),
         email: kindDraftFromChannel(channel, 'email'),
@@ -203,26 +152,9 @@ export function SupplyChannelCard() {
       setDraftError(result.message || t('sms_service.source_err_generic'));
       return;
     }
-    setActionError('');
     setDraft(null);
-    await load();
-  }, [draft, load, t]);
-
-  const remove = useCallback(
-    async (channel: SupplyChannel) => {
-      setActionError('');
-      setBusyId(channel.id);
-      const result = await supplyApi.removeChannel(channel.id);
-      setBusyId('');
-      if (!result.ok) {
-        setActionError(result.message);
-        return;
-      }
-      setActionError('');
-      await load();
-    },
-    [load]
-  );
+    setReloadKey((key) => key + 1);
+  }, [draft, t]);
 
   const updateKindDraft = (kind: 'phone' | 'email', updater: (kd: KindDraft) => KindDraft) => {
     if (!draft) return;
@@ -263,103 +195,25 @@ export function SupplyChannelCard() {
         </div>
       </header>
 
-      <Card
-        title={
-          <span className={styles.cardTitle}>
-            <IconPlug size={17} />
-            {t('sms_service.source_title')}
-          </span>
-        }
-      >
-        {loadError && (
-          <Notice tone="danger" role="alert" icon={<IconAlertTriangle size={15} />}>
-            {t('sms_service.source_error_load', { message: loadError })}
-          </Notice>
-        )}
-        {actionError && (
-          <Notice tone="danger" role="alert" icon={<IconAlertTriangle size={15} />}>
-            {t('sms_service.source_error_change', { message: actionError })}
-          </Notice>
-        )}
+      <SupplyPoolTable
+        kind="email"
+        reloadKey={reloadKey}
+        onAdd={() => openEditor(null)}
+        onEdit={openEditor}
+        onNatures={setNatures}
+      />
 
-        {!loaded ? null : channels.length === 0 ? (
-          <EmptyState
-            title={t('sms_service.source_empty')}
-            description={t('sms_service.source_empty_desc')}
-          />
-        ) : (
-          <div className={styles.platformRows}>
-            {channels.map((channel) => {
-              const enabled = isEnabled(channel);
-              return (
-                <div key={channel.id} className={styles.platformRow}>
-                  <span
-                    className={`${styles.healthDot} ${
-                      enabled ? styles.healthGood : styles.healthCritical
-                    }`}
-                    aria-hidden="true"
-                  />
-                  <span className={styles.platformRowText}>
-                    <span className={styles.platformRowName}>
-                      {channel.label}
-                      <span
-                        className={`${styles.tag} ${enabled ? styles.tagGood : styles.tagMuted}`}
-                      >
-                        {enabled
-                          ? t('sms_service.source_state_on')
-                          : t('sms_service.source_state_off')}
-                      </span>
-                    </span>
-                    <span className={styles.platformRowMeta}>
-                      <span className={`${styles.tag} ${styles.tagMuted}`}>
-                        {t(CATEGORY_LABEL[channel.category] ?? 'sms_service.category_third_party')}
-                      </span>
-                      <span className={styles.ledgerDot} aria-hidden="true" />
-                      <span>{naturesLabel(channel.email?.natures ?? [], t)}</span>
-                      <span className={styles.ledgerDot} aria-hidden="true" />
-                      <span className={styles.metaMuted}>
-                        {t('sms_service.source_state_untested')}
-                      </span>
-                    </span>
-                  </span>
-                  <div className={styles.platformRowActions}>
-                    <button
-                      type="button"
-                      className={styles.actionPill}
-                      onClick={() => openEditor(channel)}
-                    >
-                      <IconPencil size={14} />
-                      {t('sms_service.configure_edit')}
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.actionPill}
-                      onClick={() => void remove(channel)}
-                      disabled={busyId === channel.id}
-                      title={t('sms_service.source_remove')}
-                      aria-label={t('sms_service.source_remove')}
-                    >
-                      <IconTrash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <ChannelEditorModal
-          draft={draft}
-          natures={natures}
-          error={draftError}
-          saving={saving}
-          onClose={() => setDraft(null)}
-          onSave={() => void saveDraft()}
-          onDraftChange={(next) => setDraft(next)}
-          onNatureToggle={toggleNature}
-          onConnectionChange={updateConnection}
-        />
-      </Card>
+      <ChannelEditorModal
+        draft={draft}
+        natures={natures}
+        error={draftError}
+        saving={saving}
+        onClose={() => setDraft(null)}
+        onSave={() => void saveDraft()}
+        onDraftChange={(next) => setDraft(next)}
+        onNatureToggle={toggleNature}
+        onConnectionChange={updateConnection}
+      />
     </div>
   );
 }

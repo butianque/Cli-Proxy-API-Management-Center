@@ -6,20 +6,11 @@ import { Notice } from '@/components/ui/Notice';
 import { Select } from '@/components/ui/Select';
 import { IconAlertTriangle } from '@/components/ui/icons';
 import { Sheet } from '@/components/ui/Sheet';
+import { CATEGORY_LABEL, NATURE_LABEL } from './smsMapping';
 import type { SupplyKind, SupplyNature, SupplyNatureOption } from './types';
 import type { ChannelDraft, ConnectionDraft } from './SupplyChannelCard';
 
-const NATURE_LABEL: Record<SupplyNature, string> = {
-  api: 'sms_service.nature_api',
-  imap: 'sms_service.nature_imap',
-  web: 'sms_service.nature_web',
-};
 const CATEGORY_OPTIONS = ['third-party', 'self-owned', 'self-built'] as const;
-const CATEGORY_LABEL: Record<string, string> = {
-  'third-party': 'sms_service.category_third_party',
-  'self-owned': 'sms_service.category_self_owned',
-  'self-built': 'sms_service.category_self_built',
-};
 
 /**
  * 邮箱来源编辑器：名称 + 类别 + 连接方式多选 + 各连接方式的信息。
