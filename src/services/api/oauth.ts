@@ -19,6 +19,11 @@ export interface OAuthStartResponse {
   expires_in?: number;
 }
 
+export interface OAuthStartOptions {
+  /** Open the authorization page in the user's fingerprint browser (ZCode only). */
+  fingerprintBrowser?: boolean;
+}
+
 export interface OAuthCallbackResponse {
   status: 'ok';
 }
@@ -39,11 +44,16 @@ const normalizeProviderForManagementPath = (provider: string): string => {
 };
 
 export const oauthApi = {
-  startAuth: (provider: string, signal?: AbortSignal) => {
+  startAuth: (provider: string, options: OAuthStartOptions = {}, signal?: AbortSignal) => {
     const providerKey = normalizeProviderForManagementPath(provider);
     const params: Record<string, string | boolean> = { provider: providerKey };
     if (WEBUI_SUPPORTED.has(providerKey)) {
       params.is_webui = true;
+    }
+    // The backend reads this flag from the query string; an unchecked box must
+    // send nothing at all, so the plugin keeps its own default.
+    if (options.fingerprintBrowser) {
+      params.fingerprint_browser = '1';
     }
     return apiClient.get<OAuthStartResponse>('/oauth/auth-url', {
       params,

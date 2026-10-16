@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { Input } from '@/components/ui/Input';
 import { IconPlug } from '@/components/ui/icons';
 import { useAuthStore, useNotificationStore, useThemeStore } from '@/stores';
@@ -45,6 +46,7 @@ interface ProviderState {
   callbackSubmitting?: boolean;
   callbackStatus?: 'success' | 'error';
   callbackError?: string;
+  fingerprintBrowser?: boolean;
 }
 
 interface VertexImportResult {
@@ -137,6 +139,10 @@ const PROVIDERS: BuiltInOAuthProviderCard[] = [
 
 const BUILTIN_PROVIDER_IDS = new Set<string>(PROVIDERS.map((provider) => provider.id));
 const CALLBACK_SUPPORTED = new Set<string>(['codex', 'anthropic', 'antigravity', 'xai', 'devin']);
+// Only ZCode logins can be handed to the fingerprint browser; every other card
+// must not offer the control at all.
+export const isFingerprintBrowserProvider = (providerId: string): boolean =>
+  providerId.startsWith('zcode');
 const XAI_CALLBACK_URL = 'http://127.0.0.1:56121/callback';
 const SUCCESS_RESET_DELAY_MS = 5000;
 const getProviderI18nPrefix = (provider: string) => provider.replace('-', '_');
@@ -174,30 +180,34 @@ function OAuthProviderIcon({
   return <img src={getIcon(provider.icon, theme)} alt="" className={styles.cardTitleIcon} />;
 }
 
-const buildPluginOAuthProviderCards = (
+// 一个插件可以承载多个登录入口（每个 provider 键一张卡）；单入口插件与既有行为完全一致。
+export const buildPluginOAuthProviderCards = (
   plugins: PluginListEntry[],
   apiBase: string
 ): PluginOAuthProviderCard[] => {
   const seenProviders = new Set(BUILTIN_PROVIDER_IDS);
   return plugins.flatMap((plugin) => {
-    const provider = plugin.oauthProvider;
-    if (
-      !plugin.supportsOAuth ||
-      !plugin.effectiveEnabled ||
-      !provider ||
-      seenProviders.has(provider)
-    ) {
+    const providers = plugin.oauthProviders ?? (plugin.oauthProvider ? [plugin.oauthProvider] : []);
+    if (!plugin.supportsOAuth || !plugin.effectiveEnabled || providers.length === 0) {
       return [];
     }
-    seenProviders.add(provider);
-    return [
-      {
-        kind: 'plugin' as const,
-        id: provider,
-        title: getPluginTitle(plugin),
-        icon: resolvePluginAssetURL(plugin.logo || plugin.metadata?.logo || '', apiBase),
-      },
-    ];
+    const title = getPluginTitle(plugin);
+    const icon = resolvePluginAssetURL(plugin.logo || plugin.metadata?.logo || '', apiBase);
+    // 只有多入口才用插件自报的站点标签区分卡片；缺标签时回落插件名，不编造。
+    const showLabels = providers.length >= 2;
+    return providers.flatMap((provider) => {
+      if (seenProviders.has(provider)) return [];
+      seenProviders.add(provider);
+      const label = showLabels ? plugin.oauthProviderLabels?.[provider]?.trim() : undefined;
+      return [
+        {
+          kind: 'plugin' as const,
+          id: provider,
+          title: label ? `${title} · ${label}` : title,
+          icon,
+        },
+      ];
+    });
   });
 };
 
@@ -490,7 +500,15 @@ export function OAuthPage() {
       callbackSubmitting: false,
     });
     try {
-      const res = await oauthApi.startAuth(provider, attempt.signal);
+      const res = await oauthApi.startAuth(
+        provider,
+        {
+          fingerprintBrowser:
+            isFingerprintBrowserProvider(provider) &&
+            (states[provider]?.fingerprintBrowser ?? true),
+        },
+        attempt.signal
+      );
       if (!attempt.isCurrent()) return;
       if (!res.state) {
         const message = t('auth_login.missing_state');
@@ -724,6 +742,22 @@ export function OAuthPage() {
           <div className={featured ? styles.featuredHint : styles.cardHint}>
             {getProviderText(provider, 'oauth_hint')}
           </div>
+          {isFingerprintBrowserProvider(provider.id) && (
+            <div className={styles.fingerprintOption}>
+              <SelectionCheckbox
+                checked={state.fingerprintBrowser ?? true}
+                onChange={(value) =>
+                  updateProviderState(provider.id, { fingerprintBrowser: value })
+                }
+                label={t('auth_login.zcode_fingerprint_browser')}
+              />
+              {(state.fingerprintBrowser ?? true) && (
+                <div className={styles.fingerprintOptionHint}>
+                  {t('auth_login.zcode_fingerprint_browser_hint')}
+                </div>
+              )}
+            </div>
+          )}
           {state.url && (
             <div className={styles.authUrlBox}>
               <div className={styles.authUrlLabel}>

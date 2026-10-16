@@ -13,16 +13,21 @@ import { pluginsApi } from './plugins';
 export type QuotaPluginIndex = Map<string, string>;
 
 /**
- * 由插件清单构建索引。只有同时声明了额度能力与 provider 键的插件才入选；
+ * 由插件清单构建索引。只有声明了额度能力的插件才入选；键来自该插件的
+ * `quotaProvider` 与 `oauthProviders` 的全部条目——宿主对多键插件只暴露
+ * 第一个键（`quota_provider` 单值），其余键只能由清单补齐，否则那些凭证
+ * 会查不到额度通道。
  * 键冲突时后者覆盖前者——宿主对同一个 provider 也只解析到一个插件。
  */
 export function buildQuotaPluginIndex(plugins: readonly PluginListEntry[]): QuotaPluginIndex {
   const index: QuotaPluginIndex = new Map();
   for (const plugin of plugins) {
     if (!plugin.supportsQuota) continue;
-    const key = plugin.quotaProvider?.trim().toLowerCase();
-    if (!key) continue;
-    index.set(key, plugin.id);
+    for (const raw of [plugin.quotaProvider, ...(plugin.oauthProviders ?? [])]) {
+      const key = raw?.trim().toLowerCase();
+      if (!key) continue;
+      index.set(key, plugin.id);
+    }
   }
   return index;
 }

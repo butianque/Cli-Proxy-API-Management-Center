@@ -1,6 +1,8 @@
 /**
  * 账号池索引：把 `GET /accounts` 的账号视图挂到 `GET /credentials` 的文件行上。
  * React-free 纯函数 —— `tests/accountPool.test.ts` 直接断言。
+ * 同时是「账号路由策略」下拉选项的唯一落点：策略值域是开放的（`auto` 或
+ * `only:<渠道key>`），能选什么由该账号实际携带的 `channels` 决定，面板不内置渠道清单。
  *
  * 键 = `getQuotaCacheKey(file)`（页面用同一个键取）。它本身就是 `file.name`，只有
  * Devin 这类「一个文件多个凭据身份」才是 `name\0authIndex`；用同一个键才能让
@@ -9,7 +11,7 @@
  * 不造值：三级匹配全部未命中的文件**不入 map**，由消费方按「账号信息不可用」渲染。
  */
 import type { AuthFileItem } from '@/types';
-import type { AccountPolicy, AccountView } from '@/types/accounts';
+import type { AccountChannel, AccountPolicy, AccountQuotaBucket, AccountView } from '@/types/accounts';
 import { getQuotaCacheKey } from '@/utils/quota/identity';
 
 /**
@@ -86,7 +88,69 @@ export function buildAccountIndex(
   return index;
 }
 
-/** policy 枚举值 → i18n key 后缀（`'start-plan-only'` → `'start_plan_only'`）。 */
-export function policyI18nSuffix(policy: AccountPolicy): string {
-  return policy.split('-').join('_');
+/**
+ * 渠道分组共享的到期时刻。上游的 `expires_at` / `period_end` 是**套餐（渠道）一级**的
+ * 事实：组内各模型的窗口同属这份套餐时值必然相同 ⇒ 只需在组头说一次，不逐行重复。
+ *
+ * 组内桶报出**多于一个**不同值时返回 null —— 那说明这些窗口各有各的期限，组头的一个值
+ * 代表不了全部，由调用方退回逐行显示。空串（宿主没下发该字段）不参与比较。
+ */
+export function sharedResetAt(buckets: readonly AccountQuotaBucket[]): string | null {
+  const values = new Set<string>();
+  buckets.forEach((bucket) => {
+    const value = bucket.resetAt?.trim();
+    if (value) values.add(value);
+  });
+  return values.size === 1 ? [...values][0] : null;
+}
+
+/** 默认策略：不钉渠道（等价于不设策略）。 */
+export const ACCOUNT_POLICY_AUTO: AccountPolicy = 'auto';
+
+/** 「钉死某渠道」的前缀，与 `services/api/accounts.ts` 的校验保持一致。 */
+const POLICY_ONLY_PREFIX = 'only:';
+
+/** 把渠道 key 变成「钉死该渠道」的策略值。 */
+export function accountPolicyOnly(channelKey: string): AccountPolicy {
+  return `only:${channelKey}`;
+}
+
+/** 取出策略钉死的渠道 key；不是钉死策略（auto / 空 / 非法）时返回 null。 */
+export function accountPolicyChannelKey(policy: string | undefined): string | null {
+  if (typeof policy !== 'string') return null;
+  const raw = policy.trim();
+  if (!raw.startsWith(POLICY_ONLY_PREFIX)) return null;
+  const channelKey = raw.slice(POLICY_ONLY_PREFIX.length).trim();
+  return channelKey ? channelKey : null;
+}
+
+/** 抽屉里的一个策略选项。channelLabel 为 null 表示「默认（自动）」。 */
+export type RoutingPolicyOption = {
+  value: AccountPolicy;
+  channelLabel: string | null;
+};
+
+/**
+ * 选项 = 默认 + 该账号实际携带的每个渠道（只给存在的，选不到对不上的渠道）。
+ * 若 currentPolicy 钉了一个不在 channels 里的渠道（陈旧值），补一个以该 key 为标签的选项，
+ * 免得触发器上显示空白。
+ */
+export function routingPolicyOptions(
+  channels: readonly AccountChannel[],
+  currentPolicy?: string
+): readonly RoutingPolicyOption[] {
+  const options: RoutingPolicyOption[] = [{ value: ACCOUNT_POLICY_AUTO, channelLabel: null }];
+  const knownKeys = new Set<string>();
+  channels.forEach((channel) => {
+    if (knownKeys.has(channel.key)) return;
+    knownKeys.add(channel.key);
+    options.push({ value: accountPolicyOnly(channel.key), channelLabel: channel.label });
+  });
+
+  const pinnedKey = accountPolicyChannelKey(currentPolicy);
+  if (pinnedKey && !knownKeys.has(pinnedKey)) {
+    options.push({ value: accountPolicyOnly(pinnedKey), channelLabel: pinnedKey });
+  }
+
+  return options;
 }

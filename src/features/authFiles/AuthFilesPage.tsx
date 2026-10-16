@@ -64,6 +64,8 @@ const DEFAULT_COMPACT_PAGE_SIZE = 12;
 const SKELETON_CARD_COUNT = 6;
 /** 首屏卡片级联入场总预算，与 useRevealGroup 同一 360ms 语汇。 */
 const CARD_ENTRANCE_BUDGET_MS = 360;
+/** 自动额度探测的最小间隔：距上次不足此值不重复触发（手动刷新不受限）。 */
+const AUTO_QUOTA_PROBE_INTERVAL_MS = 60_000;
 
 const resolveStatusFilterMode = (
   problemOnly: boolean,
@@ -391,6 +393,34 @@ export function AuthFilesPage() {
     },
     isCurrentLayer ? 240_000 : null
   );
+
+  /* ---------- 额度自动探测：进入页面 + 每次重读落定后各触发一次（静默、节流） ---------- */
+
+  /**
+   * 上次自动探测的时间戳，60 秒内不重复触发。手动「刷新额度」不写这个 ref，
+   * 用户点击永远即时生效。
+   */
+  const autoQuotaProbeAtRef = useRef(0);
+
+  /**
+   * 首屏加载完成，以及此后每次重读落定（上面的 240s 轮询、上传/删除/手动刷新触发的
+   * 后台刷新）后各探测一次，让卡片里的额度是实时的。
+   *
+   * 挂在 `files` 变更上而不是接在 `loadFiles` 的 promise 之后：后者拿到的是发起请求
+   * 那一帧的旧列表，新上传的凭证要再等一轮才被探测。
+   *
+   * 探测只让宿主写快照并重读 `/accounts`，不改 `files`，因此不会自激；目标筛选与
+   * 连接切换守卫都在 `refreshQuotas` 内。
+   */
+  useEffect(() => {
+    if (!isCurrentLayer || loading) return;
+    if (quotaPluginIndex.size === 0 || files.length === 0) return;
+    const now = Date.now();
+    if (now - autoQuotaProbeAtRef.current < AUTO_QUOTA_PROBE_INTERVAL_MS) return;
+    autoQuotaProbeAtRef.current = now;
+    // 静默：自动探测不是用户操作，成败都不通知用户。
+    void refreshQuotas(files).catch(() => {});
+  }, [files, isCurrentLayer, loading, quotaPluginIndex, refreshQuotas]);
 
   /* ---------- 过滤 / 排序 / 分页 memos ---------- */
 

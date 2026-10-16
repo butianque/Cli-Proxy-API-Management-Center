@@ -173,6 +173,20 @@
   color: var(--text-tertiary);
 }
 
+.fingerprintOption {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+/* Align the hint with the checkbox label text (22px box + 8px gap). */
+.fingerprintOptionHint {
+  padding-left: 30px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
 .oauthSection {
   display: flex;
   flex-direction: column;

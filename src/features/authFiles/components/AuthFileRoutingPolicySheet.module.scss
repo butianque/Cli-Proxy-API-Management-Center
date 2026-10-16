@@ -1,0 +1,15 @@
+/* 路由策略抽屉内容区：字段本体复用全局 form-group / hint，这里只管抽屉内的排布。 */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.saving {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}

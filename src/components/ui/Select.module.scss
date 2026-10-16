@@ -79,6 +79,8 @@
 
 .dropdown {
   position: fixed;
+  // 下拉必须浮在抽屉/模态（Sheet 用 $z-modal）之上，层级只在这里定义一次
+  z-index: $z-modal + 1;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: $radius-lg;
@@ -93,32 +95,61 @@
   scrollbar-gutter: stable;
 }
 
-.option {
-  padding: 8px 12px;
+// 跟随鼠标/键盘移动的唯一高亮块：几何由 Select.tsx 测量高亮选项的真实盒子给出。
+// 底色用项目的「高亮行」令牌 --bg-tertiary（与 ExcludedModelsPicker 的 .rowHighlighted 一致）：
+// 下拉容器是 --bg-primary，用更亮的 --bg-secondary 会让高亮看起来像挖了个洞。
+.indicator {
+  position: absolute;
+  z-index: 0;
   border-radius: $radius-md;
-  border: 1px solid transparent;
+  background: var(--bg-tertiary);
+  transition:
+    top 0.14s ease,
+    left 0.14s ease,
+    width 0.14s ease,
+    height 0.14s ease;
+  pointer-events: none;
+}
+
+.option {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  // 必须自己吃掉 <button> 的浏览器默认边框（2px outset）：漏掉就会在每一项外面
+  // 多出一圈灰框，和 .indicator 的高亮块同时出现（曾导致「两个高亮」）。
+  border: none;
+  border-radius: $radius-md;
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
   text-align: left;
   font-size: 13px;
   font-weight: 500;
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease;
   flex-shrink: 0;
-
-  &:hover {
-    background: var(--bg-secondary);
-  }
 }
 
-.optionActive {
-  border-color: rgba($primary-color, 0.5);
-  background: rgba($primary-color, 0.1);
+.optionLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.optionSelected {
+  color: var(--primary-color);
   font-weight: 600;
 }
 
-.optionHighlighted {
-  background: var(--bg-secondary);
+.optionCheck {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--primary-color);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indicator {
+    transition: none;
+  }
 }

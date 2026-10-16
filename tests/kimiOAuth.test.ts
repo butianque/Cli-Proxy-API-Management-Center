@@ -13,12 +13,12 @@ describe('Kimi regional login', () => {
     const get = spyOn(apiClient, 'get').mockResolvedValue({ url: 'https://example.test' });
     const controller = new AbortController();
     try {
-      await oauthApi.startAuth('kimi', controller.signal);
+      await oauthApi.startAuth('kimi', {}, controller.signal);
       expect(get).toHaveBeenLastCalledWith('/oauth/auth-url', {
         params: { provider: 'kimi' },
         signal: controller.signal,
       });
-      await oauthApi.startAuth('kimi-ai', controller.signal);
+      await oauthApi.startAuth('kimi-ai', {}, controller.signal);
       expect(get).toHaveBeenLastCalledWith('/oauth/auth-url', {
         params: { provider: 'kimi-ai' },
         signal: controller.signal,

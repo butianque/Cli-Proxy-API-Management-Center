@@ -29,10 +29,17 @@ export type AccountAuthState =
   | 'disabled';
 
 /**
- * 账号路由策略（`sdk/pluginapi/types.go:1975-1980`，经 `ValidAccountPolicy` 校验后才下发）。
+ * 账号路由策略（宿主 `account_view.go` 的 `policy` 字段）。值域是开放的：
+ * `auto` = 默认（等价于不设策略），`only:<渠道key>` = 只走 `channels` 里 key 命中的那条渠道。
  * 无合法策略时后端省略该字段 ⇒ 前端为 undefined。
+ *
+ * 词表不在这里枚举：渠道 key 由插件下发（见 `AccountChannel`），面板不得内置固定清单。
  */
-export type AccountPolicy = 'start-plan-only' | 'api-key-only' | 'start-plan-first' | 'disabled';
+export type AccountPolicy = 'auto' | `only:${string}`;
+
+/** 该凭证实际携带的一条路由渠道。`key` 是插件自有的渠道标识，策略用它选中渠道；
+ *  `label` 是插件从上游真实上报里取的名字，用于展示。 */
+export type AccountChannel = { key: string; label: string };
 
 /**
  * 失败归类（`account_failure.go:12-20` 的全部 7 个类）。
@@ -124,6 +131,8 @@ export interface AccountView {
   failureRetryable?: boolean;
   planId?: string;
   channel?: string;
+  /** 该凭证实际携带的路由渠道；缺省 = 未知（宿主未下发，不回落成空数组以外的猜测）。 */
+  channels?: AccountChannel[];
   policy?: AccountPolicy;
   /** F1 恒缺失（`buildAccountView` 从未赋值），F3 接线前不得依赖。 */
   entitlement?: string;

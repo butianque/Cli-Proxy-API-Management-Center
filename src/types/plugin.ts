@@ -40,6 +40,13 @@ export interface PluginListEntry {
   effectiveEnabled: boolean;
   supportsOAuth: boolean;
   oauthProvider?: string;
+  /**
+   * 该插件可登录的 provider 键；缺省时回落到 `oauthProvider`。
+   * 宿主对多键插件只暴露单个 `quotaProvider`，面板的额度通道索引用它补齐其余键。
+   */
+  oauthProviders?: string[];
+  /** provider 键 → 面向使用者的短标签；缺省即无标签。 */
+  oauthProviderLabels?: Record<string, string>;
   /** 宿主是否为该插件注册了额度通道（`quota_provider` 非空即为真）。 */
   supportsQuota: boolean;
   /** 该插件负责额度的 provider 键；缺省即无额度通道。 */

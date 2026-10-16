@@ -17,6 +17,7 @@ import { apiClient } from './client';
 import { isRecord } from '@/utils/helpers';
 import type {
   AccountAuthState,
+  AccountChannel,
   AccountFailureClass,
   AccountHeatBucket,
   AccountPolicy,
@@ -58,13 +59,8 @@ const FAILURE_CLASSES: readonly AccountFailureClass[] = [
   'upstream',
 ];
 
-/** 账号路由策略词表（`sdk/pluginapi/types.go:1975-1980`）。 */
-const ACCOUNT_POLICIES: readonly AccountPolicy[] = [
-  'start-plan-only',
-  'api-key-only',
-  'start-plan-first',
-  'disabled',
-];
+/** 账号路由策略的「钉死某渠道」前缀（宿主 `account_view.go` 的 `policy`）。 */
+const POLICY_ONLY_PREFIX = 'only:';
 
 /** 供应池身份类别词表（`internal/supply/supply.go:30-35`）。 */
 const SOURCE_KINDS: readonly AccountSourceKind[] = ['phone', 'email'];
@@ -96,6 +92,36 @@ const readEnum = <T extends string>(
 ): T | undefined => {
   const raw = trimString(value);
   return (allowed as readonly string[]).includes(raw) ? (raw as T) : fallback;
+};
+
+/**
+ * 校验路由策略（宿主 `account_view.go` 的 `policy`）。值域是开放的，不能枚举：
+ * `auto`，或 `only:` 后跟非空（trim 后）的渠道 key；其余一律 `undefined` —— 不认识的
+ * 策略按「后端没给策略」处理，绝不臆造一条。
+ */
+const normalizePolicy = (value: unknown): AccountPolicy | undefined => {
+  const raw = trimString(value);
+  if (raw === 'auto') return 'auto';
+  if (!raw.startsWith(POLICY_ONLY_PREFIX)) return undefined;
+  const channelKey = raw.slice(POLICY_ONLY_PREFIX.length).trim();
+  return channelKey ? (`only:${channelKey}` as AccountPolicy) : undefined;
+};
+
+/** 归一化一条渠道。缺 `key` 的条目作废（策略靠 key 选中渠道，没有 key 就用不上）。 */
+const normalizeChannel = (value: unknown): AccountChannel | undefined => {
+  if (!isRecord(value)) return undefined;
+  const key = trimString(value.key);
+  if (!key) return undefined;
+  // label 只用于展示：上游没给名字时回落成 key，保证 UI 永远有字可显示。
+  return { key, label: trimString(value.label) || key };
+};
+
+/** 缺省 = 宿主未下发 `channels`（未知），与「下发了一个空数组」是两件事。 */
+const normalizeChannels = (value: unknown): AccountChannel[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .map(normalizeChannel)
+    .filter((channel): channel is AccountChannel => channel !== undefined);
 };
 
 const normalizeQuotaBucket = (value: unknown): AccountQuotaBucket | undefined => {
@@ -196,7 +222,8 @@ export const normalizeAccountView = (value: unknown): AccountView => {
   const failureRetryable = optionalBoolean(entry.failure_retryable);
   const planId = optionalString(entry.plan_id);
   const channel = optionalString(entry.channel);
-  const policy = readEnum(entry.policy, ACCOUNT_POLICIES, undefined);
+  const channels = normalizeChannels(entry.channels);
+  const policy = normalizePolicy(entry.policy);
   const entitlement = optionalString(entry.entitlement);
   const fetchedAt = optionalString(entry.fetched_at);
 
@@ -210,6 +237,7 @@ export const normalizeAccountView = (value: unknown): AccountView => {
   if (failureRetryable !== undefined) account.failureRetryable = failureRetryable;
   if (planId !== undefined) account.planId = planId;
   if (channel !== undefined) account.channel = channel;
+  if (channels !== undefined) account.channels = channels;
   if (policy !== undefined) account.policy = policy;
   if (entitlement !== undefined) account.entitlement = entitlement;
   if (fetchedAt !== undefined) account.fetchedAt = fetchedAt;

@@ -33,6 +33,7 @@
   --success-color: #10b981;
   --quota-medium-color: #e0aa14;
   --warning-color: #c65746; // 错误/警告色
+  --caution-color: #d97706; // 提醒色（介于成功与失败之间的琥珀，区别于红色警告）
   --error-color: #c65746;
   --danger-color: var(--error-color);
   --info-color: var(--primary-color);
@@ -122,6 +123,7 @@
   --success-color: #10b981;
   --quota-medium-color: #e0aa14;
   --warning-color: #c65746;
+  --caution-color: #d97706;
   --error-color: #c65746;
   --danger-color: var(--error-color);
   --info-color: var(--primary-color);
@@ -193,6 +195,7 @@
   --success-color: #10b981;
   --quota-medium-color: #ffd862;
   --warning-color: #c65746;
+  --caution-color: #f59e0b;
   --error-color: #c65746;
   --danger-color: var(--error-color);
   --info-color: var(--primary-color);

@@ -10,7 +10,7 @@ import {
   type AriaAttributes,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { IconChevronDown } from './icons';
+import { IconCheck, IconChevronDown } from './icons';
 import styles from './Select.module.scss';
 
 export interface SelectOption {
@@ -37,7 +37,6 @@ interface SelectProps {
 const VIEWPORT_MARGIN = 8;
 const DROPDOWN_OFFSET = 6;
 const DROPDOWN_MAX_HEIGHT = 240;
-const DROPDOWN_Z_INDEX = 2010;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -66,7 +65,6 @@ const resolveDropdownStyle = (element: HTMLElement): CSSProperties => {
         left,
         width,
         maxHeight,
-        zIndex: DROPDOWN_Z_INDEX,
       }
     : {
         position: 'fixed',
@@ -74,7 +72,6 @@ const resolveDropdownStyle = (element: HTMLElement): CSSProperties => {
         left,
         width,
         maxHeight,
-        zIndex: DROPDOWN_Z_INDEX,
       };
 };
 
@@ -103,6 +100,13 @@ export function Select({
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties | null>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [indicator, setIndicator] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const isOpen = open && !disabled;
 
   useEffect(() => {
@@ -277,6 +281,25 @@ export function Select({
     highlightedOption?.scrollIntoView({ block: 'nearest' });
   }, [isOpen, resolvedHighlightedIndex, selectId]);
 
+  // The highlight indicator is a single absolutely positioned block inside the list. Its geometry
+  // comes from the highlighted option's real box, so wrapping labels and mixed row heights work.
+  useLayoutEffect(() => {
+    const list = dropdownRef.current;
+    const option = isOpen ? optionRefs.current[resolvedHighlightedIndex] : null;
+    if (!list || !option) {
+      setIndicator(null);
+      return;
+    }
+    const listRect = list.getBoundingClientRect();
+    const optionRect = option.getBoundingClientRect();
+    setIndicator({
+      top: optionRect.top - listRect.top - list.clientTop + list.scrollTop,
+      left: optionRect.left - listRect.left - list.clientLeft + list.scrollLeft,
+      width: optionRect.width,
+      height: optionRect.height,
+    });
+  }, [dropdownStyle, isOpen, options, resolvedHighlightedIndex]);
+
   const dropdown =
     isOpen && dropdownStyle ? (
       <div
@@ -287,22 +310,41 @@ export function Select({
         aria-label={ariaLabel}
         style={dropdownStyle}
       >
+        {indicator ? (
+          <span
+            className={styles.indicator}
+            aria-hidden="true"
+            style={{
+              top: indicator.top,
+              left: indicator.left,
+              width: indicator.width,
+              height: indicator.height,
+            }}
+          />
+        ) : null}
         {options.map((opt, index) => {
           const active = opt.value === value;
-          const highlighted = index === resolvedHighlightedIndex;
           return (
             <button
               key={opt.value}
               id={`${selectId}-option-${index}`}
+              ref={(node) => {
+                optionRefs.current[index] = node;
+              }}
               type="button"
               role="option"
               aria-selected={active}
-              className={`${styles.option} ${active ? styles.optionActive : ''} ${highlighted ? styles.optionHighlighted : ''}`.trim()}
+              className={`${styles.option} ${active ? styles.optionSelected : ''}`.trim()}
               onMouseEnter={() => setHighlightedIndex(index)}
               onKeyDown={handleKeyDown}
               onClick={() => commitSelection(index)}
             >
-              {opt.label}
+              <span className={styles.optionLabel}>{opt.label}</span>
+              {active ? (
+                <span className={styles.optionCheck} aria-hidden="true">
+                  <IconCheck size={14} />
+                </span>
+              ) : null}
             </button>
           );
         })}

@@ -251,6 +251,14 @@ describe('v8 management API contracts', () => {
     expect(get).toHaveBeenLastCalledWith('/oauth/auth-url', {
       params: { provider: 'example-plugin' },
     });
+    await oauthApi.startAuth('zcode-zai', { fingerprintBrowser: true });
+    expect(get).toHaveBeenLastCalledWith('/oauth/auth-url', {
+      params: { provider: 'zcode-zai', fingerprint_browser: '1' },
+    });
+    await oauthApi.startAuth('zcode-bigmodel', { fingerprintBrowser: false });
+    expect(get).toHaveBeenLastCalledWith('/oauth/auth-url', {
+      params: { provider: 'zcode-bigmodel' },
+    });
     await oauthApi.submitCallback('anthropic', 'https://example.test/callback?code=test');
     expect(post).toHaveBeenLastCalledWith(
       '/oauth/callback',
@@ -354,7 +362,12 @@ describe('account view API (GET /v8/management/accounts)', () => {
     failure_retryable: false,
     plan_id: 'pro',
     channel: 'start-plan',
-    policy: 'start-plan-first',
+    policy: 'only:start-plan',
+    channels: [
+      { key: 'start-plan', label: 'Start Plan (free)' },
+      { key: '  api-key  ', label: 'Coding Plan (paid)' },
+      { key: '   ', label: 'unusable' },
+    ],
     quota_state: 'exhausted',
     fetched_at: '2026-10-14T23:00:00Z',
     quota: [
@@ -427,7 +440,13 @@ describe('account view API (GET /v8/management/accounts)', () => {
       failureRetryable: false,
       planId: 'pro',
       channel: 'start-plan',
-      policy: 'start-plan-first',
+      policy: 'only:start-plan',
+      // A padded channel key is trimmed, and a channel without a key is dropped:
+      // a policy selects a channel by its key, so a keyless one is not a choice.
+      channels: [
+        { key: 'start-plan', label: 'Start Plan (free)' },
+        { key: 'api-key', label: 'Coding Plan (paid)' },
+      ],
       quotaState: 'exhausted',
       fetchedAt: '2026-10-14T23:00:00Z',
       quota: [

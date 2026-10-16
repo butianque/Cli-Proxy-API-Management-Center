@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useCallback, useState, type CSSProperties } from 'react';
 import { getAuthFileRefreshKey } from '@/features/authFiles/manualRefresh';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
@@ -11,6 +11,7 @@ import {
   IconModelCluster,
   IconRefreshCw,
   IconSettings,
+  IconSlidersHorizontal,
   IconTrash2,
 } from '@/components/ui/icons';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
@@ -36,6 +37,7 @@ import type { AuthFileStatusBarData } from '@/features/authFiles/hooks/useAuthFi
 import { AuthFileQuotaSection } from '@/features/authFiles/components/AuthFileQuotaSection';
 import { AuthFileCooldownSection } from './AuthFileCooldownSection';
 import { AuthFilePoolSection } from './AuthFilePoolSection';
+import { AuthFileRoutingPolicySheet } from './AuthFileRoutingPolicySheet';
 import styles from './AuthFileCard.module.scss';
 
 export type AuthFileCardProps = {
@@ -59,7 +61,7 @@ export type AuthFileCardProps = {
   onManualRefresh: (file: AuthFileItem) => void;
   onCooldownReset: (file: AuthFileItem) => void;
   /** 路由策略改动的回传；`null` = 清除策略（回到默认）。 */
-  onPolicyChange?: (policy: AccountPolicy | null) => void;
+  onPolicyChange?: (policy: AccountPolicy | null) => void | Promise<void>;
   /** 该账号是否有宿主额度通道；透传给账号池区块，false/缺省时不渲染额度区块。 */
   quotaCapable?: boolean;
   onOpenPrefixProxyEditor: (file: AuthFileItem) => void;
@@ -140,6 +142,24 @@ export function AuthFileCard(props: AuthFileCardProps) {
     mountEntranceDelayMs != null
       ? ({ '--card-delay': `${mountEntranceDelayMs}ms` } as CSSProperties)
       : undefined;
+
+  // 路由策略是账号池层面的开关，正文只留状态与额度，所以收进动作行的抽屉里。
+  const [policySheetOpen, setPolicySheetOpen] = useState(false);
+  const [policySaving, setPolicySaving] = useState(false);
+  const showPolicyButton = Boolean(account) && Boolean(onPolicyChange);
+
+  const handlePolicyChange = useCallback(
+    async (nextPolicy: AccountPolicy | null) => {
+      if (!onPolicyChange) return;
+      setPolicySaving(true);
+      try {
+        await onPolicyChange(nextPolicy);
+      } finally {
+        setPolicySaving(false);
+      }
+    },
+    [onPolicyChange]
+  );
 
   return (
     <article className={cardClasses} style={cardStyle}>
@@ -261,12 +281,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
         <AuthFileQuotaSection file={file} quotaType={quotaType} disableControls={disableControls} />
       )}
 
-      <AuthFilePoolSection
-        account={account}
-        mutating={disableControls}
-        onPolicyChange={onPolicyChange}
-        quotaCapable={quotaCapable}
-      />
+      <AuthFilePoolSection account={account} quotaCapable={quotaCapable} />
 
       <footer className={styles.actions}>
         <div className={styles.actionsMain}>
@@ -299,6 +314,18 @@ export function AuthFileCard(props: AuthFileCardProps) {
                   }
                 >
                   {isManualRefreshing ? <LoadingSpinner size={14} /> : <IconRefreshCw size={15} />}
+                </Button>
+              )}
+              {showPolicyButton && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setPolicySheetOpen(true)}
+                  className={styles.iconButton}
+                  title={t('auth_files.routing_policy_button')}
+                  disabled={disableControls || isManualRefreshing}
+                >
+                  <IconSlidersHorizontal size={15} />
                 </Button>
               )}
               <Button
@@ -350,6 +377,19 @@ export function AuthFileCard(props: AuthFileCardProps) {
           </div>
         )}
       </footer>
+
+      {showPolicyButton && (
+        <AuthFileRoutingPolicySheet
+          open={policySheetOpen}
+          fileName={file.name}
+          policy={account?.policy}
+          channels={account?.channels}
+          saving={policySaving}
+          disabled={disableControls}
+          onClose={() => setPolicySheetOpen(false)}
+          onChange={(nextPolicy) => void handlePolicyChange(nextPolicy)}
+        />
+      )}
     </article>
   );
 }

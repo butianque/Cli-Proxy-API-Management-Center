@@ -301,7 +301,8 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
    *
    * 宿主的额度快照**只能**由插件额度通道写入（`POST /plugins/{id}/quota`），面板不直接
    * 探测上游也不另存一份额度——所以逐个触发后必须重读，额度才在池区块里可见。
-   * 通知归调用方（与 `updateAccountPolicy` 同一约定）。
+   * 通知归调用方（与 `updateAccountPolicy` 同一约定）；本函数不弹任何通知，
+   * 因此可被页面自动探测**静默**复用。
    */
   const refreshQuotas = useCallback(
     async (targets: readonly AuthFileItem[]) => {
@@ -318,6 +319,10 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
         if (!pluginId || !authIndex) continue;
         requests.push(pluginsApi.fetchQuota(pluginId, authIndex));
       }
+
+      // 一个目标都没命中就什么都不发：宿主快照不会变，重读也读不出新东西。
+      // 自动探测因此不会在「没有可探测目标」时产生任何请求。
+      if (requests.length === 0) return { ok: 0, total: 0 };
 
       const results = await Promise.allSettled(requests);
       const ok = results.filter((result) => result.status === 'fulfilled').length;

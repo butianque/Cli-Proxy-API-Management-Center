@@ -64,7 +64,7 @@ describe('Devin Management OAuth v8 contract', () => {
     const post = spyOn(apiClient, 'post').mockResolvedValue({});
     const remove = spyOn(apiClient, 'delete').mockResolvedValue({});
     try {
-      await oauthApi.startAuth('devin', signal);
+      await oauthApi.startAuth('devin', {}, signal);
       expect(get).toHaveBeenLastCalledWith('/oauth/auth-url', {
         params: { provider: 'devin', is_webui: true },
         signal,

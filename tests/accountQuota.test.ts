@@ -58,6 +58,66 @@ describe('buildQuotaPluginIndex', () => {
   });
 });
 
+describe('buildQuotaPluginIndex — oauthProviders keys', () => {
+  /** 宿主对多键插件只暴露第一个键，国际站的 `zcode-zai` 只能由清单补齐。 */
+  const zcode = (overrides: Partial<PluginListEntry> = {}) =>
+    plugin({
+      id: 'zcode',
+      quotaProvider: 'zcode-bigmodel',
+      oauthProviders: ['zcode-bigmodel', 'zcode-zai'],
+      ...overrides,
+    });
+
+  test('indexes every key declared in oauthProviders', () => {
+    const index = buildQuotaPluginIndex([zcode()]);
+
+    expect(index.get('zcode-bigmodel')).toBe('zcode');
+    expect(index.get('zcode-zai')).toBe('zcode');
+    expect(index.size).toBe(2);
+  });
+
+  test('keeps indexing the single quotaProvider key', () => {
+    const index = buildQuotaPluginIndex([zcode({ oauthProviders: undefined })]);
+
+    expect(index.get('zcode-bigmodel')).toBe('zcode');
+    expect(index.size).toBe(1);
+  });
+
+  test('normalizes oauthProviders keys to lower case and trims them', () => {
+    const index = buildQuotaPluginIndex([
+      zcode({ quotaProvider: undefined, oauthProviders: ['  ZCode-ZAI  ', ' zcode-bigmodel '] }),
+    ]);
+
+    expect(index.get('zcode-zai')).toBe('zcode');
+    expect(index.get('zcode-bigmodel')).toBe('zcode');
+    expect(index.size).toBe(2);
+  });
+
+  test('produces no key for blank or missing entries', () => {
+    const index = buildQuotaPluginIndex([
+      zcode({ quotaProvider: undefined, oauthProviders: ['', '   '] }),
+      plugin({ id: 'p2', quotaProvider: undefined, oauthProviders: undefined }),
+    ]);
+
+    expect(index.size).toBe(0);
+  });
+
+  test('ignores oauthProviders of plugins without quota support', () => {
+    const index = buildQuotaPluginIndex([zcode({ supportsQuota: false })]);
+
+    expect(index.size).toBe(0);
+  });
+
+  test('lets a later plugin win over an oauthProviders key of an earlier one', () => {
+    const index = buildQuotaPluginIndex([
+      zcode(),
+      plugin({ id: 'second', quotaProvider: 'zcode-zai', oauthProviders: undefined }),
+    ]);
+
+    expect(index.get('zcode-zai')).toBe('second');
+  });
+});
+
 describe('findQuotaPluginId', () => {
   const index = buildQuotaPluginIndex([plugin({ id: 'p1', quotaProvider: 'zcode' })]);
 
@@ -79,5 +139,18 @@ describe('findQuotaPluginId', () => {
 
   test('returns undefined for an empty index', () => {
     expect(findQuotaPluginId(new Map(), ['zcode'])).toBeUndefined();
+  });
+
+  test('resolves the international provider key that the host never exposes', () => {
+    const zcodeIndex = buildQuotaPluginIndex([
+      plugin({
+        id: 'zcode',
+        quotaProvider: 'zcode-bigmodel',
+        oauthProviders: ['zcode-bigmodel', 'zcode-zai'],
+      }),
+    ]);
+
+    expect(findQuotaPluginId(zcodeIndex, ['zcode-zai', 'zcode-bigmodel'])).toBe('zcode');
+    expect(findQuotaPluginId(zcodeIndex, ['  ZCode-ZAI '])).toBe('zcode');
   });
 });

@@ -79,4 +79,38 @@ describe('auth file card presentation contract', () => {
     expect(source).toContain('showManualRefreshButton');
     expect(source).toContain('file.disabled ||');
   });
+
+  test('keeps the routing policy control out of the card body', () => {
+    expect(source).not.toContain('POLICY_VALUES');
+    expect(source).not.toContain('policyBlock');
+    expect(source).not.toContain("from '@/components/ui/Select'");
+    expect(source).not.toContain('policyOptions');
+    expect(source).toContain('showPolicyButton');
+    expect(source).toContain('AuthFileRoutingPolicySheet');
+    expect(source).toContain("t('auth_files.routing_policy_button')");
+  });
+
+  test('orders the action row as refresh, routing policy, download', () => {
+    const actions = source.split('<footer')[1].split('</footer>')[0];
+    const refresh = actions.indexOf('onManualRefresh(file)');
+    const policy = actions.indexOf("t('auth_files.routing_policy_button')");
+    const download = actions.indexOf('onDownload(file.name)');
+    expect(refresh).toBeGreaterThanOrEqual(0);
+    expect(policy).toBeGreaterThan(refresh);
+    expect(download).toBeGreaterThan(policy);
+  });
+
+  test('offers the policy control only where the account pool knows the credential', () => {
+    expect(source).toContain('Boolean(account) && Boolean(onPolicyChange)');
+  });
+
+  test('names the routing policy control in every locale', () => {
+    for (const locale of ['en', 'zh-CN', 'zh-TW', 'ru', 'vi', 'ko']) {
+      const { auth_files: messages } = JSON.parse(
+        readFileSync(new URL(`../src/i18n/locales/${locale}.json`, import.meta.url), 'utf8')
+      ) as { auth_files: Record<string, string> };
+      expect(messages.routing_policy_button).toBeTruthy();
+      expect(messages.routing_policy_saving).toBeTruthy();
+    }
+  });
 });

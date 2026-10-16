@@ -32,6 +32,30 @@ const normalizePluginOAuthProvider = (value: unknown): string | undefined => {
   return isManagementOAuthProviderKey(provider) ? provider : undefined;
 };
 
+// 可登录的 provider 键列表：逐项归一化 + 过滤，全部非法（或缺失）即省略该字段。
+const normalizePluginOAuthProviders = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const providers = value
+    .map((item) => normalizePluginOAuthProvider(item))
+    .filter((item): item is string => Boolean(item));
+  return providers.length > 0 ? providers : undefined;
+};
+
+// provider 键 → 面向使用者的短标签：只保留非空标签，全空（或缺失）即省略该字段。
+const normalizePluginOAuthProviderLabels = (
+  value: unknown
+): Record<string, string> | undefined => {
+  if (!isRecord(value)) return undefined;
+  const labels: Record<string, string> = {};
+  for (const [key, label] of Object.entries(value)) {
+    const provider = normalizePluginOAuthProvider(key);
+    const text = asString(label).trim();
+    if (!provider || !text) continue;
+    labels[provider] = text;
+  }
+  return Object.keys(labels).length > 0 ? labels : undefined;
+};
+
 const normalizeConfigField = (value: unknown): PluginConfigField | null => {
   if (!isRecord(value)) return null;
   const name = asString(value.name).trim();
@@ -101,6 +125,8 @@ const normalizePluginEntry = (value: unknown): PluginListEntry | null => {
   const configFields = normalizeConfigFields(value.config_fields);
   const supportsOAuth = asBoolean(value.supports_oauth);
   const oauthProvider = normalizePluginOAuthProvider(value.oauth_provider);
+  const oauthProviders = normalizePluginOAuthProviders(value.oauth_providers);
+  const oauthProviderLabels = normalizePluginOAuthProviderLabels(value.oauth_provider_labels);
   const quotaProvider = asString(value.quota_provider).trim();
 
   return {
@@ -112,6 +138,8 @@ const normalizePluginEntry = (value: unknown): PluginListEntry | null => {
     effectiveEnabled: asBoolean(value.effective_enabled),
     supportsOAuth,
     oauthProvider,
+    oauthProviders,
+    oauthProviderLabels,
     supportsQuota: asBoolean(value.supports_quota) && quotaProvider !== '',
     quotaProvider: quotaProvider || undefined,
     logo: asString(value.logo || metadata?.logo).trim(),

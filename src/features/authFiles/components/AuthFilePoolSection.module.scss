@@ -1,8 +1,9 @@
 @use '../../../styles/mixins' as *;
 
 /* ============================================================
- * 凭证卡片的账号池区块：池状态 / 路由策略 / 额度摘要 / 最近失败。
+ * 凭证卡片的账号池区块：池状态 / 额度摘要 / 最近失败。
  * 只呈现后端真实下发的字段：缺省即不渲染，绝不回落成 0 或 false。
+ * 路由策略是可写开关，收在动作行的抽屉里，不在正文占位。
  * ============================================================ */
 
 .poolSection {
@@ -56,19 +57,6 @@
   color: var(--text-tertiary);
 }
 
-.policyBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.hint {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
 .quotaBlock {
   display: flex;
   flex-direction: column;
@@ -113,6 +101,44 @@
   color: var(--danger-color);
 }
 
+/* 额度按渠道分组：一组 = 一个渠道（`bucket.group`）+ 组内逐行的模型。 */
+.quotaGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quotaGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.groupHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+
+.groupName {
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text-secondary);
+  @include text-ellipsis;
+}
+
+.groupCount {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
 .bucketList {
   display: flex;
   flex-direction: column;
@@ -149,6 +175,19 @@
   color: var(--text-secondary);
 }
 
+.bucketDescription {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* 到期/重置时刻：套餐一级的挂在组头，组内各模型期限不同时才逐行显示。同一档「小号弱化」文字。 */
+.groupExpiry,
+.bucketExpiry {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
 .bucketBar {
   display: block;
   height: 4px;
@@ -157,34 +196,23 @@
   background: var(--bg-tertiary);
 }
 
+/* 额度条颜色随剩余比例变化：> 50% 绿、> 20% 琥珀、其余红。 */
 .bucketBarFill {
   display: block;
   height: 100%;
   border-radius: $radius-full;
-  background: var(--primary-color);
 }
 
-.quotaMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 12px;
+.barSuccess {
+  background: var(--success-color);
 }
 
-.metaItem {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
+.barCaution {
+  background: var(--caution-color);
 }
 
-.metaLabel {
-  color: var(--text-tertiary);
-  font-size: 11px;
-}
-
-.metaValue {
-  font-family: $font-mono;
-  color: var(--text-secondary);
-  overflow-wrap: anywhere;
+.barDanger {
+  background: var(--danger-color);
 }
 
 .failureValue {
