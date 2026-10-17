@@ -150,13 +150,24 @@ describe('a new channel is not made to look pre-filled', () => {
 
   test('the "keep what is stored" copy is editing-only', () => {
     // 没有存过东西的人看到「留空则保留已存的值」只会更糊涂。
-    expect(source).toContain('{apiHint && <div className={styles.fieldNote}>{keepBlank}</div>}');
-    expect(source).toContain('{webHint && <div className={styles.fieldNote}>{keepBlank}</div>}');
+    expect(source).toContain('{apiStored && <div className={styles.fieldNote}>{keepBlank}</div>}');
+    expect(source).toContain('{webStored && <div className={styles.fieldNote}>{keepBlank}</div>}');
     expect(source).not.toContain('hint={keepBlank}');
     expect(source).not.toContain('hint={apiHint ? keepBlank : undefined}');
     expect(source).not.toContain('hint={webHint ? keepBlank : undefined}');
     expect(source).toContain(
       "hint={isEditing ? t('sms_service.config_field_endpoint_opt') : undefined}"
+    );
+  });
+
+  test('the copy is gated on a credential really existing, not on having a mask to show', () => {
+    // 「已存凭据在不在」与「有没有脱敏字符串可显示」是两件事：凭据在、账号字段为空时
+    // 脱敏串是空的，那句话照样成立。锁着时基座报不出条目名，就都不说。
+    expect(source).toContain(
+      'const apiStored = isEditing && credentialBelongsHere && credential?.apiPresent === true;'
+    );
+    expect(source).toContain(
+      'const webStored = isEditing && credentialBelongsHere && credential?.webPresent === true;'
     );
   });
 

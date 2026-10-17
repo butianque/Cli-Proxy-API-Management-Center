@@ -415,6 +415,15 @@ export function ChannelEditorModal({
      */
     const apiHint = isEditing && credentialBelongsHere ? (credential?.apiUserHint ?? '') : '';
     const webHint = isEditing && credentialBelongsHere ? (credential?.webUserHint ?? '') : '';
+    /**
+     * 「留空则保留已存的值」说的是**有没有已存凭据**，不是「有没有脱敏字符串」。
+     *
+     * 两者不等价：凭据在、但账号字段为空时脱敏串是空的。密钥库锁着时基座报不出
+     * 条目名、也报「不存在」—— 那种情况下我们无从断言「已存」，所以照样不说。
+     * 判据取「确实知道它存在」，不用「碰巧有东西可显示」。
+     */
+    const apiStored = isEditing && credentialBelongsHere && credential?.apiPresent === true;
+    const webStored = isEditing && credentialBelongsHere && credential?.webPresent === true;
     return (
       <div className={styles.block} key={nature}>
         <div className={styles.blockTitle}>{t(NATURE_LABEL[nature])}</div>
@@ -484,7 +493,7 @@ export function ChannelEditorModal({
               />
             </div>
             {/* 一句话说清这一对框留空意味着什么；写在框下面重复四遍只是噪音。 */}
-            {apiHint && <div className={styles.fieldNote}>{keepBlank}</div>}
+            {apiStored && <div className={styles.fieldNote}>{keepBlank}</div>}
             <div className={styles.blockActions}>
               <Button
                 variant="secondary"
@@ -547,7 +556,7 @@ export function ChannelEditorModal({
                 }}
               />
             </div>
-            {webHint && <div className={styles.fieldNote}>{keepBlank}</div>}
+            {webStored && <div className={styles.fieldNote}>{keepBlank}</div>}
             <div className={styles.blockActions}>
               <Button
                 variant="secondary"
