@@ -11,7 +11,7 @@ export const SUPPLY_CHANNELS_BASE = '/supply/channels';
 export const SUPPLY_POOL_BASE = '/supply/pool';
 
 export type SupplyKindWire = 'phone' | 'email';
-export type SupplyNatureWire = 'api' | 'imap' | 'web';
+export type SupplyNatureWire = 'api' | 'imap' | 'oauth2' | 'web';
 
 /** 一条连接方式的连接信息（后端 Connection）。 */
 export interface SupplyConnectionWire {
@@ -19,8 +19,14 @@ export interface SupplyConnectionWire {
   account?: string;
   secret?: string;
   secret_present?: boolean;
+  /**
+   * 后端回读的用途。它由渠道类别推导，**不是**输入 —— 提交体里没有这一项，
+   * 面板也不再展示它：问两遍就会答两遍，两个答案不一样时没人说得清该听谁的。
+   */
   usage?: string;
   domain?: string;
+  /** OAuth2 的应用 ID；别的接入方式没有这一项。 */
+  client_id?: string;
 }
 
 /** 一个种类块（后端 KindConfig）。 */
@@ -58,8 +64,8 @@ export interface SupplyConnectionInput {
   endpoint?: string;
   account?: string;
   secret?: string;
-  usage?: string;
   domain?: string;
+  client_id?: string;
 }
 
 /** 一个种类块的提交体。 */
@@ -97,10 +103,20 @@ export interface SupplyProbeResponse {
   probes?: SupplyProbeWire[];
 }
 
+/** 池里一次注册（`projects[]` 的一项）。 */
+export interface SupplyLedgerProjectWire {
+  target?: string;
+  account?: string;
+  outcome?: string;
+  at?: number;
+}
+
 /** 池里的一条身份（基座 `/supply/pool` 的一行）。 */
 export interface SupplyLedgerWire {
   kind: SupplyKindWire;
   address: string;
+  /** 这个身份是哪条渠道发出来的；老记录可能没有。 */
+  channel_id?: string;
   source?: string;
   target?: string;
   account?: string;
@@ -110,6 +126,8 @@ export interface SupplyLedgerWire {
   rents?: number;
   first_seen?: number;
   last_used?: number;
+  /** 这个身份注册过的平台，一次注册一条。 */
+  projects?: SupplyLedgerProjectWire[];
 }
 
 function errorMessage(error: unknown, fallback: string): string {

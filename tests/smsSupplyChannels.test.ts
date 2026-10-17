@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
 import {
   SMS_PLATFORMS,
+  projectLabel,
   resolvePlatformId,
   toNatureOptions,
   toPool,
@@ -26,7 +27,7 @@ const channel = (over: Partial<SupplyChannelWire> = {}): SupplyChannelWire => ({
     enabled: true,
     natures: ['imap'],
     connections: {
-      imap: { account: 'me@qq.com', secret: 'imap-pass', usage: 'self-domain', domain: 'ormnes.com' },
+      imap: { account: 'me@qq.com', secret: 'imap-pass', domain: 'ormnes.com' },
     },
   },
   ...over,
@@ -75,7 +76,6 @@ describe('a source can serve one or both kinds with multiple natures', () => {
     expect(conn.account).toBe('me@qq.com');
     expect(conn.secret).toBe('imap-pass');
     expect(conn.secretPresent).toBe(false);
-    expect(conn.usage).toBe('self-domain');
     expect(conn.domain).toBe('ormnes.com');
   });
 
@@ -124,6 +124,65 @@ describe('the pool records what was handed out, without inventing', () => {
   test('the source travels with the identity, so it stays traceable', () => {
     expect(toPool([entry()])[0].source).toBe('ormnes');
   });
+
+  test('every registration on an identity is kept, one per project and account', () => {
+    const mapped = toPool([
+      entry({
+        channel_id: 'ormnes',
+        projects: [
+          { target: 'loomy', account: 'loomy-16723433586', outcome: 'registered', at: 1_700_000_000 },
+          { target: 'zcode-zai', account: 'zcode-zai-0f101ea3', outcome: 'registered', at: 1_700_000_100 },
+        ],
+      }),
+    ])[0];
+    expect(mapped.channelId).toBe('ormnes');
+    expect(mapped.projects).toHaveLength(2);
+    expect(mapped.projects[0]).toEqual({
+      target: 'loomy',
+      account: 'loomy-16723433586',
+      state: 'registered',
+      registeredAt: new Date(1_700_000_000 * 1000).toISOString(),
+    });
+    expect(mapped.projects[1].target).toBe('zcode-zai');
+  });
+
+  test('a registration without a project or an account is not a registration', () => {
+    const mapped = toPool([entry({ projects: [{ outcome: 'registered' }, {}] })])[0];
+    expect(mapped.projects).toEqual([]);
+  });
+
+  test('a registration with no time stays empty instead of becoming "now"', () => {
+    const mapped = toPool([entry({ projects: [{ target: 'loomy', account: 'loomy-1' }] })])[0];
+    expect(mapped.projects[0].registeredAt).toBeNull();
+    expect(mapped.projects[0].state).toBe('pending');
+  });
+
+  test('an identity with no registrations reports none, so nothing is invented', () => {
+    expect(toPool([entry()])[0].projects).toEqual([]);
+    expect(toPool([entry()])[0].channelId).toBe('');
+  });
+});
+
+describe('a project shows the name the credentials page already uses', () => {
+  const en = JSON.parse(read('i18n/locales/en.json')) as Record<string, unknown>;
+  // i18next 用 `.` 分段取键；这里照它的规则取，缺键就原样返回键名（与 i18next 一致）。
+  const translate = (key: string) => {
+    let node: unknown = en;
+    for (const part of key.split('.')) {
+      if (typeof node !== 'object' || node === null) return key;
+      node = (node as Record<string, unknown>)[part];
+    }
+    return typeof node === 'string' ? node : key;
+  };
+
+  test('a known platform resolves to its existing label', () => {
+    expect(projectLabel('zcode-zai', translate)).toBe('ZCode (International)');
+  });
+
+  test('an unknown platform falls back to the raw id, never to an invented name', () => {
+    expect(projectLabel('loomy', translate)).toBe('Loomy');
+    expect(projectLabel('', translate)).toBe('');
+  });
 });
 
 describe('the source surface keeps backend field names out of the components', () => {
@@ -161,15 +220,17 @@ describe('the source surface keeps backend field names out of the components', (
     const mapping = read('features/sms/smsMapping.ts');
     expect(mapping).toContain('export const NATURE_LABEL');
     expect(mapping).toContain('export const CATEGORY_LABEL');
-    // The list of selectable categories lives next to the labels for the same reason:
+    // The lists of selectable categories live next to the labels for the same reason:
     // "what the table can render" and "what the editor can pick" must not drift.
-    expect(mapping).toContain('export const CATEGORY_OPTIONS');
+    expect(mapping).toContain('export const PHONE_CATEGORY_OPTIONS');
+    expect(mapping).toContain('export const EMAIL_CATEGORY_OPTIONS');
     for (const component of ['features/sms/SupplyPoolTable.tsx', 'features/sms/ChannelEditorModal.tsx']) {
       const source = read(component);
       expect(source).toContain('from \'./smsMapping\'');
       expect(source).not.toContain('const NATURE_LABEL');
       expect(source).not.toContain('const CATEGORY_LABEL');
-      expect(source).not.toContain('const CATEGORY_OPTIONS');
+      expect(source).not.toContain('const PHONE_CATEGORY_OPTIONS');
+      expect(source).not.toContain('const EMAIL_CATEGORY_OPTIONS');
     }
   });
 
@@ -181,8 +242,8 @@ describe('the source surface keeps backend field names out of the components', (
     expect(editor).not.toContain("['phone', 'email']");
     // The methods offered still come from the backend's per-nature capability list.
     expect(editor).toContain('item.kinds.includes(kind)');
-    expect(editor).toContain("nature === 'imap'");
-    expect(editor).toContain("nature !== 'web'");
+    // Email then narrows to the two mailbox readers the base implements.
+    expect(editor).toContain('EMAIL_NATURES.includes(item.nature)');
     // Both views open it.
     expect(read('features/sms/SupplyChannelCard.tsx')).toContain('ChannelEditorModal');
     expect(read('features/sms/PhoneSupplyView.tsx')).toContain('ChannelEditorModal');
@@ -303,5 +364,34 @@ describe('a draft submits the whole channel, never half of it', () => {
     const draft = channelDraftFromChannel(both());
     draft.email.connections.imap!.account = '  me@qq.com  ';
     expect(channelDraftToInput(draft).email!.connections.imap!.account).toBe('me@qq.com');
+  });
+
+  test('an OAuth2 mailbox carries its application id through the draft and back', () => {
+    // The application id is not a secret — the refresh token is — so it lives on
+    // the channel and the editor shows it again. Dropping it on save would leave
+    // a channel that can never mint a token.
+    const mapped = toSupplyChannels([
+      channel({
+        email: {
+          enabled: true,
+          natures: ['oauth2'],
+          connections: {
+            oauth2: {
+              endpoint: 'outlook.office365.com:993',
+              account: 'box@outlook.com',
+              client_id: 'app-123',
+              secret: 'email-oauth2-box@outlook.com',
+            },
+          },
+        },
+      }),
+    ])[0];
+    const draft = channelDraftFromChannel(mapped);
+    expect(draft.email.connections.oauth2!.clientId).toBe('app-123');
+    const input = channelDraftToInput(draft);
+    expect(input.email!.natures).toEqual(['oauth2']);
+    expect(input.email!.connections.oauth2!.client_id).toBe('app-123');
+    // The password login must not inherit an id that belongs to another method.
+    expect(input.email!.connections.imap).toBeUndefined();
   });
 });

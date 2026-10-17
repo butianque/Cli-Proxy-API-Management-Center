@@ -14,13 +14,20 @@ import type {
 } from '@/services/api/supply';
 import type { SupplyChannel, SupplyKind, SupplyNature } from './types';
 
-/** 一种接入方式的连接信息草稿。 */
+/**
+ * 一种接入方式的连接信息草稿。
+ *
+ * 没有「用途」这一项：这个邮箱是收一个地址还是收一整个域，由**类别**决定
+ * （见 `isCatchAllCategory`）。两个地方各说一遍就会互相矛盾，而矛盾的那条渠道
+ * 谁都说不清该怎么走。
+ */
 export interface ConnectionDraft {
   endpoint: string;
   account: string;
   secret: string;
-  usage: string;
   domain: string;
+  /** OAuth2 的应用 ID；别的接入方式留空。 */
+  clientId: string;
 }
 
 /** 一个类别块的草稿。 */
@@ -47,8 +54,8 @@ export const emptyConnection = (): ConnectionDraft => ({
   endpoint: '',
   account: '',
   secret: '',
-  usage: '',
   domain: '',
+  clientId: '',
 });
 
 export const emptyKindDraft = (): KindDraft => ({
@@ -91,8 +98,8 @@ export function kindDraftFromChannel(channel: SupplyChannel, kind: SupplyKind): 
       endpoint: connection.endpoint,
       account: connection.account,
       secret: connection.secret,
-      usage: connection.usage,
       domain: connection.domain,
+      clientId: connection.clientId,
     };
   }
   return { enabled: block.enabled, natures: new Set(block.natures), connections };
@@ -125,8 +132,8 @@ export function kindDraftToInput(draft: KindDraft): SupplyKindConfigInput | unde
       endpoint: connection.endpoint.trim(),
       account: connection.account.trim(),
       secret: connection.secret.trim(),
-      usage: connection.usage,
       domain: connection.domain.trim(),
+      client_id: connection.clientId.trim(),
     };
   }
   return { enabled: draft.enabled, natures, connections };
@@ -166,8 +173,8 @@ export function kindBlockInput(
       endpoint: connection?.endpoint ?? '',
       account: connection?.account ?? '',
       secret: connection?.secret ?? '',
-      usage: connection?.usage ?? '',
       domain: connection?.domain ?? '',
+      client_id: connection?.clientId ?? '',
     };
   }
   return { enabled, natures: [...block.natures], connections };

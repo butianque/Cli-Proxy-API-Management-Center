@@ -4,12 +4,15 @@
  * 版面（按类别自动编号；手机号比邮箱多一段「选择平台」，所以编号按实际段数走）：
  *   ① 渠道信息 —— 名称 + 类别
  *   ② 选择平台 —— 内置平台 / 自定义（仅手机号）
- *   ③ 接入方式 —— 多选：勾几种就配几种
+ *   ③ 接入方式 —— 手机号多选（勾几种就配几种），邮箱二选一
  *   ④ 连接信息 —— 每种接入方式一个块，块内**自带该方式的验证动作**
  *
- * 为什么接入方式是**多选**而不是互斥 Tab：基座把接入方式当成**集合**（`natures`），
+ * 为什么手机号的接入方式是**多选**而不是互斥 Tab：基座把接入方式当成**集合**（`natures`），
  * 渠道池表「连接方式」那一列显示的就是这个集合。互斥 Tab 表达不了「API 接入 +
  * 网页登录同时开」，会跟自己的表自相矛盾。
+ *
+ * 为什么邮箱是**二选一**：同一个信箱只有一种凭据（授权码，或者 OAuth2 的刷新令牌）。
+ * 两种并存是一条基座会拒收的记录，也是一个界面回答不了的问题。
  *
  * 为什么手机号的凭据填在「连接信息」里、却不进渠道记录：手机号这一类**只有一份**
  * 平台凭据（存在密钥库，条目名由基座配置持有），渠道记录里的连接只**指名**它。
@@ -20,7 +23,7 @@
  * - 必填只有两个：名称、至少一种接入方式；
  * - 凭据**留空 = 保留已存的值**（基座把空字段当保留，历史覆盖事故见 `docs/ops/07` §11.22）；
  *   一旦填了某一种方式的两个框中的任意一个，两个都必须填齐 —— 不做「半条凭据」的静默合并；
- * - 保存成功后**不自动关窗**，就地显示「已保存」，由使用者自己关。
+ * - 保存成功后**自动收窗**：结果已经落在渠道表里，再让人点一次「关闭」只是多一步。
  *
  * ⚠️ 面向使用者，不暴露后端字段名；主密码只从 SecretGate 的门取（内存中），
  * 本组件不自行收集密码。锁定态下保存会被后端 401 拒绝，此处如实提示。
@@ -33,6 +36,7 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { IconAlertTriangle, IconCheckCircle2, IconRefreshCw } from '@/components/ui/icons';
+import { emailApi } from '@/services/api/email';
 import {
   smsApi,
   type CredentialWriteResult,
@@ -51,9 +55,13 @@ import {
 } from './channelDraft';
 import {
   CATEGORY_LABEL,
-  CATEGORY_OPTIONS,
+  EMAIL_CATEGORY_OPTIONS,
+  EMAIL_DEFAULT_NATURE,
+  EMAIL_NATURES,
   NATURE_LABEL,
+  PHONE_CATEGORY_OPTIONS,
   SMS_PLATFORMS,
+  isCatchAllCategory,
   resolvePlatformId,
 } from './smsMapping';
 import type {
@@ -69,19 +77,24 @@ import styles from './ChannelEditorModal.module.scss';
 /** 段号字形。段数随类别变化（邮箱没有「选择平台」那一段），所以编号是算出来的。 */
 const STEP_MARKS = ['①', '②', '③', '④'];
 
-/** 「测试连接」的结果。 */
+/**
+ * 「测试连接」的结果。
+ *
+ * 只回答一件事：**连得上还是连不上**。余额与渠道数不在这里 —— 它们属于渠道池，
+ * 而这个按钮的责任是验证凭据。
+ */
 type TestState =
   | { kind: 'idle' }
   | { kind: 'testing' }
-  | { kind: 'ok'; balance?: number }
+  | { kind: 'ok' }
   | { kind: 'fail'; message: string }
   | { kind: 'unavailable'; message: string };
 
-/** 「登录并获取网页会话」的结果。 */
+/** 「登录并获取网页会话」的结果：只回答登录成没成。 */
 type WebLoginState =
   | { kind: 'idle' }
   | { kind: 'busy' }
-  | { kind: 'ok'; channels: number }
+  | { kind: 'ok' }
   | { kind: 'fail'; message: string };
 
 export interface ChannelEditorModalProps {
@@ -128,10 +141,16 @@ export function ChannelEditorModal({
   const [endpoint, setEndpoint] = useState('');
   const [webUser, setWebUser] = useState('');
   const [webPass, setWebPass] = useState('');
+  /**
+   * 邮箱的凭据：授权码，或者 OAuth2 的刷新令牌（看这一条渠道选的是哪种方式）。
+   *
+   * 它**不是**渠道记录的一部分：渠道里存的是密钥库条目名，这里填的值直接写进密钥库，
+   * 保存后清空、不回显 —— 明文凭据不进渠道文档。
+   */
+  const [mailCredential, setMailCredential] = useState('');
   const [apiTest, setApiTest] = useState<TestState>({ kind: 'idle' });
   const [webLogin, setWebLogin] = useState<WebLoginState>({ kind: 'idle' });
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -178,8 +197,18 @@ export function ChannelEditorModal({
   const isEditing = channel !== null;
 
   const block = draft[kind];
+  /**
+   * 这一类能用的接入方式。
+   *
+   * 邮箱两种，都是连上那个信箱按收件地址找信，区别只在拿什么证明身份（授权码 /
+   * OAuth2）。基座虽然还认得邮箱的 `api`，但没有实现，勾上只会得到一条永远连不上的
+   * 渠道。
+   */
   const allowed = useMemo(
-    () => natures.filter((item) => item.kinds.includes(kind)),
+    () =>
+      natures
+        .filter((item) => item.kinds.includes(kind))
+        .filter((item) => kind !== 'email' || EMAIL_NATURES.includes(item.nature)),
     [natures, kind]
   );
   /**
@@ -201,16 +230,44 @@ export function ChannelEditorModal({
       : draft.category;
 
   /**
+   * 手机号的类别不是选择题：接码平台的号都是别人的服务，现在只有「第三方服务」这一种。
+   *
+   * 一条渠道可以同时承载手机号与邮箱，类别是**渠道级**的。所以这里只补空值，不覆盖已存
+   * 的值 —— 否则从手机号那一栏编辑一条自建域的渠道，会把它的域名类别顺手改掉。
+   */
+  const phoneCategory = category.trim() === '' ? PHONE_CATEGORY_OPTIONS[0] : category;
+
+  /**
+   * 邮箱能选的类别。
+   *
+   * 三种：别人的邮箱服务、自己建的域（catch-all）、自己的信箱。已存的值即使不在选项里
+   * 也要留着显示 —— 否则打开一条旧渠道时类别框是空的，看起来像「没设」，一保存就把
+   * 人家的类别改掉。手机号不画这个框（类别是固定事实），所以只有邮箱用得上这份列表。
+   */
+  const categoryOptions = useMemo(() => {
+    const base: readonly string[] = EMAIL_CATEGORY_OPTIONS;
+    if (category.trim() === '' || base.includes(category)) return [...base];
+    return [...base, category];
+  }, [category]);
+
+  /**
    * 接入方式的当前值：内置平台支持哪几种就勾哪几种（与后端允许的方式取交集）。
    *
    * 勾选框、连接块、必填判据、提交**都读这一个集合** —— 否则界面勾着两种、提交却只写
    * 一种，或反过来。
+   *
+   * 邮箱是**二选一**：同一个信箱只有一种凭据，两种并存是基座会拒收的矛盾记录。已存的
+   * 那一种优先，没存过就是授权码（绝大多数邮箱都走它）。
    */
   const chosenNatures = useMemo(() => {
+    if (kind === 'email') {
+      const stored = EMAIL_NATURES.find((nature) => block.natures.has(nature));
+      return new Set<SupplyNature>([stored ?? EMAIL_DEFAULT_NATURE]);
+    }
     const defaults = platformFacts?.defaultNatures;
     if (!defaults || naturesEdited) return block.natures;
     return platformNatures(defaults, allowed.map((item) => item.nature));
-  }, [platformFacts, naturesEdited, block.natures, allowed]);
+  }, [kind, platformFacts, naturesEdited, block.natures, allowed]);
 
   // 每次打开（或换了一条渠道）都把表单重置成「只显示已存状态」。
   useEffect(() => {
@@ -230,10 +287,10 @@ export function ChannelEditorModal({
     setEndpoint('');
     setWebUser('');
     setWebPass('');
+    setMailCredential('');
     setApiTest({ kind: 'idle' });
     setWebLogin({ kind: 'idle' });
     setSaving(false);
-    setSaved(false);
     setAttempted(false);
     setError(null);
   }, [open, channel, kind]);
@@ -248,16 +305,32 @@ export function ChannelEditorModal({
   const webComplete = webUser.trim() !== '' && webPass.trim() !== '';
 
   const labelMissing = attempted && label.trim() === '';
+  const categoryMissing = attempted && kind === 'email' && category.trim() === '';
   const naturesMissing = attempted && chosenNatures.size === 0;
   const apiPairBroken = attempted && apiSelected && apiFilled && !apiComplete;
   const webPairBroken = attempted && webSelected && webFilled && !webComplete;
+  /**
+   * 这个邮箱替一整个域收信吗？
+   *
+   * 只由**类别**回答（见 `isCatchAllCategory`）：这是能力的事实，不是接入方式。
+   * 所以「域名」这一格是类别的结果，不是一个可以独立选的开关。
+   */
+  const catchAll = kind === 'email' && isCatchAllCategory(category);
+  /** 邮箱选中的那一种接入方式；手机号没有「唯一一种」这回事。 */
+  const mailNature: SupplyNature | null =
+    kind === 'email' ? ([...chosenNatures][0] ?? EMAIL_DEFAULT_NATURE) : null;
+  /** 邮箱这一种方式自己的连接信息 —— 域名、应用 ID 都挂在它下面。 */
+  const mailConnection = mailNature ? (block.connections[mailNature] ?? emptyConnection()) : null;
+  const domainMissing = attempted && catchAll && (mailConnection?.domain ?? '').trim() === '';
+  /** OAuth2 少了应用 ID 就换不到令牌，保存下去就是一条读不到信的渠道。 */
+  const clientIdMissing =
+    attempted && mailNature === 'oauth2' && (mailConnection?.clientId ?? '').trim() === '';
 
-  /** 上一次的测试结果、保存结果与错误，都随输入变化失效。 */
+  /** 上一次的测试结果与错误，都随输入变化失效。 */
   const resetFeedback = () => {
     setApiTest({ kind: 'idle' });
     setWebLogin({ kind: 'idle' });
     setError(null);
-    setSaved(false);
   };
 
   const updateBlock = (updater: (current: typeof block) => typeof block) => {
@@ -280,12 +353,36 @@ export function ChannelEditorModal({
     resetFeedback();
   };
 
+  /**
+   * 邮箱换一种接入方式：**替换**，不是叠加。
+   *
+   * 同一个信箱只有一种凭据。顺带清掉已经填进框里的值：那是上一种方式的凭据，带过去
+   * 会存进另一种方式的条目里 —— 读不到信，而报错只会说「登录被拒」。
+   */
+  const chooseEmailNature = (nature: SupplyNature) => {
+    setNaturesEdited(true);
+    updateBlock((current) => {
+      const connections = { ...current.connections };
+      if (!connections[nature]) connections[nature] = emptyConnection();
+      return { ...current, natures: new Set([nature]), connections };
+    });
+    setMailCredential('');
+    setAttempted(false);
+    resetFeedback();
+  };
+
   const updateConnection = (nature: SupplyNature, field: keyof ConnectionDraft, value: string) => {
     updateBlock((current) => ({
       ...current,
       connections: {
         ...current.connections,
-        [nature]: { ...(current.connections[nature] ?? emptyConnection()), [field]: value },
+        [nature]: {
+          ...(current.connections[nature] ?? emptyConnection()),
+          [field]: value,
+          // 改了邮箱账号，旧条目名就指向另一个邮箱了：清掉它，让基座按新账号重新
+          // 派生 —— 否则渠道指向的条目和刚写进去的授权码会是两个名字。
+          ...(kind === 'email' && field === 'account' ? { secret: '' } : {}),
+        },
       },
     }));
     resetFeedback();
@@ -309,10 +406,15 @@ export function ChannelEditorModal({
   const handleSave = async () => {
     setAttempted(true);
     if (label.trim() === '' || chosenNatures.size === 0) return;
+    // 类别没说清是哪种邮箱：三种情形要的东西不同（域名、或者不），不选就是猜。
+    if (kind === 'email' && category.trim() === '') return;
     if (apiPairBroken || webPairBroken) return;
+    // 类别说这是自己的域，却没有域名：基座会拒收，而界面上只有这一格是空的。
+    if (catchAll && (mailConnection?.domain ?? '').trim() === '') return;
+    // OAuth2 没有应用 ID 就换不到令牌：基座会拒收，界面上也只有这一格是空的。
+    if (mailNature === 'oauth2' && (mailConnection?.clientId ?? '').trim() === '') return;
     setSaving(true);
     setError(null);
-    setSaved(false);
     try {
       if (kind === 'phone') {
         if (apiSelected && apiFilled) {
@@ -332,6 +434,27 @@ export function ChannelEditorModal({
           if (!applyCredentialResult(result)) return;
         }
       }
+      if (kind === 'email' && mailNature && mailCredential.trim() !== '') {
+        // 条目名由邮箱账号和接入方式共同决定，界面不问：凭据属于那个邮箱，不属于渠道。
+        // 已存的条目名照旧带上，老渠道指向的条目不会因此被孤立。
+        const result = await emailApi.saveCredential(
+          {
+            account: (mailConnection?.account ?? '').trim(),
+            name: (mailConnection?.secret ?? '').trim(),
+            secret: mailCredential.trim(),
+            nature: mailNature === 'oauth2' ? 'oauth2' : 'imap',
+          },
+          passphrase
+        );
+        if (!result.ok) {
+          if (result.reason === 'wrong-passphrase') setError(t('sms_service.config_err_passphrase'));
+          else if (result.reason === 'locked') setError(t('sms_service.config_err_locked'));
+          else setError(result.message || t('sms_service.config_err_generic'));
+          return;
+        }
+        // 值已经进密钥库，界面上不再留着它。
+        setMailCredential('');
+      }
       /**
        * 提交的是**界面上显示的那一份**：名称、类别、接入方式都可能来自平台（使用者
        * 没改过）。只替换正在编辑的这个类别块，另一块原样带回 —— 基座是整条渠道替换。
@@ -339,7 +462,8 @@ export function ChannelEditorModal({
       const submitted: ChannelDraft = {
         ...draft,
         label,
-        category,
+        // 手机号的类别是固定事实（见 `phoneCategory`），提交的就是界面上写着的那一个。
+        category: kind === 'phone' ? phoneCategory : category,
         phone: kind === 'phone' ? { ...draft.phone, natures: chosenNatures } : draft.phone,
         email: kind === 'email' ? { ...draft.email, natures: chosenNatures } : draft.email,
       };
@@ -349,21 +473,26 @@ export function ChannelEditorModal({
         return;
       }
       setAttempted(false);
-      setSaved(true);
-      // 成功后不关窗：让使用者自己确认结果再关（父组件据此刷新表与已存状态）。
+      // 保存成功即收窗：结果已经在渠道表里了，再让使用者点一次「关闭」只是多一步。
       onSaved();
+      onClose();
     } finally {
       setSaving(false);
     }
   };
 
-  /** 真实测试连接：调基座状态路由，按其三态判定。验的是**已保存**的凭据。 */
+  /**
+   * 真实测试连接：调基座状态路由，按其三态判定。验的是**已保存**的凭据。
+   *
+   * `balance_cny` 只当作「凭据有效」的判据，不往界面上搬：这个按钮的责任是回答
+   * 「连得上吗」，余额属于渠道池那一边。
+   */
   const handleTest = async () => {
     setApiTest({ kind: 'testing' });
     try {
       const status = await smsApi.getStatus();
       if (typeof status.balance_cny === 'number') {
-        setApiTest({ kind: 'ok', balance: status.balance_cny });
+        setApiTest({ kind: 'ok' });
       } else if (status.status === 'unavailable') {
         // 凭据未就绪（锁着 / 没存）—— 不能当成「连接失败」。
         setApiTest({
@@ -391,13 +520,12 @@ export function ChannelEditorModal({
   const handleWebLogin = async () => {
     setWebLogin({ kind: 'busy' });
     setError(null);
-    setSaved(false);
     try {
       const result = await smsApi.webLogin(
         { username: webUser.trim(), password: webPass.trim() },
         passphrase
       );
-      if (result.ok) setWebLogin({ kind: 'ok', channels: result.channels });
+      if (result.ok) setWebLogin({ kind: 'ok' });
       else setWebLogin({ kind: 'fail', message: result.message });
     } finally {
       // 无论成败都刷新一次，父组件能反映最新凭据状态。
@@ -426,7 +554,11 @@ export function ChannelEditorModal({
     const webStored = isEditing && credentialBelongsHere && credential?.webPresent === true;
     return (
       <div className={styles.block} key={nature}>
-        <div className={styles.blockTitle}>{t(NATURE_LABEL[nature])}</div>
+        {/* 邮箱只有一个块，上面的「接入方式」已经说过这是收件服务（IMAP）；
+            这里再写一遍同样的标题就是同一句话说两次。手机号有两个块，标题有用。 */}
+        {kind === 'phone' && (
+          <div className={styles.blockTitle}>{t(NATURE_LABEL[nature])}</div>
+        )}
         {/* 手机号的两种方式用不同的凭据，说清楚「这两个框填哪个账号」比让使用者猜好。 */}
         {kind === 'phone' && (
           <div className={styles.blockLead}>
@@ -436,10 +568,11 @@ export function ChannelEditorModal({
           </div>
         )}
 
-        {kind === 'email' && nature !== 'web' && (
+        {kind === 'email' && (
           <Input
-            label={t('sms_service.source_field_endpoint')}
-            placeholder="https://api.example.com"
+            label={t('sms_service.source_field_imap_host')}
+            placeholder="imap.qq.com:993"
+            hint={t('sms_service.source_hint_imap_host')}
             value={connection.endpoint}
             onChange={(event) => updateConnection(nature, 'endpoint', event.target.value)}
           />
@@ -507,9 +640,7 @@ export function ChannelEditorModal({
               {apiTest.kind === 'ok' && (
                 <span className={`${styles.result} ${styles.resultOk}`}>
                   <IconCheckCircle2 size={15} />
-                  {typeof apiTest.balance === 'number'
-                    ? t('sms_service.config_test_ok_balance', { balance: apiTest.balance.toFixed(2) })
-                    : t('sms_service.config_test_ok')}
+                  {t('sms_service.config_test_ok')}
                 </span>
               )}
               {apiTest.kind === 'fail' && (
@@ -572,7 +703,7 @@ export function ChannelEditorModal({
               {webLogin.kind === 'ok' && (
                 <span className={`${styles.result} ${styles.resultOk}`}>
                   <IconCheckCircle2 size={15} />
-                  {t('sms_service.config_web_login_ok', { count: webLogin.channels })}
+                  {t('sms_service.config_web_login_ok')}
                 </span>
               )}
               {webLogin.kind === 'fail' && (
@@ -593,40 +724,63 @@ export function ChannelEditorModal({
         {kind === 'email' ? (
           <>
             <Input
-              label={t('sms_service.source_field_account')}
+              label={t('sms_service.source_field_mail_account')}
+              placeholder={t('sms_service.source_ph_mail_account')}
               value={connection.account}
               onChange={(event) => updateConnection(nature, 'account', event.target.value)}
             />
-            {/* 保持掩码：该字段在**既有数据**里可能是明文凭据（见 docs/ops/25 §20.10），
-                明文渲染等于把已存的密钥摆到屏幕上。 */}
-            <Input
-              label={t('sms_service.source_field_secret')}
-              type="password"
-              hint={t('sms_service.source_secret_hint')}
-              value={connection.secret}
-              onChange={(event) => updateConnection(nature, 'secret', event.target.value)}
-            />
-            {nature === 'imap' && (
+            {/* 域名是**类别的结果**，不是第二个开关：类别说这是能全收的自建域，这一格才出现。
+                两个地方各问一遍「是不是自建域」，答不一样时没人说得清该听谁的。 */}
+            {catchAll && (
               <>
-                <Select
-                  value={connection.usage || 'personal'}
-                  options={[
-                    { value: 'personal', label: t('sms_service.usage_personal') },
-                    { value: 'self-domain', label: t('sms_service.usage_self_domain') },
-                  ]}
-                  onChange={(usage) => updateConnection(nature, 'usage', usage)}
-                  ariaLabel={t('sms_service.field_usage')}
-                  fullWidth
+                <div className={styles.blockLead}>
+                  {t('sms_service.email_lead_self_hosted')}
+                </div>
+                <Input
+                  label={t('sms_service.field_domain')}
+                  placeholder={t('sms_service.source_ph_domain')}
+                  hint={t('sms_service.source_hint_domain')}
+                  error={domainMissing ? t('sms_service.config_required') : undefined}
+                  value={connection.domain}
+                  onChange={(event) => updateConnection(nature, 'domain', event.target.value)}
                 />
-                {connection.usage === 'self-domain' && (
-                  <Input
-                    label={t('sms_service.field_domain')}
-                    value={connection.domain}
-                    onChange={(event) => updateConnection(nature, 'domain', event.target.value)}
-                  />
-                )}
               </>
             )}
+            {/* OAuth2 需要两样东西：哪个应用在问（应用 ID，随渠道记录保存、可回读），
+                以及那个应用的刷新令牌（只进密钥库）。 */}
+            {nature === 'oauth2' && (
+              <Input
+                label={t('sms_service.field_mail_client_id')}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                hint={t('sms_service.field_mail_client_id_hint')}
+                error={clientIdMissing ? t('sms_service.config_required') : undefined}
+                value={connection.clientId}
+                onChange={(event) => updateConnection(nature, 'clientId', event.target.value)}
+              />
+            )}
+            {/* 凭据只写进密钥库、保存后清空。条目名由邮箱账号和接入方式决定，界面不问：
+                这个值属于那个邮箱，不属于这条渠道。 */}
+            <Input
+              label={
+                nature === 'oauth2'
+                  ? t('sms_service.field_mail_refresh_token')
+                  : t('sms_service.field_mail_auth_code')
+              }
+              type="password"
+              autoComplete="off"
+              hint={
+                gatePhase === 'locked'
+                  ? t('sms_service.config_gate_locked_hint')
+                  : nature === 'oauth2'
+                    ? t('sms_service.field_mail_refresh_token_hint')
+                    : t('sms_service.field_mail_auth_code_hint')
+              }
+              value={mailCredential}
+              onChange={(event) => {
+                setMailCredential(event.target.value);
+                resetFeedback();
+              }}
+            />
           </>
         ) : null}
       </div>
@@ -656,26 +810,63 @@ export function ChannelEditorModal({
                 resetFeedback();
               }}
             />
-            <div className={styles.selectField}>
-              <label className={styles.fieldLabel} htmlFor={categoryId}>
-                {t('sms_service.field_category')}
-              </label>
-              <Select
-                id={categoryId}
-                value={category}
-                options={CATEGORY_OPTIONS.map((value) => ({
-                  value,
-                  label: t(CATEGORY_LABEL[value]),
-                }))}
-                onChange={(next) => {
-                  setCategoryEdited(true);
-                  setDraft((current) => ({ ...current, category: next }));
-                  resetFeedback();
-                }}
-                ariaLabel={t('sms_service.field_category')}
-                fullWidth
-              />
-            </div>
+            {kind === 'email' ? (
+              <div className={styles.selectField}>
+                <label className={styles.fieldLabel} htmlFor={categoryId}>
+                  {t('sms_service.field_category')}
+                </label>
+                <Select
+                  id={categoryId}
+                  value={category}
+                  options={categoryOptions.map((value) => ({
+                    value,
+                    label: t(CATEGORY_LABEL[value]),
+                  }))}
+                  placeholder={t('sms_service.source_ph_category')}
+                  onChange={(next) => {
+                    setCategoryEdited(true);
+                    setDraft((current) => {
+                      const updated: ChannelDraft = { ...current, category: next };
+                      /**
+                       * 类别不再是「能全收的自建域」时，域名这个事实就不成立了。
+                       *
+                       * 留着它不会让渠道更能收信：基座会拒收这条自相矛盾的记录，而界面上
+                       * 那个框已经藏起来了 —— 人会看到一个查不到原因的失败。所以改类别
+                       * 的同时把它清掉。
+                       */
+                      const selected = mailNature ? updated.email.connections[mailNature] : null;
+                      if (!isCatchAllCategory(next) && mailNature && selected) {
+                        updated.email = {
+                          ...updated.email,
+                          connections: {
+                            ...updated.email.connections,
+                            [mailNature]: { ...selected, domain: '' },
+                          },
+                        };
+                      }
+                      return updated;
+                    });
+                    resetFeedback();
+                  }}
+                  ariaLabel={t('sms_service.field_category')}
+                  ariaInvalid={categoryMissing ? true : undefined}
+                  fullWidth
+                />
+                {categoryMissing && (
+                  <span className={styles.fieldNoteWarn}>
+                    {t('sms_service.source_err_category')}
+                  </span>
+                )}
+              </div>
+            ) : (
+              /* 手机号的类别是已知事实，不是选择题：画成下拉框等于给一个点不动的东西。
+                 与内置平台地址同一套「只读事实」的写法。 */
+              <div className={styles.staticField}>
+                <span className={styles.staticLabel}>{t('sms_service.field_category')}</span>
+                <span className={styles.staticValue}>{t(CATEGORY_LABEL[phoneCategory])}</span>
+                <span className={styles.staticNote}>{t('sms_service.category_phone_note')}</span>
+              </div>
+            )}
           </div>
         </>
       ),
@@ -724,25 +915,44 @@ export function ChannelEditorModal({
   sections.push({
     key: 'natures',
     label: t('sms_service.config_step_natures'),
-    body: (
-      <>
-        <div className={styles.natureCards}>
-          {allowed.map(({ nature }) => (
-            <label className={styles.natureCard} key={nature}>
-              <input
-                type="checkbox"
-                checked={chosenNatures.has(nature)}
-                onChange={() => toggleNature(nature)}
-              />
-              <span>{t(NATURE_LABEL[nature])}</span>
-            </label>
-          ))}
-        </div>
-        {naturesMissing && (
-          <div className={styles.fieldNoteWarn}>{t('sms_service.source_err_no_kind')}</div>
-        )}
-      </>
-    ),
+    body:
+      kind === 'email' ? (
+        <>
+          {/* 二选一：同一个信箱只有一种凭据，所以画成单选。 */}
+          <div className={styles.natureCards}>
+            {allowed.map(({ nature }) => (
+              <label className={styles.natureCard} key={nature}>
+                <input
+                  type="radio"
+                  name="sms-email-nature"
+                  checked={chosenNatures.has(nature)}
+                  onChange={() => chooseEmailNature(nature)}
+                />
+                <span>{t(NATURE_LABEL[nature])}</span>
+              </label>
+            ))}
+          </div>
+          <div className={styles.blockLead}>{t('sms_service.config_email_nature_note')}</div>
+        </>
+      ) : (
+        <>
+          <div className={styles.natureCards}>
+            {allowed.map(({ nature }) => (
+              <label className={styles.natureCard} key={nature}>
+                <input
+                  type="checkbox"
+                  checked={chosenNatures.has(nature)}
+                  onChange={() => toggleNature(nature)}
+                />
+                <span>{t(NATURE_LABEL[nature])}</span>
+              </label>
+            ))}
+          </div>
+          {naturesMissing && (
+            <div className={styles.fieldNoteWarn}>{t('sms_service.source_err_no_kind')}</div>
+          )}
+        </>
+      ),
   });
 
   // 一种接入方式都没勾时，不留一个空的「连接信息」段。
@@ -775,16 +985,10 @@ export function ChannelEditorModal({
                 {error}
               </span>
             )}
-            {gatePhase !== 'locked' && !error && saved && (
-              <span className={styles.noticeOk}>
-                <IconCheckCircle2 size={14} />
-                {t('sms_service.config_saved')}
-              </span>
-            )}
           </div>
           <div className={styles.footerActions}>
             <Button variant="secondary" size="sm" onClick={onClose}>
-              {saved ? t('common.close') : t('sms_service.config_cancel')}
+              {t('sms_service.config_cancel')}
             </Button>
             <Button
               variant="primary"

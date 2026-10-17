@@ -91,16 +91,16 @@ describe('credentials are written before the channel record', () => {
   });
 });
 
-describe('a successful save reports itself instead of vanishing', () => {
-  test('the save path never closes the modal', () => {
-    expect(saveBody).not.toContain('onClose');
-    expect(source).not.toContain('onClose()');
-  });
-
-  test('success is shown in the modal and the parent is told to refresh', () => {
-    expect(saveBody).toContain('setSaved(true);');
+describe('a successful save closes the modal', () => {
+  test('the save path closes it, after telling the parent to refresh', () => {
+    // 结果已经在渠道表里了：让使用者再点一次「关闭」只是多一步。
     expect(saveBody).toContain('onSaved();');
-    expect(source).toContain("t('sms_service.config_saved')");
+    expect(saveBody).toContain('onClose();');
+    expect(saveBody.indexOf('onSaved();')).toBeLessThan(saveBody.indexOf('onClose();'));
+    // 失败路径不能收窗，否则错误信息没地方显示。
+    const saveStart = saveBody.indexOf('const result = await supplyApi.saveChannel');
+    const failBranch = saveBody.slice(saveStart, saveBody.indexOf('onSaved();'));
+    expect(failBranch).toContain('return;');
   });
 
   test('the lock notice sits next to the buttons it disables', () => {
@@ -108,6 +108,39 @@ describe('a successful save reports itself instead of vanishing', () => {
     expect(footer).toContain("t('sms_service.config_save')");
     // 提示渲染在 footer 里（紧邻保存按钮），不吊在弹窗正文最底部。
     expect(body).not.toContain('config_gate_locked_hint');
+  });
+});
+
+describe('the verification buttons answer one question: did it connect', () => {
+  const testBody = between(source, 'const handleTest', 'const handleWebLogin');
+  const loginBody = between(source, 'const handleWebLogin', '一种接入方式的连接信息块');
+
+  test('a successful test reports the connection, not the balance', () => {
+    // 余额属于渠道池，不属于这个按钮：它只回答「凭据连得上吗」。顺手报一个
+    // 「余额 ¥2.29」会让人以为余额低就是连接有问题。
+    expect(source).toContain("t('sms_service.config_test_ok')");
+    expect(source).not.toContain('config_test_ok_balance');
+    expect(testBody).not.toContain('toFixed(');
+    expect(testBody).not.toContain("setApiTest({ kind: 'ok', balance");
+  });
+
+  test('a successful sign-in reports the sign-in, not how many channels it saw', () => {
+    expect(source).toContain("t('sms_service.config_web_login_ok')");
+    expect(source).not.toContain('webLogin.channels');
+    expect(loginBody).not.toContain('.channels');
+  });
+
+  test('the two results carry no number, in any language', () => {
+    for (const locale of ['en', 'zh-CN', 'zh-TW', 'ru', 'vi', 'ko']) {
+      const bundle = JSON.parse(
+        readFileSync(new URL(`../src/i18n/locales/${locale}.json`, import.meta.url), 'utf8')
+      ) as { sms_service?: Record<string, string> };
+      const section = bundle.sms_service ?? {};
+      // 没有值可填的占位符会原样印在屏幕上（「可用 {{count}} 个渠道」），
+      // 而死键只是噪音。
+      expect(section.config_web_login_ok).not.toContain('{{');
+      expect(section).not.toHaveProperty('config_test_ok_balance');
+    }
   });
 });
 
@@ -288,7 +321,8 @@ describe('the two categories share one editor', () => {
   });
 
   test('the offered methods come from the backend capability list', () => {
-    expect(source).toContain('natures.filter((item) => item.kinds.includes(kind))');
+    expect(source).toContain('natures');
+    expect(source).toContain('item.kinds.includes(kind)');
     expect(source).not.toMatch(/\bnatures\s*=\s*\[\s*'api'/);
   });
 
@@ -311,7 +345,6 @@ describe('the editor says the same thing in every language', () => {
         'config_step_natures',
         'config_step_connection',
         'config_field_custom_name',
-        'config_saved',
         'config_api_lead',
         'config_web_lead',
       ]) {

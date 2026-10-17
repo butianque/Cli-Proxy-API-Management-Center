@@ -1,12 +1,16 @@
 /**
- * 接码服务页 —— 两个视图：**号码池**（默认）与**渠道配置**（覆盖）。
+ * 接码服务页 —— 两个视图：**号码池**（默认）与**渠道配置**（覆盖两类身份）。
  *
  * 号码池是统一台账（手机号 + 邮箱同一张 ledger，按 kind 过滤），进来就看到。
- * 右上角「⚙ 配置」切到配置页，左上角「← 返回」切回。
+ * 右上角「⚙ 配置」切到配置页，左上角「← 返回」切回来。
  *
  * 配置页按身份类别切换，两类各有自己的正文：
  * - 手机号 → `PhoneSupplyView`（凭据 + 平台渠道 + 账本 + 护栏）；
- * - 邮箱 → `SupplyChannelCard`（来源登记；IMAP 实现尚未落地）。
+ * - 邮箱 → `SupplyChannelCard`（收信邮箱登记）。
+ *
+ * 邮箱收到什么**不另开一张卡**：每条渠道的收件情况挂在它自己那一行下面（渠道池表的
+ * 状态带）。把多个邮箱合成一个「收件箱」之后，「有 3 封」到底是哪个邮箱的只能靠猜；
+ * 而且自动化要的是接口，人要的是「这一条现在要不要管」。
  *
  * 类别切换属于**页面导航**，因此由本文件持有；两个视图各自只渲染正文。
  */
@@ -36,16 +40,16 @@ export function SmsServicePage() {
     <div className={styles.page}>
       <header className={styles.pageHeader}>
         <div className={styles.headerCopy}>
-          {view === 'config' ? (
-            <button type="button" className={styles.ghostAction} onClick={() => setView('pool')}>
-              <IconChevronLeft size={14} />
-              {t('sms_service.config_back')}
-            </button>
-          ) : (
+          {view === 'pool' ? (
             <>
               <h1 className={styles.title}>{t('sms_service.title')}</h1>
               <p className={styles.pageSubtitle}>{t('sms_service.subtitle')}</p>
             </>
+          ) : (
+            <button type="button" className={styles.ghostAction} onClick={() => setView('pool')}>
+              <IconChevronLeft size={14} />
+              {t('sms_service.config_back')}
+            </button>
           )}
           {view === 'config' && <h1 className={styles.title}>{t('sms_service.config_title')}</h1>}
         </div>
@@ -60,9 +64,8 @@ export function SmsServicePage() {
       </header>
 
       <div key={view} className={styles.viewContent}>
-        {view === 'pool' ? (
-          <SupplyPoolCard />
-        ) : (
+        {view === 'pool' && <SupplyPoolCard />}
+        {view === 'config' && (
           <>
             <div className={styles.tabs} role="tablist" aria-label={t('sms_service.tabs_label')}>
               {categories.map((item) => {

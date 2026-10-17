@@ -60,7 +60,7 @@ describe('the phone category reads the base supply routes', () => {
       expect(source).not.toMatch(/smsApi\.\w+\(\s*apiBase/);
     }
     const page = read('features/sms/SmsServicePage.tsx');
-    expect(page).toContain('<SupplyChannelCard />');
+    expect(page).toContain('<SupplyChannelCard');
     expect(page).toContain('<PhoneSupplyView />');
   });
 });

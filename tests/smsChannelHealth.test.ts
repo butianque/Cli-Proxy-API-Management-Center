@@ -192,7 +192,7 @@ describe('the page carries both supply categories and two views', () => {
     expect(page).toContain('sms_service.tab_phone');
     expect(page).toContain('sms_service.tab_email');
     expect(page).toContain('<PhoneSupplyView />');
-    expect(page).toContain('<SupplyChannelCard />');
+    expect(page).toContain('<SupplyChannelCard');
     // Credentials are opened by the views, never by the container.
     expect(page).not.toContain('<ChannelConfigModal');
     expect(page).not.toContain('<ChannelEditorModal');
@@ -231,7 +231,12 @@ describe('the page carries both supply categories and two views', () => {
     expect(card).toContain('ChannelEditorModal');
     expect(card).not.toContain('onCategoryChange');
     expect(card).not.toContain('role="tablist"');
-    expect(card).not.toContain('SupplyChannelCardProps');
+    // The card takes no category prop — it *is* the email view, and the kind is
+    // fixed inside it. Its rows re-read themselves: the table bumps its own
+    // reload key after a save, so nothing outside has to be told a channel
+    // changed.
+    expect(card).not.toMatch(/kind\??:\s*SupplyKind/);
+    expect(card).toContain('setReloadKey((key) => key + 1)');
     expect(phone).toContain('ChannelEditorModal');
     const editor = read('ChannelEditorModal.tsx');
     expect(editor).not.toContain('role="tablist"');

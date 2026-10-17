@@ -10,10 +10,12 @@
  */
 
 import type { SmsChannelWire, SmsLedgerWire, SmsStatusResponse } from '@/services/api/sms';
+import { normalizeOAuthProviderKey } from '@/utils/providerKeys';
 import type {
   SupplyChannelWire,
   SupplyConnectionWire,
   SupplyKindConfigWire,
+  SupplyLedgerProjectWire,
   SupplyLedgerWire,
   SupplyNatureWireInfo,
   SupplyProbeWire,
@@ -23,6 +25,7 @@ import type {
   PhoneLedgerEntry,
   PlatformConnection,
   PoolEntry,
+  PoolRegistration,
   PoolState,
   SmsChannel,
   SmsPlatform,
@@ -44,23 +47,65 @@ import type {
 export const NATURE_LABEL: Record<SupplyNature, string> = {
   api: 'sms_service.nature_api',
   imap: 'sms_service.nature_imap',
+  oauth2: 'sms_service.nature_oauth2',
   web: 'sms_service.nature_web',
 };
 
 /** 渠道类别的显示名。键是后端给的值，认不出的值不猜（调用方按缺省处理）。 */
 export const CATEGORY_LABEL: Record<string, string> = {
   'third-party': 'sms_service.category_third_party',
-  'self-owned': 'sms_service.category_self_owned',
   'self-built': 'sms_service.category_self_built',
+  'self-owned': 'sms_service.category_self_owned',
 };
 
 /**
- * 可选的渠道类别，顺序即选择器里的顺序。
+ * 手机号能选的类别。
+ *
+ * 现在只有「第三方服务」：接码平台给的号都是别人的服务。等真的有了自己的号码池再往
+ * 这里加 —— 先摆三个选项、其中两个选不出任何差别，等于让人做一道没有答案的题。
  *
  * 与 `CATEGORY_LABEL` 放一起：类别这套词汇只有一个出处，编辑器与表都从这里取，
  * 免得「表里认识的值」和「能选的值」各写一份、慢慢漂移。
  */
-export const CATEGORY_OPTIONS = ['third-party', 'self-owned', 'self-built'] as const;
+export const PHONE_CATEGORY_OPTIONS = ['third-party'] as const;
+
+/**
+ * 邮箱能选的类别，顺序即选择器里的顺序。
+ *
+ * 三种说的是三件不同的事，不是同一件事的三种叫法：
+ *   - 第三方服务：别人的邮箱服务，一个地址。
+ *   - 自建域名：自己的域 + catch-all，每次注册都能现编一个地址，全落进同一个信箱。
+ *   - 自有邮箱：自己的信箱（比如 QQ 邮箱）。是我的，但仍然只有一个地址，编不出新的。
+ *
+ * 所以 `self-owned` 与 `self-built` 不能合并：前者只能收那一个地址，后者能凭空发地址。
+ */
+export const EMAIL_CATEGORY_OPTIONS = ['third-party', 'self-built', 'self-owned'] as const;
+
+/**
+ * 这个类别是不是「一个能凭空发地址的域」。
+ *
+ * 这是**能力**的事实，不是接入方式：同一个域走 IMAP 读、还是走转发服务的 API 读，
+ * 都是自己的域。所以它住在类别里，基座据此决定这个邮箱能不能凭空发地址（catch-all），
+ * 面板据此决定要不要问域名。
+ */
+export function isCatchAllCategory(category: string): boolean {
+  return category === 'self-built';
+}
+
+/**
+ * 邮箱这一类能选的接入方式，顺序即界面上的顺序。
+ *
+ * 两种都是连上同一个信箱取码，区别只在**拿什么证明身份**：
+ *   - 授权码：QQ、163、Gmail（应用专用密码）这类邮箱的口令登录；
+ *   - OAuth2：微软的邮箱只认这条 —— 它的服务器直接关掉了口令登录。
+ *
+ * 所以它们是**二选一**，不是多选：同一个信箱不会同时存在两种凭据。做成勾选框会让人
+ * 勾上两种，然后卡在「到底用哪一份」上。
+ */
+export const EMAIL_NATURES: readonly SupplyNature[] = ['imap', 'oauth2'];
+
+/** 还没选过时默认哪一种：绝大多数邮箱用授权码就能读。 */
+export const EMAIL_DEFAULT_NATURE: SupplyNature = 'imap';
 
 /**
  * 可选平台（L1）。内置平台已知协议、地址固定；自定义平台由使用者自填。
@@ -342,8 +387,8 @@ function toSupplyConnection(raw: SupplyConnectionWire | undefined): SupplyConnec
     account: raw?.account ?? '',
     secret: raw?.secret ?? '',
     secretPresent: raw?.secret_present === true,
-    usage: raw?.usage ?? '',
     domain: raw?.domain ?? '',
+    clientId: raw?.client_id ?? '',
   };
 }
 
@@ -415,17 +460,61 @@ function poolState(raw: SupplyLedgerWire): PoolState {
   return 'pending';
 }
 
+/** 后端一次注册的处置 → 台账里的处置。判据与整条记录一致，两处不能各说一套。 */
+function registrationState(outcome: string | undefined): PoolState {
+  switch ((outcome ?? '').trim().toLowerCase()) {
+    case 'registered':
+      return 'registered';
+    case 'released':
+      return 'released';
+    case 'timeout':
+    case 'failed':
+    case 'error':
+      return 'failed';
+    default:
+      return 'pending';
+  }
+}
+
+/**
+ * 后端一条注册 → 台账里的一条项目记录。
+ *
+ * 平台和账号都没有的项不是一次注册（后端用空 target 表示「只是更新记录」），
+ * 所以返回 `null` 而不是摆一行空条目。
+ */
+function toRegistration(raw: SupplyLedgerProjectWire): PoolRegistration | null {
+  const target = (raw.target ?? '').trim();
+  const account = (raw.account ?? '').trim();
+  if (!target && !account) return null;
+  const at = typeof raw.at === 'number' ? raw.at : 0;
+  return {
+    target,
+    account,
+    state: registrationState(raw.outcome),
+    // 后端没记时间就是没有（`null`），不拿 `now` 顶替 —— 那是编造数据。
+    registeredAt: at > 0 ? new Date(at * 1000).toISOString() : null,
+  };
+}
+
 /** 后端一条身份 → 池里的一行。 */
 export function toPoolEntry(raw: SupplyLedgerWire): PoolEntry {
   const used = typeof raw.last_used === 'number' ? raw.last_used : 0;
+  const projects: PoolRegistration[] = [];
+  for (const item of Array.isArray(raw.projects) ? raw.projects : []) {
+    const registration = toRegistration(item);
+    if (registration) projects.push(registration);
+  }
   return {
+    kind: raw.kind === 'phone' ? 'phone' : 'email',
     identity: raw.address ?? '',
+    channelId: (raw.channel_id ?? '').trim(),
     source: raw.source ?? '',
     account: raw.account ?? '',
     platform: raw.target ?? '',
     state: poolState(raw),
     // 后端没记时间就是没有（`null`），不拿 `now` 顶替 —— 那是编造数据。
     lastUsedAt: used > 0 ? new Date(used * 1000).toISOString() : null,
+    projects,
   };
 }
 
@@ -433,4 +522,73 @@ export function toPoolEntry(raw: SupplyLedgerWire): PoolEntry {
 export function toPool(list: SupplyLedgerWire[] | undefined): PoolEntry[] {
   if (!Array.isArray(list)) return [];
   return list.map(toPoolEntry);
+}
+
+/**
+ * 一个平台在台账里叫什么。
+ *
+ * 与登录凭据列表共用同一份标签（`auth_files.filter_*`），所以同一个平台在两个页面上
+ * 叫同一个名字。查不到就用后端给的原始 id 首字母大写 —— 不另编一个名字。
+ */
+export function projectLabel(target: string, translate: (key: string) => string): string {
+  const id = target.trim();
+  if (!id) return '';
+  const key = `auth_files.filter_${normalizeOAuthProviderKey(id)}`;
+  const translated = translate(key);
+  if (translated !== key) return translated;
+  return id.charAt(0).toUpperCase() + id.slice(1);
+}
+
+/**
+ * 一条渠道在某个接入方式上的连通状态，折算成「一句话 + 一个色调」。
+ *
+ * 渠道池与台账共用：同一行在两个页面上说的必须是同一句话，否则操作者会以为
+ * 其中一个是错的。`declared` 是渠道声明的接入方式，`probe` 是探活结果。
+ */
+export interface ConnectionState {
+  /** i18n 键。 */
+  key: string;
+  /** i18n 参数。 */
+  params?: Record<string, string>;
+  /** 着色用的样式名（`tagGood` / `tagWarning` / `tagMuted`）。 */
+  tone: 'tagGood' | 'tagWarning' | 'tagMuted';
+}
+
+export function connectionState(
+  declared: SupplyNature[],
+  probe: Partial<Record<SupplyNature, SupplyProbeState>> | undefined,
+  natureLabel: (nature: SupplyNature) => string
+): ConnectionState {
+  if (declared.length === 0) return { key: 'sms_service.pool_probe_none', tone: 'tagMuted' };
+  const online = declared.filter((nature) => probe?.[nature] === 'online');
+  const offline = declared.filter((nature) => probe?.[nature] === 'offline');
+  const labels = (list: SupplyNature[]) => list.map(natureLabel).join(' + ');
+  if (online.length === declared.length) {
+    return {
+      key: 'sms_service.pool_probe_online',
+      params: { natures: labels(online) },
+      tone: 'tagGood',
+    };
+  }
+  if (online.length > 0) {
+    return {
+      key: 'sms_service.pool_probe_partial',
+      params: { natures: labels(online) },
+      tone: 'tagWarning',
+    };
+  }
+  if (offline.length > 0) {
+    return {
+      key: 'sms_service.pool_probe_offline',
+      params: { natures: labels(offline) },
+      tone: 'tagWarning',
+    };
+  }
+  if (declared.some((nature) => probe?.[nature] === 'unready')) {
+    return { key: 'sms_service.pool_probe_unready', tone: 'tagMuted' };
+  }
+  if (declared.some((nature) => probe?.[nature] === 'unsupported')) {
+    return { key: 'sms_service.pool_probe_unsupported', tone: 'tagMuted' };
+  }
+  return { key: 'sms_service.pool_probe_unchecked', tone: 'tagMuted' };
 }

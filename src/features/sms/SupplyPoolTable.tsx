@@ -10,11 +10,16 @@
  * 调用方给。表里不再放第二个「添加」入口 —— 它在有数据后就消失，只会让「去哪加」
  * 变成一个本来不存在的问题。
  *
+ * 每条渠道下面挂一条**状态带**（`ChannelStatusStrip`）：它属于上面那一行，说的是
+ * 这条渠道自己的事 —— 这个邮箱收到了几封、最新一封是什么码，或者这个平台的余额
+ * 还剩多少、取过几个号。收件箱不另开入口：自动化脚本要的是接口，人要的是「这一条
+ * 现在要不要管」。
+ *
  * 探活是**只读**的：进页面探一次，探不动就如实显示「未检查」，不把「探不了」说成
  * 「连不上」。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -30,8 +35,17 @@ import {
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { IconAlertTriangle, IconPencil, IconPlug, IconTrash2 } from '@/components/ui/icons';
 import { supplyApi, type SupplyChannelInput } from '@/services/api/supply';
+import { ChannelStatusStrip } from './ChannelStatusStrip';
+import { useChannelStatus } from './useChannelStatus';
 import { kindBlockInput } from './channelDraft';
-import { toNatureOptions, toProbes, toSupplyChannels, CATEGORY_LABEL, NATURE_LABEL } from './smsMapping';
+import {
+  toNatureOptions,
+  toProbes,
+  toSupplyChannels,
+  CATEGORY_LABEL,
+  NATURE_LABEL,
+  connectionState,
+} from './smsMapping';
 import type {
   SupplyChannel,
   SupplyKind,
@@ -151,44 +165,19 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
     [probes]
   );
 
+  // 每条渠道的状态带：一次读全，按渠道分派（见 `useChannelStatus`）。
+  const statuses = useChannelStatus(kind, channels, reloadKey);
+
   const natureLabels = (list: SupplyNature[]) =>
     list.map((nature) => t(NATURE_LABEL[nature])).join(' + ') || '—';
 
-  /** 连接状态：先看这条渠道声明了哪些连接方式，再看每一种探活的结果。 */
-  const connectionState = (channel: SupplyChannel) => {
-    const declared = (kind === 'phone' ? channel.phone : channel.email)?.natures ?? [];
-    const stateOf = (nature: SupplyNature) => probesById.get(channel.id)?.[nature];
-    const online = declared.filter((nature) => stateOf(nature) === 'online');
-    if (declared.length === 0) {
-      return { tone: styles.tagMuted, text: t('sms_service.pool_probe_none') };
-    }
-    if (online.length === declared.length) {
-      return {
-        tone: styles.tagGood,
-        text: t('sms_service.pool_probe_online', { natures: natureLabels(online) }),
-      };
-    }
-    if (online.length > 0) {
-      return {
-        tone: styles.tagWarning,
-        text: t('sms_service.pool_probe_partial', { natures: natureLabels(online) }),
-      };
-    }
-    const offline = declared.filter((nature) => stateOf(nature) === 'offline');
-    if (offline.length > 0) {
-      return {
-        tone: styles.tagWarning,
-        text: t('sms_service.pool_probe_offline', { natures: natureLabels(offline) }),
-      };
-    }
-    if (declared.some((nature) => stateOf(nature) === 'unready')) {
-      return { tone: styles.tagMuted, text: t('sms_service.pool_probe_unready') };
-    }
-    if (declared.some((nature) => stateOf(nature) === 'unsupported')) {
-      return { tone: styles.tagMuted, text: t('sms_service.pool_probe_unsupported') };
-    }
-    return { tone: styles.tagMuted, text: t('sms_service.pool_probe_unchecked') };
-  };
+  // 连接状态与台账共用同一份判据：同一条渠道在两个页面上说的必须是同一句话。
+  const connectionOf = (channel: SupplyChannel) =>
+    connectionState(
+      (kind === 'phone' ? channel.phone : channel.email)?.natures ?? [],
+      probesById.get(channel.id),
+      (nature) => t(NATURE_LABEL[nature])
+    );
 
   return (
     <Card
@@ -231,56 +220,68 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
           <TableBody>
             {channels.map((channel) => {
               const block = kind === 'phone' ? channel.phone : channel.email;
-              const status = connectionState(channel);
+              const connection = connectionOf(channel);
               const categoryLabel = CATEGORY_LABEL[channel.category];
               const editLabel = t('sms_service.pool_edit_aria', { name: channel.label });
               const removeLabel = t('sms_service.pool_remove_aria', { name: channel.label });
               return (
-                <TableRow key={channel.id}>
-                  <TableCell>
-                    <span className={styles.channelName}>{channel.label}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className={`${styles.tag} ${styles.tagMuted}`}>
-                      {categoryLabel ? t(categoryLabel) : '—'}
-                    </span>
-                  </TableCell>
-                  <TableCell>{natureLabels(block?.natures ?? [])}</TableCell>
-                  <TableCell>
-                    <span className={`${styles.tag} ${status.tone}`}>{status.text}</span>
-                  </TableCell>
-                  <TableCell>
-                    <ToggleSwitch
-                      checked={block?.enabled ?? false}
-                      onChange={(next) => void setEnabled(channel, next)}
-                      disabled={busyId === channel.id}
-                      ariaLabel={t('sms_service.pool_toggle_aria', { name: channel.label })}
-                    />
-                  </TableCell>
-                  <TableCell alignRight>
-                    <button
-                      type="button"
-                      className={styles.actionPill}
-                      onClick={() => onEdit(channel)}
-                      title={editLabel}
-                      aria-label={editLabel}
-                    >
-                      <IconPencil size={14} />
-                    </button>
-                  </TableCell>
-                  <TableCell alignRight>
-                    <button
-                      type="button"
-                      className={styles.actionPill}
-                      onClick={() => void remove(channel)}
-                      disabled={busyId === channel.id}
-                      title={removeLabel}
-                      aria-label={removeLabel}
-                    >
-                      <IconTrash2 size={14} />
-                    </button>
-                  </TableCell>
-                </TableRow>
+                <Fragment key={channel.id}>
+                  <TableRow className={styles.stripLead}>
+                    <TableCell>
+                      <span className={styles.channelName}>{channel.label}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`${styles.tag} ${styles.tagMuted}`}>
+                        {categoryLabel ? t(categoryLabel) : '—'}
+                      </span>
+                    </TableCell>
+                    <TableCell>{natureLabels(block?.natures ?? [])}</TableCell>
+                    <TableCell>
+                      <span className={`${styles.tag} ${styles[connection.tone]}`}>
+                        {t(connection.key, connection.params)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <ToggleSwitch
+                        checked={block?.enabled ?? false}
+                        onChange={(next) => void setEnabled(channel, next)}
+                        disabled={busyId === channel.id}
+                        ariaLabel={t('sms_service.pool_toggle_aria', { name: channel.label })}
+                      />
+                    </TableCell>
+                    <TableCell alignRight>
+                      <button
+                        type="button"
+                        className={styles.actionPill}
+                        onClick={() => onEdit(channel)}
+                        title={editLabel}
+                        aria-label={editLabel}
+                      >
+                        <IconPencil size={14} />
+                      </button>
+                    </TableCell>
+                    <TableCell alignRight>
+                      <button
+                        type="button"
+                        className={styles.actionPill}
+                        onClick={() => void remove(channel)}
+                        disabled={busyId === channel.id}
+                        title={removeLabel}
+                        aria-label={removeLabel}
+                      >
+                        <IconTrash2 size={14} />
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow className={styles.stripRow}>
+                    <TableCell colSpan={7}>
+                      <ChannelStatusStrip
+                        kind={kind}
+                        status={statuses.get(channel.id) ?? { kind: 'loading' }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                </Fragment>
               );
             })}
           </TableBody>
