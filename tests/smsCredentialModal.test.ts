@@ -116,10 +116,10 @@ describe('the masked hint belongs to the selected platform', () => {
     // 切到「自定义」却还显示内置平台的 e3••••f8，就是拿别人的凭据当提示。
     expect(source).toContain('const credentialBelongsHere = credential?.provider === platformId;');
     expect(source).toContain(
-      "const apiHint = credentialBelongsHere ? (credential?.apiUserHint ?? '') : '';"
+      "const apiHint = isEditing && credentialBelongsHere ? (credential?.apiUserHint ?? '') : '';"
     );
     expect(source).toContain(
-      "const webHint = credentialBelongsHere ? (credential?.webUserHint ?? '') : '';"
+      "const webHint = isEditing && credentialBelongsHere ? (credential?.webUserHint ?? '') : '';"
     );
   });
 
@@ -133,6 +133,43 @@ describe('the masked hint belongs to the selected platform', () => {
     expect(source).toContain(
       "placeholder={webHint || t('sms_service.config_ph_web_user')}"
     );
+  });
+});
+
+describe('a new channel is not made to look pre-filled', () => {
+  test('the masked account belongs to editing, not to adding', () => {
+    // 新建渠道没有任何「已存的值」属于它：摆一个 e3••••f8 只会让人以为已经填好了。
+    expect(source).toContain('const isEditing = channel !== null;');
+    expect(source).toContain(
+      "const apiHint = isEditing && credentialBelongsHere ? (credential?.apiUserHint ?? '') : '';"
+    );
+    expect(source).toContain(
+      "const webHint = isEditing && credentialBelongsHere ? (credential?.webUserHint ?? '') : '';"
+    );
+  });
+
+  test('the "keep what is stored" copy is editing-only', () => {
+    // 没有存过东西的人看到「留空则保留已存的值」只会更糊涂。
+    expect(source).toContain('{apiHint && <div className={styles.fieldNote}>{keepBlank}</div>}');
+    expect(source).toContain('{webHint && <div className={styles.fieldNote}>{keepBlank}</div>}');
+    expect(source).not.toContain('hint={keepBlank}');
+    expect(source).not.toContain('hint={apiHint ? keepBlank : undefined}');
+    expect(source).not.toContain('hint={webHint ? keepBlank : undefined}');
+    expect(source).toContain(
+      "hint={isEditing ? t('sms_service.config_field_endpoint_opt') : undefined}"
+    );
+  });
+
+  test('the same sentence is not repeated under every box', () => {
+    // 一句话说清这一对框留空意味着什么；每个框下面各挂一遍只是噪音。
+    const repeats = source.match(/keepBlank\}/g) ?? [];
+    expect(repeats.length).toBe(2);
+  });
+
+  test('adding falls back to guiding copy', () => {
+    // 退回的正是引导文案：告诉使用者该填什么，而不是暗示已经填好。
+    expect(source).toContain("placeholder={apiHint || t('sms_service.config_ph_api_account')}");
+    expect(source).toContain("placeholder={webHint || t('sms_service.config_ph_web_user')}");
   });
 });
 

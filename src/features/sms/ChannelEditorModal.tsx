@@ -168,6 +168,15 @@ export function ChannelEditorModal({
    */
   const credentialBelongsHere = credential?.provider === platformId;
 
+  /**
+   * 这是「编辑已存渠道」还是「新建一条」。
+   *
+   * 凭据框显示什么由它决定：编辑时显示**已存账号的脱敏提示**（并说明留空即保留），
+   * 新建时显示**引导文案** —— 一个掩码占位符摆在新建表单里，看起来就像「已经有人
+   * 填好了」，而这条渠道此刻还没有任何凭据。两者混用会让人分不清「这是值还是提示」。
+   */
+  const isEditing = channel !== null;
+
   const block = draft[kind];
   const allowed = useMemo(
     () => natures.filter((item) => item.kinds.includes(kind)),
@@ -400,8 +409,12 @@ export function ChannelEditorModal({
   const connectionBlock = (nature: SupplyNature): ReactNode => {
     const connection = block.connections[nature] ?? emptyConnection();
     const keepBlank = t('sms_service.config_keep_blank');
-    const apiHint = credentialBelongsHere ? (credential?.apiUserHint ?? '') : '';
-    const webHint = credentialBelongsHere ? (credential?.webUserHint ?? '') : '';
+    /**
+     * 脱敏的已存账号**只在编辑时**出现：新建渠道没有「已存的值」可保留，
+     * 摆一个掩码占位符只会让人以为已经填好了。
+     */
+    const apiHint = isEditing && credentialBelongsHere ? (credential?.apiUserHint ?? '') : '';
+    const webHint = isEditing && credentialBelongsHere ? (credential?.webUserHint ?? '') : '';
     return (
       <div className={styles.block} key={nature}>
         <div className={styles.blockTitle}>{t(NATURE_LABEL[nature])}</div>
@@ -439,7 +452,7 @@ export function ChannelEditorModal({
               <Input
                 label={t('sms_service.config_field_endpoint')}
                 placeholder="https://api.example.com"
-                hint={t('sms_service.config_field_endpoint_opt')}
+                hint={isEditing ? t('sms_service.config_field_endpoint_opt') : undefined}
                 value={endpoint}
                 onChange={(event) => {
                   setEndpoint(event.target.value);
@@ -451,7 +464,6 @@ export function ChannelEditorModal({
               <Input
                 label={t('sms_service.config_field_api_account')}
                 placeholder={apiHint || t('sms_service.config_ph_api_account')}
-                hint={apiHint ? keepBlank : undefined}
                 error={apiPairBroken && apiUser.trim() === '' ? t('sms_service.config_required') : undefined}
                 value={apiUser}
                 onChange={(event) => {
@@ -463,7 +475,6 @@ export function ChannelEditorModal({
                 label={t('sms_service.config_field_api_secret')}
                 type="password"
                 placeholder="••••••••"
-                hint={apiHint ? keepBlank : undefined}
                 error={apiPairBroken && apiPass.trim() === '' ? t('sms_service.config_required') : undefined}
                 value={apiPass}
                 onChange={(event) => {
@@ -472,6 +483,8 @@ export function ChannelEditorModal({
                 }}
               />
             </div>
+            {/* 一句话说清这一对框留空意味着什么；写在框下面重复四遍只是噪音。 */}
+            {apiHint && <div className={styles.fieldNote}>{keepBlank}</div>}
             <div className={styles.blockActions}>
               <Button
                 variant="secondary"
@@ -515,7 +528,6 @@ export function ChannelEditorModal({
               <Input
                 label={t('sms_service.config_field_web_user')}
                 placeholder={webHint || t('sms_service.config_ph_web_user')}
-                hint={webHint ? keepBlank : undefined}
                 error={webPairBroken && webUser.trim() === '' ? t('sms_service.config_required') : undefined}
                 value={webUser}
                 onChange={(event) => {
@@ -527,7 +539,6 @@ export function ChannelEditorModal({
                 label={t('sms_service.config_field_web_pass')}
                 type="password"
                 placeholder="••••••••"
-                hint={webHint ? keepBlank : undefined}
                 error={webPairBroken && webPass.trim() === '' ? t('sms_service.config_required') : undefined}
                 value={webPass}
                 onChange={(event) => {
@@ -536,6 +547,7 @@ export function ChannelEditorModal({
                 }}
               />
             </div>
+            {webHint && <div className={styles.fieldNote}>{keepBlank}</div>}
             <div className={styles.blockActions}>
               <Button
                 variant="secondary"
