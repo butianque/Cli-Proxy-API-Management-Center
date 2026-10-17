@@ -11,6 +11,7 @@ import {
   channelDraftFromChannel,
   channelDraftToInput,
   kindBlockInput,
+  platformNatures,
 } from '../src/features/sms/channelDraft';
 import type { SupplyChannelWire, SupplyLedgerWire } from '../src/services/api/supply';
 import { SUPPLY_POOL_BASE } from '../src/services/api/supply';
@@ -224,6 +225,27 @@ describe('the editor resolves one platform, and only a preset can name a channel
     // 「自定义」不是一个能当渠道名用的词，所以它不能自带名字 —— 使用者必须自己起。
     expect(SMS_PLATFORMS.filter((item) => item.preset).map((item) => item.id)).toEqual(['haozhuma']);
     expect(SMS_PLATFORMS.find((item) => !item.preset)?.id).toBe('custom');
+  });
+
+  test('a preset platform declares the facts the operator would otherwise retype', () => {
+    // 平台卡片上写着「用 API 接入取号，用网页登录管理渠道」，且它是第三方服务 ——
+    // 这两条都是平台已知的事实，声明在平台清单里，编辑器据此带出默认值。
+    const builtIn = SMS_PLATFORMS.find((item) => item.id === 'haozhuma')!;
+    expect(builtIn.defaultCategory).toBe('third-party');
+    expect(builtIn.defaultNatures).toEqual(['api', 'web']);
+
+    // 「自定义」什么都不已知：连协议都不确定，不能替它声明。
+    const custom = SMS_PLATFORMS.find((item) => item.id === 'custom')!;
+    expect(custom.defaultCategory).toBeUndefined();
+    expect(custom.defaultNatures).toBeUndefined();
+  });
+
+  test('the platform defaults are narrowed to the methods this kind really supports', () => {
+    // 后端 `natures` 才是权威：平台声明的能力与它不一致时，取交集，绝不勾一个后端不认的方式。
+    expect([...platformNatures(['api', 'web'], ['api', 'web'])].sort()).toEqual(['api', 'web']);
+    expect([...platformNatures(['api', 'web'], ['api'])]).toEqual(['api']);
+    expect([...platformNatures(['api', 'web'], [])]).toEqual([]);
+    expect([...platformNatures(['api', 'web'], ['imap', 'api'])]).toEqual(['api']);
   });
 });
 

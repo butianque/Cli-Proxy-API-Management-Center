@@ -66,6 +66,20 @@ export const emptyChannelDraft = (): ChannelDraft => ({
   email: emptyKindDraft(),
 });
 
+/**
+ * 内置平台默认勾选的接入方式，只保留这一类别**真正支持**的。
+ *
+ * 取交集是有意的：平台声明的能力与基座当下允许的方式可能不一致，而**后端 `natures`
+ * 才是权威**。照抄平台声明会勾上一个后端不认的方式，保存后就是一条并不存在的连接。
+ */
+export function platformNatures(
+  defaults: readonly SupplyNature[],
+  allowed: readonly SupplyNature[]
+): Set<SupplyNature> {
+  const permitted = new Set(allowed);
+  return new Set(defaults.filter((nature) => permitted.has(nature)));
+}
+
 /** 基座一条渠道的某个类别块 → 草稿；这一类没配时给一个空草稿。 */
 export function kindDraftFromChannel(channel: SupplyChannel, kind: SupplyKind): KindDraft {
   const block = kind === 'phone' ? channel.phone : channel.email;

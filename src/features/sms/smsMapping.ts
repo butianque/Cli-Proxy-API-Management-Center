@@ -62,7 +62,13 @@ export const CATEGORY_LABEL: Record<string, string> = {
  */
 export const CATEGORY_OPTIONS = ['third-party', 'self-owned', 'self-built'] as const;
 
-/** 可选平台（L1）。内置平台已知协议、地址固定；自定义平台由使用者自填。 */
+/**
+ * 可选平台（L1）。内置平台已知协议、地址固定；自定义平台由使用者自填。
+ *
+ * 内置平台把自己**已知的事实**一并声明（地址、类别、支持的接入方式）：这些不是使用者
+ * 的选择题，编辑器按它带出默认值 —— 平台卡片上的那句话（「用 API 接入取号，用网页
+ * 登录管理渠道」）与勾选框不该各说一套。
+ */
 export const SMS_PLATFORMS: SmsPlatform[] = [
   {
     id: 'haozhuma',
@@ -70,6 +76,8 @@ export const SMS_PLATFORMS: SmsPlatform[] = [
     summaryKey: 'sms_service.platform_haozhuma_summary',
     preset: true,
     defaultEndpoint: 'https://api.haozhuma.cn',
+    defaultCategory: 'third-party',
+    defaultNatures: ['api', 'web'],
   },
   {
     id: 'custom',

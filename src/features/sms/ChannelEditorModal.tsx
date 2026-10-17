@@ -45,6 +45,7 @@ import {
   channelDraftToInput,
   emptyChannelDraft,
   emptyConnection,
+  platformNatures,
   type ChannelDraft,
   type ConnectionDraft,
 } from './channelDraft';
@@ -140,6 +141,14 @@ export function ChannelEditorModal({
    * 一遍是把联动性做断。改过之后才不再跟随，绝不覆盖已经写下的命名。
    */
   const [labelEdited, setLabelEdited] = useState(false);
+  /**
+   * 类别与接入方式是否被使用者改过 —— 与名称同一套规则。
+   *
+   * 平台是内置的，它的类别（第三方服务）与支持的接入方式（API + 网页）就不是选择题。
+   * 使用者一旦自己动过，就以他的选择为准。
+   */
+  const [categoryEdited, setCategoryEdited] = useState(false);
+  const [naturesEdited, setNaturesEdited] = useState(false);
 
   /** 选中的平台：使用者显式选过就用它，否则跟随已存凭据所属的平台。 */
   const platformId = useMemo(
@@ -159,17 +168,53 @@ export function ChannelEditorModal({
    */
   const credentialBelongsHere = credential?.provider === platformId;
 
+  const block = draft[kind];
+  const allowed = useMemo(
+    () => natures.filter((item) => item.kinds.includes(kind)),
+    [natures, kind]
+  );
+  /**
+   * 这个平台**已知的事实**；「自定义」什么都不已知（它连协议都不确定）。
+   *
+   * 只对手机号成立：邮箱这一类没有平台可挑。
+   */
+  const platformFacts = kind === 'phone' && platform.preset ? platform : null;
+
   /** 平台名可以直接当渠道名；「自定义」不是一个能当名字用的词，得使用者自己起。 */
   const platformLabel = (item: SmsPlatform) => (item.preset ? t(item.nameKey) : '');
   /** 名称的当前值：没被改过就跟随平台（邮箱没有平台，必须自己填）。 */
   const label = kind === 'phone' && !labelEdited ? platformLabel(platform) : draft.label;
 
+  /** 类别的当前值：内置平台的类别是已知事实，没被改过就跟随它。 */
+  const category =
+    !categoryEdited && platformFacts?.defaultCategory
+      ? platformFacts.defaultCategory
+      : draft.category;
+
+  /**
+   * 接入方式的当前值：内置平台支持哪几种就勾哪几种（与后端允许的方式取交集）。
+   *
+   * 勾选框、连接块、必填判据、提交**都读这一个集合** —— 否则界面勾着两种、提交却只写
+   * 一种，或反过来。
+   */
+  const chosenNatures = useMemo(() => {
+    const defaults = platformFacts?.defaultNatures;
+    if (!defaults || naturesEdited) return block.natures;
+    return platformNatures(defaults, allowed.map((item) => item.nature));
+  }, [platformFacts, naturesEdited, block.natures, allowed]);
+
   // 每次打开（或换了一条渠道）都把表单重置成「只显示已存状态」。
   useEffect(() => {
     if (!open) return;
-    setDraft(channel ? channelDraftFromChannel(channel) : emptyChannelDraft());
-    // 已存渠道有自己的名字，就当成「改过」；没有名字的（旧数据）跟着平台补上。
+    const restored = channel ? channelDraftFromChannel(channel) : emptyChannelDraft();
+    setDraft(restored);
+    /**
+     * 已存的值就是使用者的选择，一律不覆盖；**空的**才跟着平台补上 ——
+     * 名字、类别、接入方式三处同一条规则（旧数据里空着的，编辑器顺手补全）。
+     */
     setLabelEdited(channel ? channel.label.trim() !== '' : false);
+    setCategoryEdited(channel ? channel.category.trim() !== '' : false);
+    setNaturesEdited(channel ? restored[kind].natures.size > 0 : false);
     setPlatformChoice(null);
     setApiUser('');
     setApiPass('');
@@ -182,24 +227,19 @@ export function ChannelEditorModal({
     setSaved(false);
     setAttempted(false);
     setError(null);
-  }, [open, channel]);
+  }, [open, channel, kind]);
 
-  const block = draft[kind];
-  const allowed = useMemo(
-    () => natures.filter((item) => item.kinds.includes(kind)),
-    [natures, kind]
-  );
-  const selected = allowed.filter((item) => block.natures.has(item.nature));
+  const selected = allowed.filter((item) => chosenNatures.has(item.nature));
 
-  const apiSelected = kind === 'phone' && block.natures.has('api');
-  const webSelected = kind === 'phone' && block.natures.has('web');
+  const apiSelected = kind === 'phone' && chosenNatures.has('api');
+  const webSelected = kind === 'phone' && chosenNatures.has('web');
   const apiFilled = apiUser.trim() !== '' || apiPass.trim() !== '';
   const apiComplete = apiUser.trim() !== '' && apiPass.trim() !== '';
   const webFilled = webUser.trim() !== '' || webPass.trim() !== '';
   const webComplete = webUser.trim() !== '' && webPass.trim() !== '';
 
   const labelMissing = attempted && label.trim() === '';
-  const naturesMissing = attempted && block.natures.size === 0;
+  const naturesMissing = attempted && chosenNatures.size === 0;
   const apiPairBroken = attempted && apiSelected && apiFilled && !apiComplete;
   const webPairBroken = attempted && webSelected && webFilled && !webComplete;
 
@@ -216,10 +256,13 @@ export function ChannelEditorModal({
   };
 
   const toggleNature = (nature: SupplyNature) => {
+    // 从**界面上显示的那个集合**起算：勾选框画的是 `chosenNatures`，若从草稿里的空集合
+    // 起算，取消勾选反而会把它加上去。
+    const next = new Set(chosenNatures);
+    if (next.has(nature)) next.delete(nature);
+    else next.add(nature);
+    setNaturesEdited(true);
     updateBlock((current) => {
-      const next = new Set(current.natures);
-      if (next.has(nature)) next.delete(nature);
-      else next.add(nature);
       const connections = { ...current.connections };
       if (!connections[nature]) connections[nature] = emptyConnection();
       return { ...current, natures: next, connections };
@@ -256,7 +299,7 @@ export function ChannelEditorModal({
    */
   const handleSave = async () => {
     setAttempted(true);
-    if (label.trim() === '' || block.natures.size === 0) return;
+    if (label.trim() === '' || chosenNatures.size === 0) return;
     if (apiPairBroken || webPairBroken) return;
     setSaving(true);
     setError(null);
@@ -280,8 +323,18 @@ export function ChannelEditorModal({
           if (!applyCredentialResult(result)) return;
         }
       }
-      // 名称可能来自平台（使用者没改过），提交的是界面上显示的那个值。
-      const result = await supplyApi.saveChannel(channelDraftToInput({ ...draft, label }));
+      /**
+       * 提交的是**界面上显示的那一份**：名称、类别、接入方式都可能来自平台（使用者
+       * 没改过）。只替换正在编辑的这个类别块，另一块原样带回 —— 基座是整条渠道替换。
+       */
+      const submitted: ChannelDraft = {
+        ...draft,
+        label,
+        category,
+        phone: kind === 'phone' ? { ...draft.phone, natures: chosenNatures } : draft.phone,
+        email: kind === 'email' ? { ...draft.email, natures: chosenNatures } : draft.email,
+      };
+      const result = await supplyApi.saveChannel(channelDraftToInput(submitted));
       if (!result.ok) {
         setError(result.message || t('sms_service.source_err_generic'));
         return;
@@ -588,13 +641,14 @@ export function ChannelEditorModal({
               </label>
               <Select
                 id={categoryId}
-                value={draft.category}
+                value={category}
                 options={CATEGORY_OPTIONS.map((value) => ({
                   value,
                   label: t(CATEGORY_LABEL[value]),
                 }))}
-                onChange={(category) => {
-                  setDraft((current) => ({ ...current, category }));
+                onChange={(next) => {
+                  setCategoryEdited(true);
+                  setDraft((current) => ({ ...current, category: next }));
                   resetFeedback();
                 }}
                 ariaLabel={t('sms_service.field_category')}
@@ -656,7 +710,7 @@ export function ChannelEditorModal({
             <label className={styles.natureCard} key={nature}>
               <input
                 type="checkbox"
-                checked={block.natures.has(nature)}
+                checked={chosenNatures.has(nature)}
                 onChange={() => toggleNature(nature)}
               />
               <span>{t(NATURE_LABEL[nature])}</span>

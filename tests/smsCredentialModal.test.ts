@@ -34,9 +34,7 @@ const body = source.slice(source.indexOf('<div className={styles.body}>'));
 
 describe('the required fields are the name and one access method', () => {
   test('the guard asks for a name and one access method, nothing else', () => {
-    expect(saveBody).toContain(
-      "if (label.trim() === '' || block.natures.size === 0) return;"
-    );
+    expect(saveBody).toContain("if (label.trim() === '' || chosenNatures.size === 0) return;");
     // 「先填账号和密码」这条规则已经撤掉：凭据存在密钥库里，留空就是保留它。
     expect(source).not.toContain('config_need_credentials');
     expect(source).not.toContain('accountFilled');
@@ -44,7 +42,7 @@ describe('the required fields are the name and one access method', () => {
   });
 
   test('the guard returns before any write happens', () => {
-    const guard = saveBody.indexOf('block.natures.size === 0) return;');
+    const guard = saveBody.indexOf('chosenNatures.size === 0) return;');
     expect(guard).toBeLessThan(saveBody.indexOf('smsApi.saveApiCredential'));
     expect(guard).toBeLessThan(saveBody.indexOf('supplyApi.saveChannel'));
   });
@@ -180,14 +178,57 @@ describe('the name follows the platform until it is edited', () => {
   test('the field shows and submits the derived name, never a stale draft', () => {
     expect(source).toContain('value={label}');
     expect(source).not.toContain('value={draft.label}');
-    expect(source).toContain('channelDraftToInput({ ...draft, label })');
-    expect(source).toContain("if (label.trim() === '' || block.natures.size === 0) return;");
+    expect(source).toContain('const result = await supplyApi.saveChannel(channelDraftToInput(submitted));');
+    expect(source).toContain("if (label.trim() === '' || chosenNatures.size === 0) return;");
   });
 
   test('typing your own name stops it from following the platform', () => {
     expect(source).toContain('setLabelEdited(true)');
     // 打开时：已存渠道有自己的名字就算「改过」，没有名字的（旧数据）跟着平台补。
     expect(source).toContain("setLabelEdited(channel ? channel.label.trim() !== '' : false)");
+  });
+});
+
+describe('the category and the access methods follow the platform too', () => {
+  test('a built-in platform carries its own category, not a question for the operator', () => {
+    // 豪猪接码是第三方服务 —— 这是平台的事实，不该让人自己选一遍。
+    expect(source).toContain(
+      "!categoryEdited && platformFacts?.defaultCategory\n      ? platformFacts.defaultCategory\n      : draft.category"
+    );
+    expect(source).toContain('value={category}');
+    expect(source).not.toContain('value={draft.category}');
+    expect(source).toContain('setCategoryEdited(true)');
+  });
+
+  test('a built-in platform checks every method it supports', () => {
+    // 平台卡片上写着「用 API 接入取号，用网页登录管理渠道」，勾选框不能只勾一半。
+    expect(source).toContain('const platformFacts = kind === \'phone\' && platform.preset ? platform : null;');
+    expect(source).toContain('return platformNatures(defaults, allowed.map((item) => item.nature));');
+    expect(source).toContain('if (!defaults || naturesEdited) return block.natures;');
+    // 勾选框、连接块、必填判据、提交读同一个集合。
+    expect(source).toContain('checked={chosenNatures.has(nature)}');
+    expect(source).toContain('allowed.filter((item) => chosenNatures.has(item.nature))');
+    expect(source).toContain("const apiSelected = kind === 'phone' && chosenNatures.has('api');");
+    expect(source).toContain('natures: chosenNatures');
+    expect(source).not.toContain('checked={block.natures.has(nature)}');
+  });
+
+  test('unticking starts from what the checkboxes show', () => {
+    // 从草稿里的空集合起算，取消勾选反而会把它加上去。
+    expect(source).toContain('const next = new Set(chosenNatures);');
+    expect(source).toContain('setNaturesEdited(true);');
+    expect(source).not.toContain('const next = new Set(current.natures);');
+  });
+
+  test('a stored channel keeps its own category and methods', () => {
+    // 已存的值是使用者的选择，一律不覆盖；空的才跟着平台补。
+    expect(source).toContain("setCategoryEdited(channel ? channel.category.trim() !== '' : false)");
+    expect(source).toContain('setNaturesEdited(channel ? restored[kind].natures.size > 0 : false)');
+  });
+
+  test('email has no platform, so nothing is invented for it', () => {
+    expect(source).toContain("const platformFacts = kind === 'phone' && platform.preset ? platform : null;");
+    expect(source).toContain("const label = kind === 'phone' && !labelEdited ? platformLabel(platform) : draft.label;");
   });
 });
 
