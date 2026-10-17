@@ -35,7 +35,7 @@ const body = source.slice(source.indexOf('<div className={styles.body}>'));
 describe('the required fields are the name and one access method', () => {
   test('the guard asks for a name and one access method, nothing else', () => {
     expect(saveBody).toContain(
-      "if (draft.label.trim() === '' || block.natures.size === 0) return;"
+      "if (label.trim() === '' || block.natures.size === 0) return;"
     );
     // 「先填账号和密码」这条规则已经撤掉：凭据存在密钥库里，留空就是保留它。
     expect(source).not.toContain('config_need_credentials');
@@ -157,14 +157,37 @@ describe('the platform follows the stored credential', () => {
     // 地址框与脱敏提示会三处同时说错。
     expect(source).not.toContain('setPlatformId(SMS_PLATFORMS[0].id)');
     expect(source).not.toContain('platformId, setPlatformId');
-    expect(source).toContain("const stored = credential?.provider ?? '';");
-    expect(source).toContain('const known = SMS_PLATFORMS.find((item) => item.id === stored);');
+    expect(source).toContain('resolvePlatformId(platformChoice, credential?.provider)');
   });
 
   test('an explicit pick outranks the credential, and reopening drops the pick', () => {
-    expect(source).toContain('if (platformChoice) return platformChoice;');
-    expect(source).toContain('setPlatformChoice(item.id);');
-    expect(source).toContain('setPlatformChoice(null);');
+    expect(source).toContain('setPlatformChoice(item.id)');
+    expect(source).toContain('setPlatformChoice(null)');
+  });
+});
+
+describe('the name follows the platform until it is edited', () => {
+  test('a built-in platform names the channel by itself', () => {
+    // 选了内置平台还要把平台名抄进名称栏，就是联动断了。
+    expect(source).toContain(
+      "const platformLabel = (item: SmsPlatform) => (item.preset ? t(item.nameKey) : '');"
+    );
+    expect(source).toContain(
+      "const label = kind === 'phone' && !labelEdited ? platformLabel(platform) : draft.label;"
+    );
+  });
+
+  test('the field shows and submits the derived name, never a stale draft', () => {
+    expect(source).toContain('value={label}');
+    expect(source).not.toContain('value={draft.label}');
+    expect(source).toContain('channelDraftToInput({ ...draft, label })');
+    expect(source).toContain("if (label.trim() === '' || block.natures.size === 0) return;");
+  });
+
+  test('typing your own name stops it from following the platform', () => {
+    expect(source).toContain('setLabelEdited(true)');
+    // 打开时：已存渠道有自己的名字就算「改过」，没有名字的（旧数据）跟着平台补。
+    expect(source).toContain("setLabelEdited(channel ? channel.label.trim() !== '' : false)");
   });
 });
 

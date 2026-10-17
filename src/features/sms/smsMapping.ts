@@ -79,6 +79,22 @@ export const SMS_PLATFORMS: SmsPlatform[] = [
   },
 ];
 
+/**
+ * 编辑器该显示哪个平台：使用者显式选过就用它，否则跟随已存凭据所属的平台。
+ *
+ * 手机号这一类只有**一份**平台凭据，渠道记录只**指名**它 —— 所以「平台」不是自由
+ * 选项，默认就该是已存凭据所属的那个。认不出的 provider 落回第一个（内置）平台。
+ *
+ * 这条规则原先写成组件里的一段内联表达式，正是「编辑配在自定义平台上的渠道时，
+ * 平台显示成内置平台」的来源：选中态、名称标签、地址框、脱敏提示各算各的。抽成具名
+ * 函数后有单测钉住，组件只认它的返回值，不再各自推导。
+ */
+export function resolvePlatformId(choice: string | null, storedProvider?: string): string {
+  if (choice) return choice;
+  const stored = SMS_PLATFORMS.find((item) => item.id === (storedProvider ?? ''));
+  return stored ? stored.id : SMS_PLATFORMS[0].id;
+}
+
 /** 后端还没返回时页面显示的空态：各计数为 0，上限为「未配置」，`loaded` 为 false。 */
 export const EMPTY_SMS_VIEW: SmsStatusView = {
   loaded: false,

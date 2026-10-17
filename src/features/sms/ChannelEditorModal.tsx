@@ -48,9 +48,16 @@ import {
   type ChannelDraft,
   type ConnectionDraft,
 } from './channelDraft';
-import { CATEGORY_LABEL, CATEGORY_OPTIONS, NATURE_LABEL, SMS_PLATFORMS } from './smsMapping';
+import {
+  CATEGORY_LABEL,
+  CATEGORY_OPTIONS,
+  NATURE_LABEL,
+  SMS_PLATFORMS,
+  resolvePlatformId,
+} from './smsMapping';
 import type {
   PhoneCredentialState,
+  SmsPlatform,
   SupplyChannel,
   SupplyKind,
   SupplyNature,
@@ -126,11 +133,43 @@ export function ChannelEditorModal({
   const [saved, setSaved] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * 名称是否被使用者改过。
+   *
+   * 手机号的名称**默认就是平台名**：平台名本来就是这条渠道最自然的叫法，让使用者再抄
+   * 一遍是把联动性做断。改过之后才不再跟随，绝不覆盖已经写下的命名。
+   */
+  const [labelEdited, setLabelEdited] = useState(false);
+
+  /** 选中的平台：使用者显式选过就用它，否则跟随已存凭据所属的平台。 */
+  const platformId = useMemo(
+    () => resolvePlatformId(platformChoice, credential?.provider),
+    [platformChoice, credential]
+  );
+
+  const platform = useMemo(
+    () => SMS_PLATFORMS.find((item) => item.id === platformId) ?? SMS_PLATFORMS[0],
+    [platformId]
+  );
+  /** 内置平台的地址由基座固定，不采集。 */
+  const endpointLocked = Boolean(platform.defaultEndpoint);
+  /**
+   * 已存凭据属于**配置里那个平台**。只有当前选的正是它时，脱敏提示才成立 ——
+   * 选了「自定义」却还显示内置平台的账号，就是在拿别人的凭据当提示。
+   */
+  const credentialBelongsHere = credential?.provider === platformId;
+
+  /** 平台名可以直接当渠道名；「自定义」不是一个能当名字用的词，得使用者自己起。 */
+  const platformLabel = (item: SmsPlatform) => (item.preset ? t(item.nameKey) : '');
+  /** 名称的当前值：没被改过就跟随平台（邮箱没有平台，必须自己填）。 */
+  const label = kind === 'phone' && !labelEdited ? platformLabel(platform) : draft.label;
 
   // 每次打开（或换了一条渠道）都把表单重置成「只显示已存状态」。
   useEffect(() => {
     if (!open) return;
     setDraft(channel ? channelDraftFromChannel(channel) : emptyChannelDraft());
+    // 已存渠道有自己的名字，就当成「改过」；没有名字的（旧数据）跟着平台补上。
+    setLabelEdited(channel ? channel.label.trim() !== '' : false);
     setPlatformChoice(null);
     setApiUser('');
     setApiPass('');
@@ -144,26 +183,6 @@ export function ChannelEditorModal({
     setAttempted(false);
     setError(null);
   }, [open, channel]);
-
-  /** 选中的平台：使用者显式选过就用它，否则跟随已存凭据所属的平台。 */
-  const platformId = useMemo(() => {
-    if (platformChoice) return platformChoice;
-    const stored = credential?.provider ?? '';
-    const known = SMS_PLATFORMS.find((item) => item.id === stored);
-    return known ? known.id : SMS_PLATFORMS[0].id;
-  }, [platformChoice, credential]);
-
-  const platform = useMemo(
-    () => SMS_PLATFORMS.find((item) => item.id === platformId) ?? SMS_PLATFORMS[0],
-    [platformId]
-  );
-  /** 内置平台的地址由基座固定，不采集。 */
-  const endpointLocked = Boolean(platform.defaultEndpoint);
-  /**
-   * 已存凭据属于**配置里那个平台**。只有当前选的正是它时，脱敏提示才成立 ——
-   * 选了「自定义」却还显示内置平台的账号，就是在拿别人的凭据当提示。
-   */
-  const credentialBelongsHere = credential?.provider === platformId;
 
   const block = draft[kind];
   const allowed = useMemo(
@@ -179,7 +198,7 @@ export function ChannelEditorModal({
   const webFilled = webUser.trim() !== '' || webPass.trim() !== '';
   const webComplete = webUser.trim() !== '' && webPass.trim() !== '';
 
-  const labelMissing = attempted && draft.label.trim() === '';
+  const labelMissing = attempted && label.trim() === '';
   const naturesMissing = attempted && block.natures.size === 0;
   const apiPairBroken = attempted && apiSelected && apiFilled && !apiComplete;
   const webPairBroken = attempted && webSelected && webFilled && !webComplete;
@@ -237,7 +256,7 @@ export function ChannelEditorModal({
    */
   const handleSave = async () => {
     setAttempted(true);
-    if (draft.label.trim() === '' || block.natures.size === 0) return;
+    if (label.trim() === '' || block.natures.size === 0) return;
     if (apiPairBroken || webPairBroken) return;
     setSaving(true);
     setError(null);
@@ -261,7 +280,8 @@ export function ChannelEditorModal({
           if (!applyCredentialResult(result)) return;
         }
       }
-      const result = await supplyApi.saveChannel(channelDraftToInput(draft));
+      // 名称可能来自平台（使用者没改过），提交的是界面上显示的那个值。
+      const result = await supplyApi.saveChannel(channelDraftToInput({ ...draft, label }));
       if (!result.ok) {
         setError(result.message || t('sms_service.source_err_generic'));
         return;
@@ -554,8 +574,9 @@ export function ChannelEditorModal({
               }
               placeholder={t('sms_service.source_ph_name')}
               error={labelMissing ? t('sms_service.source_err_name') : undefined}
-              value={draft.label}
+              value={label}
               onChange={(event) => {
+                setLabelEdited(true);
                 setDraft((current) => ({ ...current, label: event.target.value }));
                 setAttempted(false);
                 resetFeedback();

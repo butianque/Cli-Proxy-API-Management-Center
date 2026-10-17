@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
-import { toNatureOptions, toPool, toSupplyChannels } from '../src/features/sms/smsMapping';
+import {
+  SMS_PLATFORMS,
+  resolvePlatformId,
+  toNatureOptions,
+  toPool,
+  toSupplyChannels,
+} from '../src/features/sms/smsMapping';
 import {
   channelDraftFromChannel,
   channelDraftToInput,
@@ -193,6 +199,31 @@ describe('the source surface keeps backend field names out of the components', (
       expect(messages.sms_service.configured_title.trim()).not.toBe('');
       expect(messages.sms_service.phone_credential).toBeUndefined();
     }
+  });
+});
+
+describe('the editor resolves one platform, and only a preset can name a channel', () => {
+  test('an explicit pick outranks the stored credential', () => {
+    expect(resolvePlatformId('custom', 'haozhuma')).toBe('custom');
+    expect(resolvePlatformId('haozhuma', 'custom')).toBe('haozhuma');
+  });
+
+  test('without a pick the stored credential decides', () => {
+    // 手机号这一类只有一份平台凭据，渠道记录只指名它 —— 界面显示的必须是它所属的那个。
+    expect(resolvePlatformId(null, 'custom')).toBe('custom');
+    expect(resolvePlatformId(null, 'haozhuma')).toBe('haozhuma');
+  });
+
+  test('a credential that matches no platform falls back to the built-in one', () => {
+    expect(resolvePlatformId(null, undefined)).toBe(SMS_PLATFORMS[0].id);
+    expect(resolvePlatformId(null, '')).toBe(SMS_PLATFORMS[0].id);
+    expect(resolvePlatformId(null, 'nope')).toBe(SMS_PLATFORMS[0].id);
+  });
+
+  test('only a preset platform can name a channel by itself', () => {
+    // 「自定义」不是一个能当渠道名用的词，所以它不能自带名字 —— 使用者必须自己起。
+    expect(SMS_PLATFORMS.filter((item) => item.preset).map((item) => item.id)).toEqual(['haozhuma']);
+    expect(SMS_PLATFORMS.find((item) => !item.preset)?.id).toBe('custom');
   });
 });
 
