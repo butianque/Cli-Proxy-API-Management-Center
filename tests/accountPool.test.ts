@@ -5,6 +5,8 @@ import {
   accountPolicyChannelKey,
   accountPolicyOnly,
   buildAccountIndex,
+  remainingMinutes,
+  resolveResetInstant,
   routingPolicyOptions,
   sharedResetAt,
 } from '../src/features/authFiles/accountPool';
@@ -205,6 +207,68 @@ describe('sharedResetAt', () => {
   });
 });
 
+describe('resolveResetInstant', () => {
+  const NOW = Date.parse('2026-10-17T16:00:00Z');
+
+  test('passes a future instant through untouched', () => {
+    const at = Date.parse('2026-10-18T00:00:00Z');
+    expect(resolveResetInstant('2026-10-18T00:00:00Z', 'daily', NOW)).toBe(at);
+    expect(resolveResetInstant('2026-10-18T00:00:00Z', 'monthly', NOW)).toBe(at);
+  });
+
+  test('rolls a stale daily boundary forward to the next occurrence', () => {
+    // 快照停在 10-17 的日切上，面板已跨过它 ⇒ 「下一次」必须落在未来，否则是句自相矛盾的话。
+    // 往前滚得到的值与重新探测一次完全一致：日窗口就是「同一钟点、每 24 小时一次」。
+    expect(resolveResetInstant('2026-10-17T00:00:00Z', 'daily', NOW)).toBe(
+      Date.parse('2026-10-18T00:00:00Z')
+    );
+    // 落后好几天时滚到最近的一次，而不是只加一天。
+    expect(resolveResetInstant('2026-10-10T00:00:00Z', 'daily', NOW)).toBe(
+      Date.parse('2026-10-18T00:00:00Z')
+    );
+  });
+
+  test('never rolls a boundary that is not daily', () => {
+    // 周/月/一次性窗口过期就是真的过期；滚一下会把「已到期」说成「还没到期」。
+    const stale = '2026-10-17T00:00:00Z';
+    expect(resolveResetInstant(stale, 'monthly', NOW)).toBe(Date.parse(stale));
+    expect(resolveResetInstant(stale, undefined, NOW)).toBe(Date.parse(stale));
+    expect(resolveResetInstant(stale, '', NOW)).toBe(Date.parse(stale));
+  });
+
+  test('reports nothing when the instant cannot be read', () => {
+    expect(resolveResetInstant(undefined, 'daily', NOW)).toBeNull();
+    expect(resolveResetInstant(null, 'daily', NOW)).toBeNull();
+    expect(resolveResetInstant('', 'daily', NOW)).toBeNull();
+    expect(resolveResetInstant('not a date', 'daily', NOW)).toBeNull();
+  });
+});
+
+describe('remainingMinutes', () => {
+  const NOW = Date.parse('2026-10-17T16:00:00Z');
+
+  test('counts the minutes until the instant', () => {
+    expect(remainingMinutes(Date.parse('2026-10-18T00:00:00Z'), NOW)).toBe(480);
+  });
+
+  test('rounds up, so a partly elapsed minute still counts as one', () => {
+    // 剩 30 秒时显示「剩余 1 分钟」而不是 0 —— 宁可少说，不能多说。
+    expect(remainingMinutes(Date.parse('2026-10-17T16:00:30Z'), NOW)).toBe(1);
+    expect(remainingMinutes(Date.parse('2026-10-17T16:00:01Z'), NOW)).toBe(1);
+  });
+
+  test('says nothing once the instant has passed', () => {
+    // 「剩余 -3 分钟」不是一句人话，交回给调用方只报时刻。
+    expect(remainingMinutes(Date.parse('2026-10-17T15:57:00Z'), NOW)).toBeNull();
+    expect(remainingMinutes(Date.parse('2026-10-17T16:00:00Z'), NOW)).toBeNull();
+  });
+
+  test('says nothing when there is no instant', () => {
+    expect(remainingMinutes(null, NOW)).toBeNull();
+    expect(remainingMinutes(Number.NaN, NOW)).toBeNull();
+  });
+});
+
 describe('routingPolicyOptions', () => {
   test('always starts with the default option', () => {
     expect(routingPolicyOptions(channels)[0]).toEqual({
@@ -372,6 +436,10 @@ describe('account pool i18n keys', () => {
       expect(pool.policy_only).toContain('{{name}}');
       expect(pool.quota_group_models).toContain('{{count}}');
       expect(pool.quota_expires_at).toContain('{{time}}');
+      // 按日窗口换的是周期，不是额度有效期，措辞必须分开。
+      expect(pool.quota_resets_at).toContain('{{time}}');
+      expect(pool.quota_remaining_time).toContain('{{minutes}}');
+      expect(pool.quota_label_plain.length).toBeGreaterThan(0);
     });
   });
 
@@ -396,7 +464,7 @@ describe('account pool card body', () => {
 
   test('still states the pool state and the plan quota', () => {
     expect(poolSource).toContain("t('account_pool.state_label')");
-    expect(poolSource).toContain("t('account_pool.quota_label')");
+    expect(poolSource).toContain("'account_pool.quota_label'");
     // 额度按渠道分组：分组标题给渠道名 + 组内模型数。
     expect(poolSource).toContain("t('account_pool.quota_group_models'");
   });
@@ -410,15 +478,56 @@ describe('account pool card body', () => {
   test('prefers a real amount and never draws a bar for a message alone', () => {
     expect(poolSource).toContain("t('account_pool.quota_remaining'");
     expect(poolSource).toContain('bucketDescription');
-    expect(poolSource).toContain('description === undefined && fraction !== null');
+    expect(poolSource).toContain('description === undefined && drawsBar && fraction !== null');
+  });
+
+  test('reports a bare balance without inventing a ratio', () => {
+    // 只有 remaining、没有 total ⇒ 没有分母：报数值，不画比例条。
+    expect(poolSource).toContain('hasBalance');
+    expect(poolSource).toContain('toLocaleString');
+    expect(poolSource).toContain('bucket.total !== undefined ||');
   });
 
   test('states the plan expiry once per channel group, per row only when the rows disagree', () => {
-    expect(poolSource).toContain("t('account_pool.quota_expires_at'");
     // 套餐一级的事实挂组头：组内一致时只说一次，不一致才逐行（`sharedResetAt` 返回 null）。
     expect(poolSource).toContain('sharedResetAt(group.buckets)');
     expect(poolSource).toContain('styles.groupExpiry');
     expect(poolSource).toContain('styles.bucketExpiry');
-    expect(poolSource).toContain('groupResetAt ? null : formatResetAt(bucket.resetAt)');
+    expect(poolSource).toContain('groupResetAt ? null : bucket.resetAt');
+    expect(poolSource).toContain('labelKey="account_pool.quota_expires_at"');
+  });
+
+  test('only hoists an expiry to a header that exists', () => {
+    // 无名组没有组头，也就没有「说一次」的位置：此时必须逐行，否则时刻会漂到组外。
+    expect(poolSource).toContain('group.name ? sharedResetAt(group.buckets) : null');
+  });
+
+  test('calls a daily window a reset rather than an expiry', () => {
+    expect(poolSource).toContain("'account_pool.quota_resets_at'");
+    expect(poolSource).toContain("bucket.window?.trim() === 'daily'");
+  });
+
+  test('pairs every expiry with a countdown that ticks on its own', () => {
+    // 只报时刻要读者自己减；只报剩余又没法安排 ⇒ 两半都要，且由卡片统一供给 now。
+    expect(poolSource).toContain('resolveResetInstant(resetAt, window, now)');
+    expect(poolSource).toContain('remainingMinutes(at, now)');
+    expect(poolSource).toContain("t('account_pool.quota_remaining_time', { minutes })");
+    // 分钟时钟是全应用共享的，不给每张卡片各起一个定时器。
+    expect(poolSource).toContain('useNow()');
+    // 组头与模型行读同一个 now，不能各算各的。
+    expect(poolSource).toContain('<QuotaSummary account={account} now={now} />');
+  });
+
+  test('hands the window down so a daily boundary can roll forward', () => {
+    // 「是不是按日」决定过去时刻要不要往前滚，窗口必须一路传到 ExpiryLine。
+    expect(poolSource).toContain('window={bucket.window}');
+    // 组头报的是套餐期限（到期，不是重置）：过去就是到期了，不给 window、不滚。
+    expect(poolSource).not.toContain('window={groupWindow}');
+  });
+
+  test('names the block after what the account actually reports', () => {
+    // 有渠道/套餐分组 ⇒「套餐额度」；没有（积分制账号）⇒ 只说「额度」。
+    expect(poolSource).toContain("'account_pool.quota_label_plain'");
+    expect(poolSource).toContain("bucket.group?.trim() ?? ''");
   });
 });

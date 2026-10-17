@@ -12,6 +12,7 @@
  */
 import type { AuthFileItem } from '@/types';
 import type { AccountChannel, AccountPolicy, AccountQuotaBucket, AccountView } from '@/types/accounts';
+import { DAY_MS, MINUTE_MS } from '@/utils/time/durations';
 import { getQuotaCacheKey } from '@/utils/quota/identity';
 
 /**
@@ -102,6 +103,40 @@ export function sharedResetAt(buckets: readonly AccountQuotaBucket[]): string | 
     if (value) values.add(value);
   });
   return values.size === 1 ? [...values][0] : null;
+}
+
+/**
+ * 卡片上该显示的那个时刻（毫秒），解析不出返回 null。
+ *
+ * 按日窗口（`window === 'daily'`）多做一件事：**把已经过去的时刻按整天往前滚**。
+ * 上游/插件是在探测那一刻算出「下一个重置点」的，面板跨过那个点之后这条快照就落在
+ * 过去，照直显示会得到「下一次重置时间：10-17 00:00」——一句自相矛盾的话。日窗口的
+ * 边界是「同一个钟点、每 24 小时一次」，往前滚出来的值与重新探测一次完全一致，所以
+ * 这不是编造，只是把同一条规则续到当下。
+ *
+ * 其它窗口一律不滚：周/月/一次性窗口过期就是真的过期，滚一下会把它说成还没到期。
+ */
+export function resolveResetInstant(
+  resetAt: string | null | undefined,
+  window: string | null | undefined,
+  now: number
+): number | null {
+  const ms = resetAt ? Date.parse(resetAt) : Number.NaN;
+  if (!Number.isFinite(ms)) return null;
+  if (window?.trim() !== 'daily' || ms > now) return ms;
+  return ms + (Math.floor((now - ms) / DAY_MS) + 1) * DAY_MS;
+}
+
+/**
+ * 距离某个时刻还剩多少**分钟**（向上取整），已经过去或没有时刻时返回 null。
+ *
+ * 向上取整是有意的：显示「剩余 0 分钟」时其实还剩一点，而倒计时宁可少说一秒，
+ * 也不能多说；`null` 表示「没有可倒数的东西」，调用方只报时刻、不报剩余。
+ */
+export function remainingMinutes(targetMs: number | null, now: number): number | null {
+  if (targetMs === null || !Number.isFinite(targetMs)) return null;
+  const minutes = Math.ceil((targetMs - now) / MINUTE_MS);
+  return minutes > 0 ? minutes : null;
 }
 
 /** 默认策略：不钉渠道（等价于不设策略）。 */

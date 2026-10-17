@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { sharedResetAt } from '@/features/authFiles/accountPool';
+import { remainingMinutes, resolveResetInstant, sharedResetAt } from '@/features/authFiles/accountPool';
+import { useNow } from '@/hooks/useNow';
 import type { AccountQuotaBucket, AccountView } from '@/types/accounts';
 import { formatDateTimeValue } from '@/utils/format';
 import { formatInstantShort } from '@/utils/quota';
@@ -45,6 +46,9 @@ export type AuthFilePoolSectionProps = {
 
 export function AuthFilePoolSection({ account, quotaCapable = false }: AuthFilePoolSectionProps) {
   const { t, i18n } = useTranslation();
+  // 倒计时读应用级的分钟时钟（全应用一个定时器），而不是每张卡片各起一个。
+  // 放在提前返回之前，钩子不能有条件地调用。
+  const now = useNow();
   // 没有匹配到账号视图：这一行没有池信息可说，不占位。
   if (!account) return null;
 
@@ -70,7 +74,13 @@ export function AuthFilePoolSection({ account, quotaCapable = false }: AuthFileP
       {quotaCapable && (
         <div className={styles.quotaBlock}>
           <div className={styles.quotaHead}>
-            <span className={styles.fieldLabel}>{t('account_pool.quota_label')}</span>
+            <span className={styles.fieldLabel}>
+              {t(
+                account.quota.some((bucket) => (bucket.group?.trim() ?? '') !== '')
+                  ? 'account_pool.quota_label'
+                  : 'account_pool.quota_label_plain'
+              )}
+            </span>
             {account.fetchedAt && (
               <span className={styles.quotaUpdated}>
                 {t('account_pool.quota_updated', {
@@ -79,7 +89,7 @@ export function AuthFilePoolSection({ account, quotaCapable = false }: AuthFileP
               </span>
             )}
           </div>
-          <QuotaSummary account={account} />
+          <QuotaSummary account={account} now={now} />
         </div>
       )}
 
@@ -125,26 +135,50 @@ const groupQuotaBuckets = (buckets: readonly AccountQuotaBucket[]): QuotaGroup[]
 };
 
 /**
- * 到期/重置时刻：宿主按 RFC3339 下发（源自上游的 `expires_at` / `period_end` /
- * `nextResetTime`），这里渲染成卡片惯用的 `MM-DD HH:mm`（浏览器本地时区）。
- * 解析不出来返回 null —— 宁可不显示，也不摆一个「未知」占位。
+ * 到期/重置一行：**绝对时刻 + 剩余分钟**。只有时刻没有剩余时，读者还得自己做减法；
+ * 只有剩余没有时刻，又没法安排。两个都给，`now` 由卡片统一提供（应用级分钟时钟），
+ * 组头与模型行读同一个 `now`，不会各算各的。
+ *
+ * 时刻解析不出 ⇒ 整行不渲染（不摆「未知」占位）；已经过去 ⇒ 只报时刻，
+ * 因为「剩余」为负没有意义。按日窗口不会落到「已经过去」，见 `resolveResetInstant`。
  */
-const formatResetAt = (value: string | null | undefined): string | null => {
-  const ms = value ? Date.parse(value) : Number.NaN;
-  return Number.isFinite(ms) ? formatInstantShort(ms) : null;
-};
+function ExpiryLine({
+  labelKey,
+  resetAt,
+  window,
+  now,
+  className,
+}: {
+  labelKey: string;
+  resetAt: string | null | undefined;
+  window?: string | null;
+  now: number;
+  className: string;
+}) {
+  const { t } = useTranslation();
+  const at = resolveResetInstant(resetAt, window, now);
+  if (at === null) return null;
+  const minutes = remainingMinutes(at, now);
+  return (
+    <span className={className}>
+      {t(labelKey, { time: formatInstantShort(at) })}
+      {minutes !== null && ` · ${t('account_pool.quota_remaining_time', { minutes })}`}
+    </span>
+  );
+}
 
 /**
  * 额度摘要。后端无法确定的值一律省略或 `null`：
  * 无快照是 `unknown`（空态 + 下一步），查询失败是 `query-error`，
  * 两者都不显示 0；桶上的 `remaining` / `total` 缺省即不显示该项。
  *
- * 三个分支（顺序固定）：报出 `total` ⇒ 报出真实数值 + 比例条；没有 `total`
- * 但有 `description` ⇒ 只给后端下发的说明，**不画比例条**（比例无从谈起）；
- * 两者皆缺 ⇒ 只留比例条。
+ * 三种桶形状（顺序固定）：
+ *   1. 报出 `total` ⇒ 有分母，报出「剩余 x / y」并画比例条；
+ *   2. 只报出 `remaining` ⇒ 余额（没有分母，比例无从谈起），只报数值、不画条；
+ *   3. 两者皆缺 ⇒ 有 `description` 就报说明，否则只留比例条。
  */
-function QuotaSummary({ account }: { account: AccountView }) {
-  const { t } = useTranslation();
+function QuotaSummary({ account, now }: { account: AccountView; now: number }) {
+  const { t, i18n } = useTranslation();
 
   if (account.quotaState === 'query-error') {
     return <p className={styles.quotaError}>{t('account_pool.quota_error')}</p>;
@@ -164,9 +198,10 @@ function QuotaSummary({ account }: { account: AccountView }) {
   return (
     <ul className={styles.quotaGroups}>
       {groupQuotaBuckets(account.quota).map((group) => {
-        // 到期时刻是**套餐（渠道）一级**的事实，挂在组头说一次即可；组内各模型窗口
-        // 期限不同时 `sharedResetAt` 返回 null，那时才退回逐行各报各的。
-        const groupResetAt = formatResetAt(sharedResetAt(group.buckets));
+        // 到期时刻是**套餐（渠道）一级**的事实，挂在组头说一次即可。没有组头就没有
+        // 这个位置（无名组），此时退回逐行；组内各桶值不一致时 `sharedResetAt`
+        // 返回 null，同样逐行各报各的。
+        const groupResetAt = group.name ? sharedResetAt(group.buckets) : null;
         return (
           <li className={styles.quotaGroup} key={group.key}>
             {group.name && (
@@ -180,9 +215,14 @@ function QuotaSummary({ account }: { account: AccountView }) {
               </div>
             )}
             {groupResetAt && (
-              <span className={styles.groupExpiry}>
-                {t('account_pool.quota_expires_at', { time: groupResetAt })}
-              </span>
+              // 组头说的是**套餐期限**（到期，不是重置），所以不传 window：
+              // 这里的时刻落在过去就真的到期了，不该按天往前滚。
+              <ExpiryLine
+                labelKey="account_pool.quota_expires_at"
+                resetAt={groupResetAt}
+                now={now}
+                className={styles.groupExpiry}
+              />
             )}
             <ul className={styles.bucketList}>
               {group.buckets.map((bucket, index) => {
@@ -193,17 +233,30 @@ function QuotaSummary({ account }: { account: AccountView }) {
                   ? Math.min(Math.max(bucket.remainingFraction, 0), 1)
                   : null;
                 // 「剩余 x / y」需要两个数：只有 total 没有 remaining 时不拼半个句子。
-                const amount =
-                  bucket.remaining !== undefined && bucket.total !== undefined
-                    ? t('account_pool.quota_remaining', {
-                        remaining: bucket.remaining,
-                        total: bucket.total,
-                      })
+                const hasTotal = bucket.remaining !== undefined && bucket.total !== undefined;
+                const hasBalance = bucket.remaining !== undefined && !hasTotal;
+                const amount = hasTotal
+                  ? t('account_pool.quota_remaining', {
+                      remaining: bucket.remaining,
+                      total: bucket.total,
+                    })
+                  : hasBalance
+                    ? bucket.remaining!.toLocaleString(i18n.language)
                     : null;
                 // 说明文字只在没有数值可报时顶上，避免与数值重复。
                 const description = amount === null ? bucket.description : undefined;
+                // 比例条只在比例有依据时画：有分母就画；既无数值也无说明时，比例条是
+                // 该桶唯一能表达的东西。只有余额（无分母）时比例无从谈起，不画。
+                const drawsBar =
+                  bucket.total !== undefined ||
+                  (bucket.remaining === undefined && description === undefined);
                 // 组头已报过同一个时刻就不再逐行重复。
-                const expiresAt = groupResetAt ? null : formatResetAt(bucket.resetAt);
+                const expiresAt = groupResetAt ? null : bucket.resetAt;
+                // 按日窗口到期是「重置」，其余窗口才是「到期」：积分/日限只换一天，不过期。
+                const expiryLabel =
+                  bucket.window?.trim() === 'daily'
+                    ? 'account_pool.quota_resets_at'
+                    : 'account_pool.quota_expires_at';
                 return (
                   <li className={styles.bucket} key={`${bucket.model ?? ''}:${index}`}>
                     <div className={styles.bucketHead}>
@@ -211,7 +264,7 @@ function QuotaSummary({ account }: { account: AccountView }) {
                       {amount && <span className={styles.bucketAmount}>{amount}</span>}
                     </div>
                     {description && <span className={styles.bucketDescription}>{description}</span>}
-                    {description === undefined && fraction !== null && (
+                    {description === undefined && drawsBar && fraction !== null && (
                       <span className={styles.bucketBar} aria-hidden="true">
                         <span
                           className={`${styles.bucketBarFill} ${fractionToneClass(fraction)}`}
@@ -220,9 +273,13 @@ function QuotaSummary({ account }: { account: AccountView }) {
                       </span>
                     )}
                     {expiresAt && (
-                      <span className={styles.bucketExpiry}>
-                        {t('account_pool.quota_expires_at', { time: expiresAt })}
-                      </span>
+                      <ExpiryLine
+                        labelKey={expiryLabel}
+                        resetAt={expiresAt}
+                        window={bucket.window}
+                        now={now}
+                        className={styles.bucketExpiry}
+                      />
                     )}
                   </li>
                 );
