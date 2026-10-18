@@ -113,6 +113,7 @@
   "account_pool": {
     "section_title": "Nhóm tài khoản",
     "state_label": "Trạng thái nhóm",
+    "opened_at_label": "Kích hoạt lần đầu",
     "state_eligible": "Đủ điều kiện",
     "state_cooling": "Đang cooldown",
     "state_off": "Đã tắt",

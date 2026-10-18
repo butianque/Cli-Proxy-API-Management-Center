@@ -113,6 +113,7 @@
   "account_pool": {
     "section_title": "Пул аккаунтов",
     "state_label": "Состояние пула",
+    "opened_at_label": "Впервые активирован",
     "state_eligible": "Готов",
     "state_cooling": "Охлаждение",
     "state_off": "Отключён",

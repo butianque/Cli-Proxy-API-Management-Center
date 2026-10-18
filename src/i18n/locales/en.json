@@ -134,6 +134,7 @@
   "account_pool": {
     "section_title": "Account pool",
     "state_label": "Pool state",
+    "opened_at_label": "First opened",
     "state_eligible": "Eligible",
     "state_cooling": "Cooling down",
     "state_off": "Turned off",

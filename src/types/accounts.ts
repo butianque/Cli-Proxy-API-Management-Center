@@ -131,6 +131,11 @@ export interface AccountView {
   failureRetryable?: boolean;
   planId?: string;
   channel?: string;
+  /**
+   * 账号在该平台首次开通的时刻（RFC3339 UTC），由插件按上游事实记录。
+   * 缺省 = 该平台没有可用的开通时刻，不回落成凭证创建时间。
+   */
+  openedAt?: string;
   /** 该凭证实际携带的路由渠道；缺省 = 未知（宿主未下发，不回落成空数组以外的猜测）。 */
   channels?: AccountChannel[];
   policy?: AccountPolicy;

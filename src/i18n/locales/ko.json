@@ -113,6 +113,7 @@
   "account_pool": {
     "section_title": "계정 풀",
     "state_label": "풀 상태",
+    "opened_at_label": "최초 개설",
     "state_eligible": "사용 가능",
     "state_cooling": "쿨다운 중",
     "state_off": "비활성화됨",

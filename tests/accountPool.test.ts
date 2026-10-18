@@ -444,6 +444,8 @@ describe('account pool i18n keys', () => {
       expect(pool.quota_resets_at).toContain('{{time}}');
       expect(pool.quota_remaining_time).toContain('{{minutes}}');
       expect(pool.quota_label_plain.length).toBeGreaterThan(0);
+      // 开通日期是纯标签 + 值，不带占位符，但每个语种都必须有。
+      expect(pool.opened_at_label.length).toBeGreaterThan(0);
     });
   });
 
@@ -543,5 +545,13 @@ describe('account pool card body', () => {
     // 读取失败是另一回事，仍然单独说，且不能被当成「没有额度」。
     expect(poolSource).toContain("account.quotaState === 'query-error'");
     expect(poolSource).toContain("t('account_pool.quota_error')");
+  });
+
+  test('shows the account age only when the platform reported it', () => {
+    // 开通时刻是账号自己的事实，宿主只在插件真的报了时才下发；读不到就整行不出现，
+    // 不拿凭证创建时间顶替（那是另一件事）。格式化不出日期时也不留空行。
+    expect(poolSource).toContain("t('account_pool.opened_at_label')");
+    expect(poolSource).toContain('account.openedAt ? formatDateValue(account.openedAt');
+    expect(poolSource).toContain('{openedAt && (');
   });
 });

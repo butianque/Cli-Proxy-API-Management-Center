@@ -225,6 +225,7 @@ export const normalizeAccountView = (value: unknown): AccountView => {
   const channels = normalizeChannels(entry.channels);
   const policy = normalizePolicy(entry.policy);
   const entitlement = optionalString(entry.entitlement);
+  const openedAt = optionalString(entry.opened_at);
   const fetchedAt = optionalString(entry.fetched_at);
 
   if (accountId !== undefined) account.accountId = accountId;
@@ -240,6 +241,7 @@ export const normalizeAccountView = (value: unknown): AccountView => {
   if (channels !== undefined) account.channels = channels;
   if (policy !== undefined) account.policy = policy;
   if (entitlement !== undefined) account.entitlement = entitlement;
+  if (openedAt !== undefined) account.openedAt = openedAt;
   if (fetchedAt !== undefined) account.fetchedAt = fetchedAt;
 
   return account;

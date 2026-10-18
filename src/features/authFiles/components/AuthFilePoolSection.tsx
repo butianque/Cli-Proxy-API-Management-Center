@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { remainingMinutes, resolveResetInstant, sharedResetAt } from '@/features/authFiles/accountPool';
 import { useNow } from '@/hooks/useNow';
 import type { AccountQuotaBucket, AccountView } from '@/types/accounts';
-import { formatDateTimeValue } from '@/utils/format';
+import { formatDateValue, formatDateTimeValue } from '@/utils/format';
 import { formatInstantShort } from '@/utils/quota';
 import styles from './AuthFilePoolSection.module.scss';
 
@@ -53,6 +53,9 @@ export function AuthFilePoolSection({ account, quotaCapable = false }: AuthFileP
   if (!account) return null;
 
   const poolState = resolvePoolState(account);
+  // 开通日期只按「能格式化成日期」才出现：宿主与归一化层都会丢掉非法值，这里再兜一次，
+  // 免得出现一个只有标签、没有值的空行。
+  const openedAt = account.openedAt ? formatDateValue(account.openedAt, i18n.language) : '';
   const stateClass = {
     eligible: styles.stateEligible,
     cooling: styles.stateCooling,
@@ -70,6 +73,15 @@ export function AuthFilePoolSection({ account, quotaCapable = false }: AuthFileP
           {t(POOL_STATE_LABEL[poolState])}
         </span>
       </div>
+
+      {/* 账号多大年纪是账号自己的事实：宿主只在插件真的报了这个时刻时才下发，
+          读不到就整行不出现，不拿凭证创建时间顶替。 */}
+      {openedAt && (
+        <div className={styles.row}>
+          <span className={styles.fieldLabel}>{t('account_pool.opened_at_label')}</span>
+          <span className={styles.openedAtValue}>{openedAt}</span>
+        </div>
+      )}
 
       {quotaCapable && (
         <div className={styles.quotaBlock}>

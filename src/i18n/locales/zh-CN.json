@@ -134,6 +134,7 @@
   "account_pool": {
     "section_title": "账号池",
     "state_label": "池状态",
+    "opened_at_label": "首次开通",
     "state_eligible": "可用",
     "state_cooling": "冷却中",
     "state_off": "已停用",

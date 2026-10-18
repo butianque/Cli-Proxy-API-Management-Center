@@ -44,6 +44,11 @@
   color: var(--text-primary);
 }
 
+/* 账号开通日期是事实、不是状态：与状态值同层级，但不抢状态的字重。 */
+.openedAtValue {
+  color: var(--text-secondary);
+}
+
 .stateEligible {
   color: var(--success-color);
 }
