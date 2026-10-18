@@ -172,6 +172,7 @@ const groupQuotaBuckets = (buckets: readonly AccountQuotaBucket[]): QuotaGroup[]
  */
 const QUOTA_STATE_LABEL: Record<string, string> = {
   'not-subscribed': 'account_pool.quota_not_subscribed',
+  'no-credential': 'account_pool.quota_no_credential',
 };
 
 const describeQuotaBucket = (

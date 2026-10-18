@@ -148,6 +148,7 @@
     "quota_error": "Could not read the plan quota.",
     "quota_empty": "No quota is available on this account.",
     "quota_not_subscribed": "Not subscribed",
+    "quota_no_credential": "Not set up",
     "quota_group_models": "{{count}} models",
     "quota_remaining": "Remaining {{remaining}} / {{total}}",
     "quota_updated": "Updated {{time}}",

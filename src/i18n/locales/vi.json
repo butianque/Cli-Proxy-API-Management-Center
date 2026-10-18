@@ -127,6 +127,7 @@
     "quota_error": "Không thể đọc hạn mức gói.",
     "quota_empty": "Tài khoản này không có hạn mức khả dụng.",
     "quota_not_subscribed": "Chưa đăng ký",
+    "quota_no_credential": "Chưa thiết lập",
     "quota_group_models": "{{count}} mô hình",
     "quota_remaining": "Còn lại {{remaining}} / {{total}}",
     "quota_updated": "Cập nhật lúc {{time}}",

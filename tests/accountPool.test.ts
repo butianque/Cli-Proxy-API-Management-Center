@@ -448,8 +448,9 @@ describe('account pool i18n keys', () => {
       expect(pool.quota_resets_at).toContain('{{time}}');
       expect(pool.quota_remaining_time).toContain('{{minutes}}');
       expect(pool.quota_label_plain.length).toBeGreaterThan(0);
-      // 「未开通」是套餐状态，不带占位符，但每个语种都必须有。
+      // 「未开通」与「未配置」是两条状态，不带占位符，但每个语种都必须有。
       expect(pool.quota_not_subscribed.length).toBeGreaterThan(0);
+      expect(pool.quota_no_credential.length).toBeGreaterThan(0);
       // 开通日期是纯标签 + 值，不带占位符，但每个语种都必须有。
       expect(pool.opened_at_label.length).toBeGreaterThan(0);
     });
@@ -558,6 +559,8 @@ describe('account pool card body', () => {
     // 「两个套餐都没有额度」是两条状态，不是一句笼统的「没有额度」：插件为每个套餐保留
     // 分组，并用稳定 token 说明原因；句子由前端按语言组装（插件没有语言环境）。
     expect(poolSource).toContain("'not-subscribed': 'account_pool.quota_not_subscribed'");
+    // 「上游说没这个套餐」与「这份凭证里没有它的密钥」证据不同，不能共用一句话。
+    expect(poolSource).toContain("'no-credential': 'account_pool.quota_no_credential'");
     expect(poolSource).toContain('describeQuotaBucket(bucket.description, t)');
     // 只有状态、没有读数的一组没有模型可数，不能报成「1 个模型」。
     expect(poolSource).toContain('const hasReadings = group.buckets.some(');
@@ -617,14 +620,14 @@ describe('credential site identity', () => {
 });
 
 describe('account pool quota rendering', () => {
-  // 后端实测载荷：两个套餐都没有额度时，各留一个「未开通」状态行。
+  // 后端实测载荷：探测过的套餐答「没这个套餐」，没探测过的套餐标「没配密钥」。
   const noQuotaAccount = (): AccountView =>
     account({
       provider: 'zcode-zai',
       quotaState: 'entitled',
       quota: [
         { group: 'Start Plan (free)', remainingFraction: 0, description: 'not-subscribed' },
-        { group: 'Coding Plan (paid)', remainingFraction: 0, description: 'not-subscribed' },
+        { group: 'Coding Plan (paid)', remainingFraction: 0, description: 'no-credential' },
       ],
     });
 
@@ -648,9 +651,14 @@ describe('account pool quota rendering', () => {
     // 两个套餐各自出现：省略掉一个，读者就不知道查过哪几个。
     expect(markup).toContain('Start Plan (free)');
     expect(markup).toContain('Coding Plan (paid)');
-    // 每个套餐都自己说一次「未开通」，不是一句笼统的「没有额度」。
-    expect(markup.match(/未开通/g) ?? []).toHaveLength(2);
+    // 每条状态各说各的：探测过的说「未开通」，没探测过的说「未配置」。
+    expect(markup).toContain('未开通');
+    expect(markup).toContain('未配置');
+    // 不再退化成一句笼统的「没有可用额度」。
     expect(markup).not.toContain('没有可用额度');
+    // token 不能漏到界面上。
+    expect(markup).not.toContain('not-subscribed');
+    expect(markup).not.toContain('no-credential');
   });
 
   test('does not count a state row as a model', async () => {
