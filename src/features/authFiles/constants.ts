@@ -18,6 +18,7 @@ import type { AuthFileItem, ResolvedTheme, ThemeColors } from '@/types';
 import { normalizeOAuthProviderKey } from '@/utils/providerKeys';
 import { parseTimestamp } from '@/utils/timestamp';
 import { TYPE_COLORS } from '@/utils/quota';
+import { resolveCredentialSite } from './siteIdentity';
 
 export type { ResolvedTheme, ThemeColors, TypeColorSet } from '@/types';
 export type AuthFileModelItem = {
@@ -153,6 +154,10 @@ export const isProblemAuthFile = (file: AuthFileItem): boolean => {
 
 export const getTypeLabel = (t: TFunction, type: string): string => {
   const providerKey = normalizeProviderKey(type);
+  // 站点键用产品名（WorkBuddy / CodeBuddy / Z.ai）：域名与国内/国际由
+  // 卡片的「站点」行承担，徽标与 tab 只留最短的那个名字。
+  const site = resolveCredentialSite(providerKey);
+  if (site) return site.brand;
   const key = `auth_files.filter_${providerKey}`;
   const translated = t(key);
   if (translated !== key) return translated;

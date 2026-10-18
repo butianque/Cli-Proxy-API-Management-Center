@@ -110,6 +110,19 @@
   line-height: 1.4;
 }
 
+/* 国内 / 国际：同名产品在两个站点各有一把钥匙时的唯一区分，弱化到不抢产品名。 */
+.tabRegion {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+
+  .tabActive & {
+    color: var(--text-secondary);
+  }
+}
+
 .tabCount {
   font-family: $font-mono;
   font-size: 10.5px;

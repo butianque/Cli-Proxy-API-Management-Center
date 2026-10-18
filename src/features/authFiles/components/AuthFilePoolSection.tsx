@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { remainingMinutes, resolveResetInstant, sharedResetAt } from '@/features/authFiles/accountPool';
+import { resolveCredentialSite } from '@/features/authFiles/siteIdentity';
 import { useNow } from '@/hooks/useNow';
 import type { AccountQuotaBucket, AccountView } from '@/types/accounts';
 import { formatDateValue, formatDateTimeValue } from '@/utils/format';
@@ -40,11 +41,17 @@ const fractionToneClass = (fraction: number): string => {
 
 export type AuthFilePoolSectionProps = {
   account?: AccountView;
+  /** 该凭证的 provider 键：站点行由它查表，不猜域名。 */
+  providerKey?: string;
   /** 该账号是否有宿主额度通道。false/缺省 ⇒ 不渲染额度区块。 */
   quotaCapable?: boolean;
 };
 
-export function AuthFilePoolSection({ account, quotaCapable = false }: AuthFilePoolSectionProps) {
+export function AuthFilePoolSection({
+  account,
+  providerKey = '',
+  quotaCapable = false,
+}: AuthFilePoolSectionProps) {
   const { t, i18n } = useTranslation();
   // 倒计时读应用级的分钟时钟（全应用一个定时器），而不是每张卡片各起一个。
   // 放在提前返回之前，钩子不能有条件地调用。
@@ -53,6 +60,9 @@ export function AuthFilePoolSection({ account, quotaCapable = false }: AuthFileP
   if (!account) return null;
 
   const poolState = resolvePoolState(account);
+  // 站点是凭证自己的事实（上游域名 + 国内/国际），来自 provider 键的固定映射；
+  // 未登记就不出这一行，不拿别的字段凑。
+  const site = resolveCredentialSite(providerKey);
   // 开通日期只按「能格式化成日期」才出现：宿主与归一化层都会丢掉非法值，这里再兜一次，
   // 免得出现一个只有标签、没有值的空行。
   const openedAt = account.openedAt ? formatDateValue(account.openedAt, i18n.language) : '';
@@ -65,7 +75,15 @@ export function AuthFilePoolSection({ account, quotaCapable = false }: AuthFileP
 
   return (
     <div className={styles.poolSection}>
-      <div className={styles.sectionTitle}>{t('account_pool.section_title')}</div>
+      {site && (
+        <div className={styles.row}>
+          <span className={styles.fieldLabel}>{t('account_pool.site_label')}</span>
+          <span className={styles.siteValue}>
+            <span className={styles.siteRegion}>{t(`auth_files.region_${site.region}`)}</span>
+            <span className={styles.siteDomain}>{site.domain}</span>
+          </span>
+        </div>
+      )}
 
       <div className={styles.row}>
         <span className={styles.fieldLabel}>{t('account_pool.state_label')}</span>

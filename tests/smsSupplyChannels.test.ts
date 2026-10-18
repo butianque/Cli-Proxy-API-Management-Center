@@ -175,8 +175,10 @@ describe('a project shows the name the credentials page already uses', () => {
     return typeof node === 'string' ? node : key;
   };
 
-  test('a known platform resolves to its existing label', () => {
-    expect(projectLabel('zcode-zai', translate)).toBe('ZCode (International)');
+  test('a known platform resolves to the product name the credentials page shows', () => {
+    // 站点键在凭据页显示产品名（Z.ai / WorkBuddy），台账不能另起一个名字。
+    expect(projectLabel('zcode-zai', translate)).toBe('Z.ai');
+    expect(projectLabel('workbuddy-global', translate)).toBe('WorkBuddy');
   });
 
   test('an unknown platform falls back to the raw id, never to an invented name', () => {

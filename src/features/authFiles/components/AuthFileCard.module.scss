@@ -125,31 +125,6 @@
   @include text-ellipsis-multiline(2);
 }
 
-/* 备注是插件写的一整串（身份 + 它自己的读数）。按插件自己的分段符拆成多行：
-   第一段是账号身份，后面各段是读数，比身份行弱一档，卡片最多加两行。 */
-.noteBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.note {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  @include text-ellipsis;
-}
-
-.noteDetail {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.45;
-  color: var(--text-tertiary);
-  @include text-ellipsis;
-}
-
 /* ---------- 告警行 ---------- */
 
 .warning {

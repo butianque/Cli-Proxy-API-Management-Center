@@ -8,6 +8,7 @@ import {
   isThemeSurfaceIconProvider,
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
+import { resolveCredentialSite } from '@/features/authFiles/siteIdentity';
 import { scrollProviderTabs } from './providerTabsWheel';
 import styles from './ProviderTabs.module.scss';
 
@@ -48,6 +49,9 @@ export function ProviderTabs({
         const isActive = active === type;
         const label = type === 'all' ? t('auth_files.filter_all') : getTypeLabel(t, type);
         const iconSrc = type === 'all' ? null : getAuthFileIcon(type, resolvedTheme);
+        // 同名产品在两个站点各有一把钥匙（WorkBuddy 国内 / 国际）：产品名之外
+        // 只说国内还是国际，域名留给卡片，tab 不摆第二个域名行。
+        const site = type === 'all' ? null : resolveCredentialSite(type);
 
         return (
           <button
@@ -77,6 +81,9 @@ export function ProviderTabs({
               </span>
             )}
             <span className={styles.tabLabel}>{label}</span>
+            {site && (
+              <span className={styles.tabRegion}>{t(`auth_files.region_${site.region}`)}</span>
+            )}
             <span className={styles.tabCount}>{counts[type] ?? 0}</span>
           </button>
         );

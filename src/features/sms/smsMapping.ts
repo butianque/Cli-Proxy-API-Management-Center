@@ -10,6 +10,7 @@
  */
 
 import type { SmsChannelWire, SmsLedgerWire, SmsStatusResponse } from '@/services/api/sms';
+import { resolveCredentialSite } from '@/features/authFiles/siteIdentity';
 import { normalizeOAuthProviderKey } from '@/utils/providerKeys';
 import type {
   SupplyChannelWire,
@@ -527,13 +528,17 @@ export function toPool(list: SupplyLedgerWire[] | undefined): PoolEntry[] {
 /**
  * 一个平台在台账里叫什么。
  *
- * 与登录凭据列表共用同一份标签（`auth_files.filter_*`），所以同一个平台在两个页面上
- * 叫同一个名字。查不到就用后端给的原始 id 首字母大写 —— 不另编一个名字。
+ * 与登录凭据列表共用同一份名字：站点键走 `resolveCredentialSite`（产品名，与卡片
+ * 徽标一致），其余走 `auth_files.filter_*`。所以同一个平台在两个页面上叫同一个
+ * 名字。查不到就用后端给的原始 id 首字母大写 —— 不另编一个名字。
  */
 export function projectLabel(target: string, translate: (key: string) => string): string {
   const id = target.trim();
   if (!id) return '';
-  const key = `auth_files.filter_${normalizeOAuthProviderKey(id)}`;
+  const providerKey = normalizeOAuthProviderKey(id);
+  const site = resolveCredentialSite(providerKey);
+  if (site) return site.brand;
+  const key = `auth_files.filter_${providerKey}`;
   const translated = translate(key);
   if (translated !== key) return translated;
   return id.charAt(0).toUpperCase() + id.slice(1);

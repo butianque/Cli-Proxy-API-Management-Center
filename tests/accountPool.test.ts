@@ -554,4 +554,48 @@ describe('account pool card body', () => {
     expect(poolSource).toContain('account.openedAt ? formatDateValue(account.openedAt');
     expect(poolSource).toContain('{openedAt && (');
   });
+
+  test('names the credential site instead of repeating the account-pool title', () => {
+    // 整页就是账号池，卡片里再写一次「账号池」等于没说。卡片讲的是凭证自己的站点：
+    // 域名 + 国内/国际，来自 provider 键的固定映射，未登记就不出这一行。
+    expect(poolSource).not.toContain('section_title');
+    expect(poolSource).toContain("t('account_pool.site_label')");
+    expect(poolSource).toContain('resolveCredentialSite(providerKey)');
+  });
+});
+
+describe('credential site identity', () => {
+  test('maps every site key to its own upstream domain', async () => {
+    const { resolveCredentialSite } = await import('../src/features/authFiles/siteIdentity');
+    expect(resolveCredentialSite('workbuddy-cn')).toEqual({
+      brand: 'WorkBuddy',
+      region: 'cn',
+      domain: 'copilot.tencent.com',
+    });
+    expect(resolveCredentialSite('workbuddy-intl')).toEqual({
+      brand: 'CodeBuddy',
+      region: 'intl',
+      domain: 'codebuddy.ai',
+    });
+    expect(resolveCredentialSite('workbuddy-global')).toEqual({
+      brand: 'WorkBuddy',
+      region: 'intl',
+      domain: 'workbuddy.ai',
+    });
+    expect(resolveCredentialSite('zcode-bigmodel')?.domain).toBe('bigmodel.cn');
+    expect(resolveCredentialSite('zcode-zai')?.domain).toBe('z.ai');
+    // 未登记的键不造站点：徽标回落到 i18n 标签，站点行不出现。
+    expect(resolveCredentialSite('codex')).toBeNull();
+  });
+
+  test('keeps the filter tab to a product name plus 国内/国际', () => {
+    const tabs = readFileSync(
+      new URL('../src/features/authFiles/components/ProviderTabs.tsx', import.meta.url),
+      'utf8'
+    );
+    expect(tabs).toContain('resolveCredentialSite(type)');
+    expect(tabs).toContain('auth_files.region_${site.region}');
+    // 域名留给卡片：tab 不再挂第二个域名行。
+    expect(tabs).not.toContain('site.domain');
+  });
 });

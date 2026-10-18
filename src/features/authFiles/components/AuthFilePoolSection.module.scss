@@ -18,20 +18,32 @@
   background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
 }
 
-.sectionTitle {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-}
-
 .row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 2px 10px;
+}
+
+/* 站点：上游域名是这行唯一需要看清的事实，国内/国际只是它的限定语。 */
+.siteValue {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.siteRegion {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.siteDomain {
+  font-family: $font-mono;
+  color: var(--text-secondary);
+  @include text-ellipsis;
 }
 
 .fieldLabel {

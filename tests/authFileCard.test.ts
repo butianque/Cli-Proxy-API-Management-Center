@@ -114,24 +114,11 @@ describe('auth file card presentation contract', () => {
     }
   });
 
-  test('splits the plugin note into one identity line plus reading lines', async () => {
-    const { splitNoteSegments } = await import('../src/features/authFiles/noteSegments');
-    expect(splitNoteSegments('Global · aogna (global)')).toEqual(['Global · aogna (global)']);
-    expect(
-      splitNoteSegments(
-        'Global · aogna (global) · 【用量】(自 2026-10-18) 今日 请求 9 ｜ 该账号暂未解析出额度窗口 ｜ 累计 请求 9'
-      )
-    ).toEqual([
-      'Global · aogna (global) · 【用量】(自 2026-10-18) 今日 请求 9',
-      '该账号暂未解析出额度窗口',
-      '累计 请求 9',
-    ]);
-    // 分段符两侧的空段不占一行；超出上限的段只留在悬停全文里。
-    expect(splitNoteSegments(' a ｜ ｜ b ｜ c ｜ d ')).toEqual(['a', 'b', 'c']);
-    expect(splitNoteSegments('   ')).toEqual([]);
-    expect(source).toContain('const noteSegments = splitNoteSegments(noteValue)');
-    expect(source).toContain('styles.noteDetail');
-    expect(source).toContain('title={noteValue}');
-    expect(styles).toMatch(/\.noteDetail\s*\{[^}]*@include text-ellipsis;/);
+  test('keeps the plugin note out of the card body', () => {
+    // 备注是插件写给凭证文件的注解（身份 + 读数）。卡片只讲凭证自己的状态与额度，
+    // 「Global · aogna」「积分未知」这类后端读数不进入卡片正文。
+    expect(source).not.toContain('file.note');
+    expect(source).not.toContain('splitNoteSegments');
+    expect(styles).not.toContain('.noteDetail');
   });
 });
