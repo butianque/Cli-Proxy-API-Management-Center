@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import i18n from '../src/i18n/index';
+import { AuthFilePoolSection } from '../src/features/authFiles/components/AuthFilePoolSection';
 import {
   ACCOUNT_POLICY_AUTO,
   accountPolicyChannelKey,
@@ -444,6 +448,8 @@ describe('account pool i18n keys', () => {
       expect(pool.quota_resets_at).toContain('{{time}}');
       expect(pool.quota_remaining_time).toContain('{{minutes}}');
       expect(pool.quota_label_plain.length).toBeGreaterThan(0);
+      // 「未开通」是套餐状态，不带占位符，但每个语种都必须有。
+      expect(pool.quota_not_subscribed.length).toBeGreaterThan(0);
       // 开通日期是纯标签 + 值，不带占位符，但每个语种都必须有。
       expect(pool.opened_at_label.length).toBeGreaterThan(0);
     });
@@ -539,12 +545,22 @@ describe('account pool card body', () => {
 
   test('says one thing about an account with no quota, whatever the reason', () => {
     // 没有读数（unknown）与读到了空（quota.length === 0）对读者是同一件事：这个账号
-    // 没有额度可报。分开说会逼出一句「刷新以获取额度」——刚刷完也还是这句。
+    // 没有可用额度。分开说会逼出一句「刷新以获取额度」——刚刷完也还是这句。
+    // 措辞只说状态、不说机制：不能写成「未上报」，那读起来像采集坏了。
     expect(poolSource).toContain("t('account_pool.quota_empty')");
     expect(poolSource).not.toContain('quota_unknown');
     // 读取失败是另一回事，仍然单独说，且不能被当成「没有额度」。
     expect(poolSource).toContain("account.quotaState === 'query-error'");
     expect(poolSource).toContain("t('account_pool.quota_error')");
+  });
+
+  test('names each plan that reported no quota instead of collapsing them', () => {
+    // 「两个套餐都没有额度」是两条状态，不是一句笼统的「没有额度」：插件为每个套餐保留
+    // 分组，并用稳定 token 说明原因；句子由前端按语言组装（插件没有语言环境）。
+    expect(poolSource).toContain("'not-subscribed': 'account_pool.quota_not_subscribed'");
+    expect(poolSource).toContain('describeQuotaBucket(bucket.description, t)');
+    // 只有状态、没有读数的一组没有模型可数，不能报成「1 个模型」。
+    expect(poolSource).toContain('const hasReadings = group.buckets.some(');
   });
 
   test('shows the account age only when the platform reported it', () => {
@@ -597,5 +613,50 @@ describe('credential site identity', () => {
     expect(tabs).toContain('auth_files.region_${site.region}');
     // 域名留给卡片：tab 不再挂第二个域名行。
     expect(tabs).not.toContain('site.domain');
+  });
+});
+
+describe('account pool quota rendering', () => {
+  // 后端实测载荷：两个套餐都没有额度时，各留一个「未开通」状态行。
+  const noQuotaAccount = (): AccountView =>
+    account({
+      provider: 'zcode-zai',
+      quotaState: 'entitled',
+      quota: [
+        { group: 'Start Plan (free)', remainingFraction: 0, description: 'not-subscribed' },
+        { group: 'Coding Plan (paid)', remainingFraction: 0, description: 'not-subscribed' },
+      ],
+    });
+
+  const renderPool = async (view: AccountView, language: string) => {
+    const previous = i18n.language;
+    await i18n.changeLanguage(language);
+    const markup = renderToStaticMarkup(
+      createElement(AuthFilePoolSection, {
+        account: view,
+        providerKey: 'zcode',
+        quotaCapable: true,
+      })
+    );
+    await i18n.changeLanguage(previous);
+    return markup;
+  };
+
+  test('names both plans when neither one has quota', async () => {
+    const markup = await renderPool(noQuotaAccount(), 'zh-CN');
+
+    // 两个套餐各自出现：省略掉一个，读者就不知道查过哪几个。
+    expect(markup).toContain('Start Plan (free)');
+    expect(markup).toContain('Coding Plan (paid)');
+    // 每个套餐都自己说一次「未开通」，不是一句笼统的「没有额度」。
+    expect(markup.match(/未开通/g) ?? []).toHaveLength(2);
+    expect(markup).not.toContain('没有可用额度');
+  });
+
+  test('does not count a state row as a model', async () => {
+    const markup = await renderPool(noQuotaAccount(), 'zh-CN');
+
+    // 「未开通」不是「1 个模型」：这一组没有模型可数。
+    expect(markup).not.toContain('个模型');
   });
 });

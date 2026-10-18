@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { remainingMinutes, resolveResetInstant, sharedResetAt } from '@/features/authFiles/accountPool';
 import { resolveCredentialSite } from '@/features/authFiles/siteIdentity';
 import { useNow } from '@/hooks/useNow';
@@ -165,6 +166,24 @@ const groupQuotaBuckets = (buckets: readonly AccountQuotaBucket[]): QuotaGroup[]
 };
 
 /**
+ * 后端用稳定 token 说明「这个渠道没有额度可报」的原因，措辞归前端所有 ——
+ * 插件没有语言环境，句子只能在这里组装，六种语言才都成立。上游错误的原文不是
+ * token，照原样显示，那是诊断信息，不该被翻译掩盖。
+ */
+const QUOTA_STATE_LABEL: Record<string, string> = {
+  'not-subscribed': 'account_pool.quota_not_subscribed',
+};
+
+const describeQuotaBucket = (
+  description: string | undefined,
+  t: TFunction
+): string | undefined => {
+  if (!description) return undefined;
+  const key = QUOTA_STATE_LABEL[description];
+  return key ? t(key) : description;
+};
+
+/**
  * 到期/重置一行：**绝对时刻 + 剩余分钟**。只有时刻没有剩余时，读者还得自己做减法；
  * 只有剩余没有时刻，又没法安排。两个都给，`now` 由卡片统一提供（应用级分钟时钟），
  * 组头与模型行读同一个 `now`，不会各算各的。
@@ -200,8 +219,12 @@ function ExpiryLine({
 /**
  * 额度摘要。后端无法确定的值一律省略或 `null`：
  * 没有读数是 `unknown`，读到了但一个额度都没有是空数组——两者对读者是同一件事：
- * **这个账号没有额度可报**。分开说会逼出一句「刷新以获取额度」的空头承诺（刚刷完
+ * **这个账号没有可用额度**。分开说会逼出一句「刷新以获取额度」的空头承诺（刚刷完
  * 也还是这句话），所以合并成一句陈述；只有**读取失败**才是另一回事（`query-error`）。
+ *
+ * 措辞只说状态、不说机制：空数组就是「没有可用额度」，不能写成「未上报」——
+ * 那读起来像采集坏了，而实际上探测刚成功、账号就是没有额度。
+ *
  * 两者都不显示 0；桶上的 `remaining` / `total` 缺省即不显示该项。
  *
  * 三种桶形状（顺序固定）：
@@ -226,6 +249,13 @@ function QuotaSummary({ account, now }: { account: AccountView; now: number }) {
         // 这个位置（无名组），此时退回逐行；组内各桶值不一致时 `sharedResetAt`
         // 返回 null，同样逐行各报各的。
         const groupResetAt = group.name ? sharedResetAt(group.buckets) : null;
+        // 只有状态、没有读数的一组（例如「未开通」）不报模型数：那不是「1 个模型」。
+        const hasReadings = group.buckets.some(
+          (bucket) =>
+            Boolean(bucket.model?.trim()) ||
+            bucket.total !== undefined ||
+            bucket.remaining !== undefined
+        );
         return (
           <li className={styles.quotaGroup} key={group.key}>
             {group.name && (
@@ -233,9 +263,11 @@ function QuotaSummary({ account, now }: { account: AccountView; now: number }) {
                 <span className={styles.groupName} title={group.name}>
                   {group.name}
                 </span>
-                <span className={styles.groupCount}>
-                  {t('account_pool.quota_group_models', { count: group.buckets.length })}
-                </span>
+                {hasReadings && (
+                  <span className={styles.groupCount}>
+                    {t('account_pool.quota_group_models', { count: group.buckets.length })}
+                  </span>
+                )}
               </div>
             )}
             {groupResetAt && (
@@ -268,7 +300,8 @@ function QuotaSummary({ account, now }: { account: AccountView; now: number }) {
                     ? bucket.remaining!.toLocaleString(i18n.language)
                     : null;
                 // 说明文字只在没有数值可报时顶上，避免与数值重复。
-                const description = amount === null ? bucket.description : undefined;
+                const description =
+                  amount === null ? describeQuotaBucket(bucket.description, t) : undefined;
                 // 比例条只在比例有依据时画：有分母就画；既无数值也无说明时，比例条是
                 // 该桶唯一能表达的东西。只有余额（无分母）时比例无从谈起，不画。
                 const drawsBar =
