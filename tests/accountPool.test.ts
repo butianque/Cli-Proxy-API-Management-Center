@@ -410,6 +410,10 @@ const RETIRED_POOL_KEYS = [
   'policy_api_key_only',
   'policy_start_plan_first',
   'policy_disabled',
+  // 「暂无套餐额度 / 刷新该账号以获取额度」：前者替账号断言了它没有套餐，后者是
+  // 一句刷完也不会兑现的承诺（刷完仍是「未上报」）。两个状态合并成一句陈述。
+  'quota_unknown',
+  'quota_unknown_hint',
 ];
 
 const readPoolLocale = (locale: string): Record<string, string> => {
@@ -529,5 +533,15 @@ describe('account pool card body', () => {
     // 有渠道/套餐分组 ⇒「套餐额度」；没有（积分制账号）⇒ 只说「额度」。
     expect(poolSource).toContain("'account_pool.quota_label_plain'");
     expect(poolSource).toContain("bucket.group?.trim() ?? ''");
+  });
+
+  test('says one thing about an account with no quota, whatever the reason', () => {
+    // 没有读数（unknown）与读到了空（quota.length === 0）对读者是同一件事：这个账号
+    // 没有额度可报。分开说会逼出一句「刷新以获取额度」——刚刷完也还是这句。
+    expect(poolSource).toContain("t('account_pool.quota_empty')");
+    expect(poolSource).not.toContain('quota_unknown');
+    // 读取失败是另一回事，仍然单独说，且不能被当成「没有额度」。
+    expect(poolSource).toContain("account.quotaState === 'query-error'");
+    expect(poolSource).toContain("t('account_pool.quota_error')");
   });
 });

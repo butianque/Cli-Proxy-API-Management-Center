@@ -169,7 +169,9 @@ function ExpiryLine({
 
 /**
  * 额度摘要。后端无法确定的值一律省略或 `null`：
- * 无快照是 `unknown`（空态 + 下一步），查询失败是 `query-error`，
+ * 没有读数是 `unknown`，读到了但一个额度都没有是空数组——两者对读者是同一件事：
+ * **这个账号没有额度可报**。分开说会逼出一句「刷新以获取额度」的空头承诺（刚刷完
+ * 也还是这句话），所以合并成一句陈述；只有**读取失败**才是另一回事（`query-error`）。
  * 两者都不显示 0；桶上的 `remaining` / `total` 缺省即不显示该项。
  *
  * 三种桶形状（顺序固定）：
@@ -182,14 +184,6 @@ function QuotaSummary({ account, now }: { account: AccountView; now: number }) {
 
   if (account.quotaState === 'query-error') {
     return <p className={styles.quotaError}>{t('account_pool.quota_error')}</p>;
-  }
-  if (account.quotaState === 'unknown') {
-    return (
-      <p className={styles.quotaEmpty}>
-        <span>{t('account_pool.quota_unknown')}</span>
-        <span className={styles.quotaEmptyHint}>{t('account_pool.quota_unknown_hint')}</span>
-      </p>
-    );
   }
   if (account.quota.length === 0) {
     return <p className={styles.quotaEmpty}>{t('account_pool.quota_empty')}</p>;

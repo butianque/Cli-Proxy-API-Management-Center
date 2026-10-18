@@ -123,8 +123,6 @@
     "policy_hint": "이 계정의 다음 요청에 적용됩니다.",
     "policy_save_failed": "라우팅 정책을 저장할 수 없습니다.",
     "quota_label": "플랜 할당량",
-    "quota_unknown": "아직 플랜 할당량이 없습니다",
-    "quota_unknown_hint": "이 계정을 새로 고쳐 가져오세요.",
     "quota_error": "플랜 할당량을 읽을 수 없습니다.",
     "quota_empty": "이 계정은 할당량을 보고하지 않습니다.",
     "quota_group_models": "{{count}}개 모델",

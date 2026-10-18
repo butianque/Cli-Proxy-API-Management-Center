@@ -86,15 +86,7 @@
 }
 
 .quotaEmpty {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
   color: var(--text-secondary);
-}
-
-.quotaEmptyHint {
-  color: var(--text-tertiary);
-  font-size: 11px;
 }
 
 .quotaError {

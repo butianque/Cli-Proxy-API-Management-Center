@@ -123,8 +123,6 @@
     "policy_hint": "Áp dụng cho yêu cầu tiếp theo của tài khoản này.",
     "policy_save_failed": "Không thể lưu chính sách định tuyến.",
     "quota_label": "Hạn mức gói",
-    "quota_unknown": "Chưa có hạn mức gói",
-    "quota_unknown_hint": "Hãy làm mới tài khoản này để lấy dữ liệu.",
     "quota_error": "Không thể đọc hạn mức gói.",
     "quota_empty": "Tài khoản này không báo cáo hạn mức nào.",
     "quota_group_models": "{{count}} mô hình",

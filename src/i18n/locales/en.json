@@ -144,8 +144,6 @@
     "policy_hint": "Applies to the next request for this account.",
     "policy_save_failed": "Could not save the routing policy.",
     "quota_label": "Plan quota",
-    "quota_unknown": "No plan quota yet",
-    "quota_unknown_hint": "Refresh this account to fetch it.",
     "quota_error": "Could not read the plan quota.",
     "quota_empty": "This account reports no quota.",
     "quota_group_models": "{{count}} models",

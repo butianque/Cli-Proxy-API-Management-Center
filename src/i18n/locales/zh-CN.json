@@ -144,8 +144,6 @@
     "policy_hint": "对该账号的下一次请求生效。",
     "policy_save_failed": "路由策略保存失败。",
     "quota_label": "套餐额度",
-    "quota_unknown": "暂无套餐额度",
-    "quota_unknown_hint": "刷新该账号以获取额度。",
     "quota_error": "套餐额度读取失败。",
     "quota_empty": "该账号未上报额度。",
     "quota_group_models": "{{count}} 个模型",
