@@ -113,4 +113,25 @@ describe('auth file card presentation contract', () => {
       expect(messages.routing_policy_saving).toBeTruthy();
     }
   });
+
+  test('splits the plugin note into one identity line plus reading lines', async () => {
+    const { splitNoteSegments } = await import('../src/features/authFiles/noteSegments');
+    expect(splitNoteSegments('Global · aogna (global)')).toEqual(['Global · aogna (global)']);
+    expect(
+      splitNoteSegments(
+        'Global · aogna (global) · 【用量】(自 2026-10-18) 今日 请求 9 ｜ 该账号暂未解析出额度窗口 ｜ 累计 请求 9'
+      )
+    ).toEqual([
+      'Global · aogna (global) · 【用量】(自 2026-10-18) 今日 请求 9',
+      '该账号暂未解析出额度窗口',
+      '累计 请求 9',
+    ]);
+    // 分段符两侧的空段不占一行；超出上限的段只留在悬停全文里。
+    expect(splitNoteSegments(' a ｜ ｜ b ｜ c ｜ d ')).toEqual(['a', 'b', 'c']);
+    expect(splitNoteSegments('   ')).toEqual([]);
+    expect(source).toContain('const noteSegments = splitNoteSegments(noteValue)');
+    expect(source).toContain('styles.noteDetail');
+    expect(source).toContain('title={noteValue}');
+    expect(styles).toMatch(/\.noteDetail\s*\{[^}]*@include text-ellipsis;/);
+  });
 });

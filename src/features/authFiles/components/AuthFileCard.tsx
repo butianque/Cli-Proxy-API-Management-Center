@@ -33,6 +33,7 @@ import {
 } from '@/features/authFiles/constants';
 import { deriveAuthFileIdentity } from '@/features/authFiles/identity';
 import { resolveAuthFileQuotaType } from '@/features/authFiles/logic';
+import { splitNoteSegments } from '@/features/authFiles/noteSegments';
 import type { AuthFileStatusBarData } from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
 import { AuthFileQuotaSection } from '@/features/authFiles/components/AuthFileQuotaSection';
 import { AuthFileCooldownSection } from './AuthFileCooldownSection';
@@ -124,6 +125,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const priorityValue = Number.isSafeInteger(file.priority) ? file.priority : undefined;
   const weightValue = Number.isSafeInteger(file.weight) ? file.weight : undefined;
   const noteValue = typeof file.note === 'string' ? file.note.trim() : '';
+  const noteSegments = splitNoteSegments(noteValue);
   // 主行显示账号（email/项目 ID），文件名降为满卡宽的 mono 副行
   const identity = deriveAuthFileIdentity(file);
 
@@ -202,10 +204,15 @@ export function AuthFileCard(props: AuthFileCardProps) {
         </p>
       )}
 
-      {!compact && noteValue && (
-        <p className={styles.note} title={noteValue}>
-          {noteValue}
-        </p>
+      {!compact && noteSegments.length > 0 && (
+        <div className={styles.noteBlock} title={noteValue}>
+          <p className={styles.note}>{noteSegments[0]}</p>
+          {noteSegments.slice(1).map((segment, index) => (
+            <p key={`${index}-${segment}`} className={styles.noteDetail}>
+              {segment}
+            </p>
+          ))}
+        </div>
       )}
 
       {rawStatusMessage && hasStatusWarning && (
