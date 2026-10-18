@@ -17,7 +17,8 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { IconChevronLeft, IconSettings } from '@/components/ui/icons';
+import { IconChevronLeft, IconPlus, IconSettings } from '@/components/ui/icons';
+import { ImportMailboxesModal } from './ImportMailboxesModal';
 import { PhoneSupplyView } from './PhoneSupplyView';
 import { SupplyChannelCard } from './SupplyChannelCard';
 import { SupplyPoolCard } from './SupplyPoolCard';
@@ -30,6 +31,7 @@ export function SmsServicePage() {
   const { t } = useTranslation();
   const [view, setView] = useState<PageView>('pool');
   const [category, setCategory] = useState<SupplyKind>('phone');
+  const [importOpen, setImportOpen] = useState(false);
 
   const categories: { id: SupplyKind; label: string }[] = [
     { id: 'phone', label: t('sms_service.tab_phone') },
@@ -55,6 +57,14 @@ export function SmsServicePage() {
         </div>
         {view === 'pool' && (
           <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.ghostAction}
+              onClick={() => setImportOpen(true)}
+            >
+              <IconPlus size={14} />
+              {t('sms_service.import_mailboxes')}
+            </button>
             <button type="button" className={styles.ghostAction} onClick={() => setView('config')}>
               <IconSettings size={14} />
               {t('sms_service.config_button')}
@@ -90,6 +100,16 @@ export function SmsServicePage() {
           </>
         )}
       </div>
+
+      {/* 导入完成就落到邮箱配置页：那批邮箱在那里，验证也在那里。 */}
+      <ImportMailboxesModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => {
+          setCategory('email');
+          setView('config');
+        }}
+      />
     </div>
   );
 }

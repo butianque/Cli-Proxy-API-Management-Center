@@ -92,6 +92,38 @@ export type EmailCredentialWriteResult =
   | { ok: true }
   | { ok: false; reason: 'wrong-passphrase' | 'locked' | 'error'; message: string };
 
+/** 批量导入里一个邮箱的结局（基座 `/supply/email/import` 的 `results[]` 一行）。 */
+export interface EmailImportLineWire {
+  /** 它在粘贴文本里的行号。 */
+  line?: number;
+  account?: string;
+  /** `imported` / `updated` / `failed`；未知值按失败显示。 */
+  outcome?: string;
+  /** 失败原因；成功时缺省。 */
+  detail?: string;
+  channel_id?: string;
+}
+
+/** 批量导入的结果：一批里每个邮箱各一条，另有三个计数。 */
+export type EmailImportResult =
+  | {
+      ok: true;
+      imported: number;
+      updated: number;
+      failed: number;
+      results: EmailImportLineWire[];
+    }
+  | { ok: false; reason: 'wrong-passphrase' | 'locked' | 'error'; message: string };
+
+/** 基座 `/supply/email/import` 的原始回包。 */
+export interface EmailImportResponse {
+  status?: string;
+  imported?: number;
+  updated?: number;
+  failed?: number;
+  results?: EmailImportLineWire[];
+}
+
 /** 把 axios 错误归一成授权码写入结果（区分主密码错 / 库锁 / 其它）。 */
 function toCredentialWriteResult(error: unknown, fallback: string): EmailCredentialWriteResult {
   const data = (error as { data?: unknown })?.data as
@@ -162,11 +194,54 @@ export const emailApi = {
     }
   },
 
+  /**
+   * 批量导入邮箱：一行一个，`账号----密码----应用 ID----刷新令牌`。
+   *
+   * 基座解析整批、验证每个邮箱能否收信，再把刷新令牌写进密钥库、为每个邮箱建一条
+   * 渠道。所以这里只发文本，不发逐条凭据 —— 值不经过面板，也不回到面板。
+   *
+   * 超时单独放宽：一批里每个邮箱都要做一次令牌交换和一次 IMAP 登录，默认的 30 秒
+   * 只够几个。调用方按批分片（见 `ImportMailboxesModal`），这里给每片留足时间。
+   */
+  async importMailboxes(
+    input: { text: string; probe?: boolean },
+    passphrase: string
+  ): Promise<EmailImportResult> {
+    try {
+      const trimmed = passphrase.trim();
+      const body = trimmed ? { ...input, passphrase: trimmed } : input;
+      const response = await apiClient.post<EmailImportResponse>(
+        `${SUPPLY_EMAIL_BASE}/import`,
+        body,
+        { timeout: 180_000 }
+      );
+      return {
+        ok: true,
+        imported: typeof response?.imported === 'number' ? response.imported : 0,
+        updated: typeof response?.updated === 'number' ? response.updated : 0,
+        failed: typeof response?.failed === 'number' ? response.failed : 0,
+        results: Array.isArray(response?.results) ? response.results : [],
+      };
+    } catch (error) {
+      const data = (error as { data?: unknown })?.data as
+        | { error?: string; passphrase_wrong?: boolean }
+        | undefined;
+      const message =
+        typeof data?.error === 'string' && data.error
+          ? data.error
+          : 'failed to import the mailboxes';
+      if (data?.passphrase_wrong) return { ok: false, reason: 'wrong-passphrase', message };
+      if ((error as { status?: number })?.status === 409) {
+        return { ok: false, reason: 'locked', message };
+      }
+      return { ok: false, reason: 'error', message };
+    }
+  },
+
   /** 从错误对象里取原因，供收件箱把失败说清楚。 */
   describeError(error: unknown, fallback: string): string {
     return errorMessage(error, fallback);
   },
-
   /**
    * 这次失败是否只是「还没有可读的邮箱」。
    *

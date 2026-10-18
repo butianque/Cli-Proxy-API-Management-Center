@@ -1,0 +1,137 @@
+/* ============================================================
+ * 导入邮箱弹窗。
+ *
+ * 版面只有一件事：粘一批、看一眼识别了多少、决定要不要先验证，然后导。
+ * 结果就在同一个弹窗里落地 —— 失败的行带原因，成功的不必再列一遍。
+ * ============================================================ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.lead {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.fieldLabel {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 168px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+
+  &::placeholder {
+    color: var(--text-tertiary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+  }
+}
+
+.note {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.verifyRow {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  padding-top: 2px;
+}
+
+.errorRow {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  color: var(--danger-color, #d9534f);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.resultBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: $spacing-sm;
+  border-top: 1px solid var(--border-color);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.summaryOk {
+  color: var(--success-color, #2f9e44);
+}
+
+.summaryWarn {
+  color: var(--warning-color, #b8860b);
+}
+
+.failureTitle {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.failureList {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  max-height: 180px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.failureItem {
+  display: flex;
+  gap: $spacing-sm;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.failureAccount {
+  flex-shrink: 0;
+  color: var(--text-primary);
+  font-family: $font-mono;
+}
+
+.failureDetail {
+  color: var(--text-tertiary);
+  word-break: break-word;
+}
