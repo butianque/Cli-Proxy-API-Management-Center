@@ -21,7 +21,10 @@ export type CredentialSite = {
 };
 
 const SITE_BY_PROVIDER_KEY: Readonly<Record<string, CredentialSite>> = {
+  // 国内站 = copilot.tencent.com（插件侧 upstreamBaseCN）。品牌按插件自己的叫法
+  // （chat_error.go: "WorkBuddy CN"），不按计费域名 codebuddy.cn 反推。
   'workbuddy-cn': { brand: 'WorkBuddy', region: 'cn', domain: 'copilot.tencent.com' },
+  // 国际站两条：codebuddy.ai（Intl，插件叫 CodeBuddy Intl）与 workbuddy.ai（Global）。
   'workbuddy-intl': { brand: 'CodeBuddy', region: 'intl', domain: 'codebuddy.ai' },
   'workbuddy-global': { brand: 'WorkBuddy', region: 'intl', domain: 'workbuddy.ai' },
   'zcode-bigmodel': { brand: '智谱', region: 'cn', domain: 'bigmodel.cn' },
