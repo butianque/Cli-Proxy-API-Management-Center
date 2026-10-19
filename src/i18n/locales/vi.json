@@ -1276,7 +1276,7 @@
         },
         "security": {
           "title": "Bảo mật",
-          "description": "Khoá riêng của bảng điều khiển: đăng nhập và mã hoá thông tin xác thực",
+          "description": "Khoá riêng của bảng điều khiển: đăng nhập, mã hoá thông tin xác thực và việc chúng có sẵn khi không có người trực",
           "change": "Thay đổi",
           "set": "Thiết lập",
           "cancel": "Huỷ",
@@ -1306,7 +1306,15 @@
           "pass_wrong": "Mật khẩu chính hiện tại không đúng.",
           "pass_failed": "Không thay đổi được mật khẩu chính. Vui lòng thử lại.",
           "pass_changed": "Đã thay đổi mật khẩu chính.",
-          "pass_set": "Đã thiết lập mật khẩu chính."
+          "pass_set": "Đã thiết lập mật khẩu chính.",
+          "unattended_title": "Truy cập không cần giám sát",
+          "unattended_desc_on": "Plugin và tác vụ tự động có thể đọc thông tin xác thực bất cứ lúc nào.",
+          "unattended_desc_off": "Chỉ dùng được khi bạn đã xác minh mật khẩu chính. Sau khi bảng điều khiển nhàn rỗi, cần xác minh lại.",
+          "unattended_unsealed": "Khóa thông tin xác thực được lưu không có bảo vệ.",
+          "unattended_enable": "Bật",
+          "unattended_disable": "Tắt",
+          "unattended_need_unlock": "Hãy xác minh mật khẩu chính rồi thử lại.",
+          "unattended_failed": "Không đổi được quyền truy cập không cần giám sát. Vui lòng thử lại."
         }
       },
       "api_keys": {

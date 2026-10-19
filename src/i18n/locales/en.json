@@ -1483,7 +1483,7 @@
         },
         "security": {
           "title": "Security",
-          "description": "The panel's own keys: how you sign in, and how credentials are encrypted",
+          "description": "The panel's own keys: how you sign in, how credentials are encrypted, and whether they stay available unattended",
           "change": "Change",
           "set": "Set",
           "cancel": "Cancel",
@@ -1513,7 +1513,15 @@
           "pass_wrong": "The current master password is incorrect.",
           "pass_failed": "Could not change the master password. Please try again.",
           "pass_changed": "Master password changed.",
-          "pass_set": "Master password set."
+          "pass_set": "Master password set.",
+          "unattended_title": "Unattended access",
+          "unattended_desc_on": "Plugins and automated tasks can read credentials at any time.",
+          "unattended_desc_off": "Credentials are available only while you have verified the master password. After the panel goes idle they become unavailable again.",
+          "unattended_unsealed": "The credential key is stored without protection.",
+          "unattended_enable": "Turn on",
+          "unattended_disable": "Turn off",
+          "unattended_need_unlock": "Verify the master password first, then try again.",
+          "unattended_failed": "Could not change unattended access. Please try again."
         }
       },
       "api_keys": {

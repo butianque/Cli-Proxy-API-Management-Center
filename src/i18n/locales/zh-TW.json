@@ -1507,7 +1507,7 @@
         },
         "security": {
           "title": "安全管理",
-          "description": "面板自身的安全設定：登入用的管理金鑰，以及保護渠道憑證的主密碼",
+          "description": "面板自身的安全設定：登入用的管理金鑰、保護渠道憑證的主密碼，以及憑證能否無人值守使用",
           "change": "更換",
           "set": "設定",
           "cancel": "取消",
@@ -1537,7 +1537,15 @@
           "pass_wrong": "目前主密碼不正確。",
           "pass_failed": "更換主密碼失敗，請重試。",
           "pass_changed": "主密碼已更換。",
-          "pass_set": "主密碼已設定。"
+          "pass_set": "主密碼已設定。",
+          "unattended_title": "無人值守存取",
+          "unattended_desc_on": "外掛與自動化任務隨時可以讀取憑證。",
+          "unattended_desc_off": "只在你驗證主密碼後可用。面板閒置一段時間後，需要重新驗證才能再用。",
+          "unattended_unsealed": "憑證金鑰以未受保護的方式存放。",
+          "unattended_enable": "開啟",
+          "unattended_disable": "關閉",
+          "unattended_need_unlock": "請先驗證主密碼，再重試。",
+          "unattended_failed": "切換無人值守存取失敗，請重試。"
         }
       },
       "api_keys": {

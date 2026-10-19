@@ -49,6 +49,14 @@
   line-height: 1.55;
 }
 
+/* 说明下面单独强调的一行状态（如密钥未受保护）。 */
+.rowNote {
+  margin: 4px 0 0;
+  color: var(--warning-color);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* 弹窗：两个独立弹窗共用 */
 .body {
   display: flex;

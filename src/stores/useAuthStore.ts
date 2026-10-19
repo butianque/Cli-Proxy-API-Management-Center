@@ -9,7 +9,7 @@ import type { AuthState, LoginCredentials, ConnectionStatus } from '@/types';
 import { STORAGE_KEY_AUTH } from '@/utils/constants';
 import { obfuscatedStorage } from '@/services/storage/secureStorage';
 import { apiClient } from '@/services/api/client';
-import { secretStoreApi } from '@/services/api/secretStore';
+import { ensureManagementSession, sessionApi } from '@/services/api/session';
 import { LegacyBackendError, probeLegacyBackend } from '@/services/api/legacyBackendProbe';
 import { useConfigStore } from './useConfigStore';
 import { useModelsStore } from './useModelsStore';
@@ -33,9 +33,28 @@ interface AuthStoreState extends AuthState {
 
 let restoreSessionPromise: Promise<boolean> | null = null;
 
+/**
+ * 登录/恢复连接后建立管理会话。
+ *
+ * 凭据读写只认会话，所以这一步必须发生在面板开始读凭据之前。旧版后端没有这条
+ * 路由（404），此时保持老行为、不阻断登录；其余错误照常抛出去，让登录失败而
+ * 不是带着半截状态进入面板。
+ */
+async function establishSession(): Promise<void> {
+  try {
+    const session = await ensureManagementSession();
+    if (session?.idle_seconds) {
+      useSecretGateStore.getState().setIdleTimeout(session.idle_seconds * 1000);
+    }
+  } catch (error) {
+    if ((error as { status?: number })?.status === 404) return;
+    throw error;
+  }
+}
+
 // 正在进行的登出。登出必须**幂等**：`unauthorized` 监听、空闲守卫、手动按钮都可能
-// （几乎同时）调用它，而登出自己发出的 `/secrets/lock` 一旦 401 又会再触发一次
-// `unauthorized` —— 不挡住就会连锁登出（实测一次登出发出 3 条锁定请求）。
+// （几乎同时）调用它，而登出自己发出的 `/session` 一旦 401 又会再触发一次
+// `unauthorized` —— 不挡住就会连锁登出。
 let logoutPromise: Promise<void> | null = null;
 
 export const useAuthStore = create<AuthStoreState>()(
@@ -138,6 +157,9 @@ export const useAuthStore = create<AuthStoreState>()(
             throw error;
           }
 
+          // 登录成功前先开会话：面板随后的凭据读写都要带着它。
+          await establishSession();
+
           // 登录成功
           set({
             isAuthenticated: true,
@@ -160,24 +182,24 @@ export const useAuthStore = create<AuthStoreState>()(
       // 登出
       logout: (): Promise<void> => {
         restoreSessionPromise = null;
-        // 已在登出中：返回同一个 promise，不再发第二条锁定请求（见文件头的说明）。
+        // 已在登出中：返回同一个 promise，不再发第二条结束请求（见文件头的说明）。
         if (logoutPromise) return logoutPromise;
-        // 登出 = 清除会话，所以密钥库必须对新会话锁死；否则「已验证」只清了前端，
-        // 后端还开着，任何人都能靠「登出再登录」直接看到凭据。
+        // 登出 = 结束会话。凭据授权挂在会话上，会话一结束，这个会话就再也读不到
+        // 凭据；别人的会话、以及后端自己的访问都不受影响。
         //
         // 两件事的顺序是关键：
-        // - `/secrets/lock` 需要鉴权（实测无密钥 → 401 `missing management key`），
+        // - `/session` 需要鉴权（实测无密钥 → 401 `missing management key`），
         //   而 `apiClient` 的连接信息一清就会让请求落到相对路径（缺 `/v8/management`
         //   前缀）而 404。所以这条请求必须**带着当前会话的密钥发出**。
         // - 但前端的登出**不能**等它落地：后端挂起时操作者会一直停在受保护页面上。
         // 所以：前端状态**同步**清掉（受保护路由立刻把人送回登录页），`apiClient`
         // 的连接信息等请求落地再清（它只影响之后的新请求，且此时已无人再发请求）。
         //
-        // 已经没有会话凭据时不发这条请求：本来也没有可锁的库，且会话结束后的迟到
-        // 401 也会走到这里。
+        // 已经没有会话凭据时不发这条请求：本来也没有可结束的会话，且会话结束后的
+        // 迟到 401 也会走到这里。
         const { apiBase, managementKey } = get();
-        const lockRequest =
-          apiBase && managementKey ? secretStoreApi.lock() : Promise.resolve();
+        const endRequest =
+          apiBase && managementKey ? sessionApi.end() : Promise.resolve();
         // 锁定请求发出时的连接世代。期间若有人重新登录（`setConfig` 会 +1），
         // 迟到的收尾就**不能**再清 `apiClient`，否则会把新会话踢掉。
         const revision = apiClient.getConnectionRevision();
@@ -207,8 +229,8 @@ export const useAuthStore = create<AuthStoreState>()(
         // in-memory passphrase so the next login re-verifies.
         useSecretGateStore.getState().reset();
         // 锁定失败不阻断登出：前端凭据已经清掉了。
-        void lockRequest.then(settleClient, settleClient);
-        logoutPromise = lockRequest.then(
+        void endRequest.then(settleClient, settleClient);
+        logoutPromise = endRequest.then(
           () => undefined,
           () => undefined
         );
@@ -230,6 +252,9 @@ export const useAuthStore = create<AuthStoreState>()(
 
           // 验证连接
           await useConfigStore.getState().fetchConfig();
+
+          // 会话可能已被服务端清掉（重启/空闲超时），这里补一次。
+          await establishSession();
 
           set({
             isAuthenticated: true,

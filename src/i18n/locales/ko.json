@@ -1483,7 +1483,7 @@
         },
         "security": {
           "title": "보안",
-          "description": "패널 자체의 키: 로그인과 자격 증명 암호화",
+          "description": "패널 자체의 키: 로그인, 자격 증명 암호화, 무인 상태에서의 사용 가능 여부",
           "change": "변경",
           "set": "설정",
           "cancel": "취소",
@@ -1513,7 +1513,15 @@
           "pass_wrong": "현재 마스터 비밀번호가 올바르지 않습니다.",
           "pass_failed": "마스터 비밀번호를 변경하지 못했습니다. 다시 시도하세요.",
           "pass_changed": "마스터 비밀번호를 변경했습니다.",
-          "pass_set": "마스터 비밀번호를 설정했습니다."
+          "pass_set": "마스터 비밀번호를 설정했습니다.",
+          "unattended_title": "무인 접근",
+          "unattended_desc_on": "플러그인과 자동 작업이 언제든지 자격 증명을 읽을 수 있습니다.",
+          "unattended_desc_off": "마스터 비밀번호를 확인한 동안에만 사용할 수 있습니다. 패널이 유휴 상태가 되면 다시 확인해야 합니다.",
+          "unattended_unsealed": "자격 증명 키가 보호되지 않은 상태로 저장되어 있습니다.",
+          "unattended_enable": "켜기",
+          "unattended_disable": "끄기",
+          "unattended_need_unlock": "먼저 마스터 비밀번호를 확인한 후 다시 시도하세요.",
+          "unattended_failed": "무인 접근을 변경하지 못했습니다. 다시 시도하세요."
         }
       },
       "api_keys": {

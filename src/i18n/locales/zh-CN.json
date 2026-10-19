@@ -1481,7 +1481,7 @@
         },
         "security": {
           "title": "安全管理",
-          "description": "面板自身的安全设置：登录用的管理密钥，以及保护渠道凭据的主密码",
+          "description": "面板自身的安全设置：登录用的管理密钥、保护渠道凭据的主密码，以及凭据能否无人值守使用",
           "change": "更换",
           "set": "设置",
           "cancel": "取消",
@@ -1511,7 +1511,15 @@
           "pass_wrong": "当前主密码不正确。",
           "pass_failed": "更换主密码失败，请重试。",
           "pass_changed": "主密码已更换。",
-          "pass_set": "主密码已设置。"
+          "pass_set": "主密码已设置。",
+          "unattended_title": "无人值守访问",
+          "unattended_desc_on": "插件与自动化任务随时可以读取凭据。",
+          "unattended_desc_off": "只在你验证主密码后可用。面板闲置一段时间后，需要重新验证才能再用。",
+          "unattended_unsealed": "凭据密钥以未受保护的方式存放。",
+          "unattended_enable": "开启",
+          "unattended_disable": "关闭",
+          "unattended_need_unlock": "请先验证主密码，再重试。",
+          "unattended_failed": "切换无人值守访问失败，请重试。"
         }
       },
       "api_keys": {

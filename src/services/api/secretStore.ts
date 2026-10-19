@@ -13,10 +13,16 @@ import { apiClient } from './client';
 export interface SecretStoreStatus {
   enabled: boolean;
   initialized: boolean;
+  /** **本会话**是否已解锁凭据。别的会话解锁了不影响这个值。 */
   unlocked: boolean;
+  /** 后端自身的凭据访问能力：machine（常驻）/ session（有人解锁）/ none。 */
+  system_access?: 'machine' | 'session' | 'none';
+  /** 凭据在磁盘上的保护方式：dpapi / plain / 空（无机器密钥）。 */
+  seal?: string;
   /** 是否已安装主密码。 */
   passphrase: boolean;
   mode: string;
+  /** 已存的凭据名；只在 `unlocked` 为真时下发。 */
   names: string[];
 }
 
@@ -57,5 +63,20 @@ export const secretStoreApi = {
   /** 全新密钥库首次安装主密码（已安装的库会被拒绝，不会静默覆盖）。 */
   async initialize(passphrase: string): Promise<SecretStoreStatus> {
     return apiClient.post<SecretStoreStatus>('/secrets/initialize', { passphrase });
+  },
+
+  /**
+   * 开启无人值守访问：后端不再需要主密码就能读取凭据。
+   *
+   * 这等于把凭据的可用性从「有人在」放宽到「一直在」，所以后端要求调用方
+   * 本会话已解锁；未解锁时以 409 抛出，由调用方就地提示先验证主密码。
+   */
+  async enableUnattendedAccess(): Promise<SecretStoreStatus> {
+    return apiClient.post<SecretStoreStatus>('/secrets/machine-unlock');
+  },
+
+  /** 关闭无人值守访问：后端只在有人验证主密码期间可用。 */
+  async disableUnattendedAccess(): Promise<SecretStoreStatus> {
+    return apiClient.delete<SecretStoreStatus>('/secrets/machine-unlock');
   },
 };

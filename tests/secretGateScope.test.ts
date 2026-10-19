@@ -23,15 +23,19 @@ const gateStore = readFileSync(
  * `name: () => void;` declaration in the state interface or another action.
  * `end` is the first marker after the action (the following action).
  */
-function actionBody(name: string, endMarker: string): string {
+function sourceActionBody(source: string, name: string, endMarker: string): string {
   // lastIndexOf: the state interface declares `name: (...) => ...;` earlier in
   // the file; the implementation is always the final occurrence.
-  const start = gateStore.lastIndexOf(`${name}: `);
+  const start = source.lastIndexOf(`${name}: `);
   expect(start).toBeGreaterThan(-1);
-  const rest = gateStore.slice(start);
+  const rest = source.slice(start);
   const end = rest.indexOf(endMarker);
   expect(end).toBeGreaterThan(-1);
   return rest.slice(0, end);
+}
+
+function actionBody(name: string, endMarker: string): string {
+  return sourceActionBody(gateStore, name, endMarker);
 }
 
 /** The `const open = ...;` expression from the dialog, whitespace collapsed. */
@@ -126,34 +130,81 @@ describe('a choice made mid-verify wins over the in-flight result', () => {
   });
 });
 
-describe('verified state lives as long as the CPA session, not a page load', () => {
-  test('a successful verify records a session marker', () => {
-    const body = actionBody('verifyAndUnlock', 'skip:');
-    expect(body).toContain('markSessionVerified()');
+describe('unlock state is the server’s answer about this session', () => {
+  test('the gate no longer keeps its own copy of "verified"', () => {
+    // A browser-side marker was the source of both reported bugs: it could survive
+    // into a brand-new session (log out, log back in, no master password asked) and
+    // it could be missing while the session really was unlocked (dialog on top of
+    // working credentials). The server already knows; a second copy only disagrees
+    // with it.
+    expect(gateStore).not.toContain('SESSION_VERIFIED_KEY');
+    expect(gateStore).not.toContain('sessionStorage.');
+    expect(gateStore).not.toContain('markSessionVerified');
+    expect(gateModal).not.toContain('isSessionVerified');
   });
 
-  test('logging out clears the marker, so the next login re-verifies', () => {
-    const body = actionBody('reset', 'setIdleTimeout:');
-    expect(body).toContain('clearSessionVerified()');
-  });
-
-  test('the marker is session-scoped and never stores the passphrase', () => {
-    // sessionStorage: survives F5 in the tab, dies with the tab. Storing the
-    // passphrase itself would turn a UI convenience into a credential store.
-    expect(gateStore).toContain('window.sessionStorage.setItem');
-    expect(gateStore).toContain("const SESSION_VERIFIED_KEY = 'cpa.secret-gate.verified'");
-    expect(gateStore).toContain("setItem(SESSION_VERIFIED_KEY, '1')");
-  });
-
-  test('reload resumes verified only when the backend is still unlocked', () => {
-    // The marker alone must never grant access: the backend is the authority.
-    const probe = gateModal.slice(gateModal.indexOf('isSessionVerified()'));
-    expect(probe).toContain('isSessionVerified()');
+  test('reload resumes verified only when the backend says so', () => {
+    const probe = gateModal.slice(gateModal.indexOf('secretStoreApi'));
     expect(probe).toContain('status.unlocked');
+    expect(probe).toContain("useSecretGateStore.setState({ phase: 'unlocked' })");
   });
 
-  test('a skipped session is not marked verified', () => {
-    expect(actionBody('skip', 'touch:')).not.toContain('markSessionVerified');
+  test('a skipped session stays locked until the server is asked again', () => {
+    expect(actionBody('skip', 'touch:')).toContain("phase: 'locked'");
+  });
+});
+
+describe('a management session carries the credential authorization', () => {
+  const authStore = readFileSync(new URL('../src/stores/useAuthStore.ts', import.meta.url), 'utf8');
+  const sessionApi = readFileSync(new URL('../src/services/api/session.ts', import.meta.url), 'utf8');
+  const sessionToken = readFileSync(
+    new URL('../src/services/api/sessionToken.ts', import.meta.url),
+    'utf8'
+  );
+  const client = readFileSync(new URL('../src/services/api/client.ts', import.meta.url), 'utf8');
+
+  test('the token is shared across tabs, so one unlock serves every tab', () => {
+    // sessionStorage is per tab: unlocking in tab A would leave tab B asking for
+    // the master password, which is the exact annoyance this replaces.
+    expect(sessionToken).toContain('window.localStorage.setItem(SESSION_TOKEN_KEY');
+    expect(sessionToken).toContain('window.localStorage.getItem(SESSION_TOKEN_KEY)');
+    expect(sessionToken).not.toContain('sessionStorage.');
+    expect(sessionToken).toContain("SESSION_HEADER = 'X-CPA-Session'");
+  });
+
+  test('every request carries the session token', () => {
+    expect(client).toContain('readSessionToken()');
+    expect(client).toContain('config.headers[SESSION_HEADER] = sessionToken');
+  });
+
+  test('creating a session does not present a stale token', () => {
+    // The middleware rejects an expired token, so sending one while opening a new
+    // session would make "expired" unrecoverable.
+    expect(client).toContain('carriesSessionToken(config.method, config.url)');
+    expect(client).toContain("path.endsWith('/session')");
+  });
+
+  test('login establishes a session before the panel reads anything', () => {
+    const body = sourceActionBody(authStore, 'login', 'logout:');
+    const establishAt = body.indexOf('await establishSession();');
+    const authenticatedAt = body.indexOf('isAuthenticated: true');
+    expect(establishAt).toBeGreaterThan(-1);
+    expect(authenticatedAt).toBeGreaterThan(-1);
+    expect(establishAt).toBeLessThan(authenticatedAt);
+  });
+
+  test('a session is reused when it is still alive, so F5 does not re-ask', () => {
+    expect(sessionApi).toContain('export async function ensureManagementSession');
+    expect(sessionApi).toContain('await sessionApi.describe()');
+  });
+
+  test('only real activity touches the session, and not on every event', () => {
+    expect(sessionApi).toContain('TOUCH_INTERVAL_MS');
+    const idleGuard = readFileSync(
+      new URL('../src/features/sms/SecretGateIdleGuard.tsx', import.meta.url),
+      'utf8'
+    );
+    expect(idleGuard).toContain('void touchSession()');
   });
 });
 
@@ -166,83 +217,69 @@ describe('logging out ends the session for the store as well', () => {
 
   /** The implementation body of a store action (last occurrence, as in actionBody). */
   function authActionBody(name: string, endMarker: string): string {
-    const start = authStore.lastIndexOf(`${name}: `);
-    expect(start).toBeGreaterThan(-1);
-    const rest = authStore.slice(start);
-    const end = rest.indexOf(endMarker);
-    expect(end).toBeGreaterThan(-1);
-    return rest.slice(0, end);
+    return sourceActionBody(authStore, name, endMarker);
   }
 
-  test('logout locks the backend store with the own session key', () => {
-    // Logging out IS "clear the session". If the front end only forgot the
-    // session while the backend stayed unlocked, logging out and back in would
-    // hand anyone with the management key the credentials with no master
-    // password — the marker would be decoration.
+  test('logout ends the management session, which drops its credentials grant', () => {
+    // Logging out IS "end the session". If the front end only forgot the session
+    // while the backend kept the grant, logging out and back in would hand anyone
+    // with the management key the credentials with no master password.
     const body = authActionBody('logout', 'checkAuth:');
-    expect(body).toContain('secretStoreApi.lock()');
+    expect(body).toContain('sessionApi.end()');
     expect(body).toContain('reset()');
   });
 
-  test('the lock is issued with the session key, before that key is cleared', () => {
-    // /secrets/lock is authenticated: calling it after clearing the management
-    // key returns 401 "missing management key" (verified against the running
-    // backend), so the request must be captured first. The front-end state is
-    // cleared synchronously, but `apiClient` only after the request settles.
+  test('the end request is issued with the management key, before that key is cleared', () => {
+    // /session is authenticated: calling it after clearing the management key
+    // returns 401 "missing management key". The front-end state is cleared
+    // synchronously, but `apiClient` only after the request settles.
     const body = authActionBody('logout', 'checkAuth:');
-    const lockAt = body.indexOf('secretStoreApi.lock()');
+    const endAt = body.indexOf('sessionApi.end()');
     const clearAt = body.indexOf("apiClient.setConfig({ apiBase: '', managementKey: '' })");
-    expect(lockAt).toBeGreaterThan(-1);
-    expect(clearAt).toBeGreaterThan(lockAt);
+    expect(endAt).toBeGreaterThan(-1);
+    expect(clearAt).toBeGreaterThan(endAt);
   });
 
-  test('the front-end session ends synchronously, not when the lock settles', () => {
-    // Waiting for /secrets/lock left the operator on the protected page until it
-    // resolved — indefinitely if the backend hung. `isAuthenticated: false` must
-    // therefore appear *before* the `.then` that settles the lock.
+  test('the front-end session ends synchronously, not when the request settles', () => {
+    // Waiting for the backend left the operator on the protected page until it
+    // resolved — indefinitely if the backend hung.
     const body = authActionBody('logout', 'checkAuth:');
     const sessionClearedAt = body.indexOf('isAuthenticated: false');
     const settleAt = body.indexOf('.then(settleClient, settleClient)');
     expect(sessionClearedAt).toBeGreaterThan(-1);
     expect(settleAt).toBeGreaterThan(-1);
     expect(sessionClearedAt).toBeLessThan(settleAt);
-    // Clearing apiBase/managementKey also stops ProtectedRoute from silently
-    // restoring the session the instant it sees "not authenticated + key present".
     expect(body).toContain("managementKey: ''");
   });
 
   test('a login that lands mid-logout is not clobbered by the late settle', () => {
-    // setConfig bumps the revision, so the deferred cleanup can tell that the
-    // connection changed and leave the new session alone.
     const body = authActionBody('logout', 'checkAuth:');
     expect(body).toContain('apiClient.getConnectionRevision()');
     expect(body).toContain('if (apiClient.getConnectionRevision() === revision)');
   });
 
-  test('both logout paths lock the store through logout()', () => {
-    // Idle timeout must not lock on its own path: the guard cancels its timer
-    // when it logs out, so a lock issued after logout() would never fire.
-    // One lock, inside logout(), covers idle timeout and manual logout alike.
-    expect(idleGuard).not.toContain('secretStoreApi.lock()');
+  test('both logout paths end the session through logout()', () => {
+    // Idle timeout must not end the session on its own path: the guard cancels its
+    // timer when it logs out. One request, inside logout(), covers idle timeout and
+    // manual logout alike.
+    expect(idleGuard).not.toContain('sessionApi.end()');
     expect(idleGuard).toContain('logout()');
   });
 
   test('logout is re-entrant: a second call reuses the in-flight one', () => {
-    // logout() issues an authenticated /secrets/lock. If that 401s, the client
+    // logout() issues an authenticated /session. If that 401s, the client
     // dispatches `unauthorized`, whose listener calls logout() again — without a
-    // latch the second call fires another lock. Observed in the run log: one
-    // logout produced three lock requests (401, 401, then 404 because the
-    // management key had already been cleared and the URL lost its prefix).
+    // latch the second call fires another request.
     expect(authStore).toContain('let logoutPromise: Promise<void> | null = null;');
     const body = authActionBody('logout', 'checkAuth:');
     expect(body).toContain('if (logoutPromise) return logoutPromise;');
   });
 
-  test('no lock request is issued once the session credentials are gone', () => {
-    // apiClient's baseURL is empty by then, so the request would fall through to
-    // the relative `/secrets/lock` (no /v8/management prefix) and 404.
+  test('no request is issued once the session credentials are gone', () => {
+    // apiClient's baseURL is empty by then, so the request would fall through to a
+    // relative `/session` (no /v8/management prefix) and 404.
     const body = authActionBody('logout', 'checkAuth:');
-    expect(body).toContain('apiBase && managementKey ? secretStoreApi.lock() : Promise.resolve()');
+    expect(body).toContain('apiBase && managementKey ? sessionApi.end() : Promise.resolve()');
   });
 });
 
@@ -273,7 +310,7 @@ describe('idle expiry is shared across tabs and keeps the newest activity', () =
   test('the newest activity wins, so one active tab keeps the session alive', () => {
     // max(), not min(): min() would let an idle tab's stale stamp log out a tab
     // the operator is actively using. "Idle" means no tab has been touched.
-    expect(idleGuard).toContain('Math.max(inMemory, shared)');
+    expect(idleGuard).toContain('Math.max(inMemory, shared ?? 0)');
   });
 
   test('activity is recorded when it happens', () => {

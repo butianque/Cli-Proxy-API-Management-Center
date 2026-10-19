@@ -15,6 +15,12 @@ import {
 } from '@/utils/constants';
 import { computeApiUrl } from '@/utils/connection';
 import { parseApiErrorResponse } from './apiError';
+import {
+  isSessionEstablished,
+  readSessionToken,
+  SESSION_HEADER,
+  writeSessionToken,
+} from './sessionToken';
 
 /**
  * 携带主密码的路由：401 只表示「主密码不符」，不表示会话失效。
@@ -30,11 +36,61 @@ function isPassphraseRoute(url: string | undefined): boolean {
   return PASSPHRASE_ROUTES.some((route) => url.split('?')[0].endsWith(route));
 }
 
+/**
+ * 会话令牌只随「已经存在的会话」发出。新建会话这一条必须不带：带着一个过期
+ * 令牌去开会话，服务端会先按过期令牌拒绝，反而开不出新的。
+ */
+function carriesSessionToken(method: string | undefined, url: string | undefined): boolean {
+  const path = (url || '').split('?')[0];
+  return !((method || 'get').toLowerCase() === 'post' && path.endsWith('/session'));
+}
+
+/**
+ * 探测当前会话是否还有效（`GET /session`）。
+ *
+ * 这条请求的 401 意思是「手上这个令牌不能用了」，而不是「你被踢下线了」——
+ * 它唯一的调用方是登录/恢复连接时的 `ensureManagementSession`，那里会立刻丢掉
+ * 旧令牌、开一个新会话。若也按会话失效处理，浏览器里留着一个上次进程的令牌
+ * （后端重启过、或空闲超时后关掉了页面）就会把登录本身打成「认证失败」。
+ */
+function isSessionProbe(method: string | undefined, url: string | undefined): boolean {
+  if (!url) return false;
+  const verb = (method || 'get').toLowerCase();
+  return verb === 'get' && url.split('?')[0].endsWith('/session');
+}
+
+/**
+ * 会话令牌会随后端进程一起消失，但打开的标签页不会：重启之后，页面上每个请求
+ * 都带着一个服务端已经不认识的令牌，于是每一条都 401。
+ *
+ * 这个 401 说的是**令牌**，不是管理密钥。所以这里就地换一个新会话再重放一次原
+ * 请求，只有换不到会话（管理密钥真的不对）才按「被登出」处理。否则每次部署重启
+ * 都会把一个正在用的面板踢回登录页 —— 那是把「服务端换了个进程」误报成「你的
+ * 密钥失效了」。
+ */
+type SessionAwareConfig = AxiosRequestConfig & {
+  /** 这条请求已经因为会话失效重放过一次，不再递归。 */
+  cpaSessionRetried?: boolean;
+  /** 这是面板自己发的换会话请求，它的 401 由调用方消化。 */
+  cpaSessionRenewal?: boolean;
+};
+
+function sentSessionToken(config: AxiosRequestConfig | undefined): boolean {
+  const headers = config?.headers as
+    | (Record<string, unknown> & { get?: (name: string) => unknown })
+    | undefined;
+  if (!headers) return false;
+  if (typeof headers.get === 'function') return Boolean(headers.get(SESSION_HEADER));
+  return Boolean(headers[SESSION_HEADER]);
+}
+
 class ApiClient {
   private instance: AxiosInstance;
   private apiBase: string = '';
   private managementKey: string = '';
   private connectionRevision = 0;
+  /** 正在进行中的会话续期，供并发的 401 共用（见 renewSession）。 */
+  private sessionRenewal: Promise<boolean> | null = null;
 
   constructor() {
     this.instance = axios.create({
@@ -136,6 +192,17 @@ class ApiClient {
           config.headers.Authorization = `Bearer ${this.managementKey}`;
         }
 
+        // 会话令牌：证明「哪个会话在问」，凭据读写只认它。
+        //
+        // 只在本次加载已经确认过会话时才挂上（见 sessionToken.ts）：localStorage
+        // 里的令牌可能是上一次进程留下的，先拿它去发请求只会被 401 拒掉。
+        if (carriesSessionToken(config.method, config.url) && isSessionEstablished()) {
+          const sessionToken = readSessionToken();
+          if (sessionToken) {
+            config.headers[SESSION_HEADER] = sessionToken;
+          }
+        }
+
         return config;
       },
       (error) => Promise.reject(this.handleError(error))
@@ -169,8 +236,75 @@ class ApiClient {
 
         return response;
       },
-      (error) => Promise.reject(this.handleError(error))
+      async (error) => {
+        if (this.shouldRenewSession(error)) {
+          const config = error.config as SessionAwareConfig | undefined;
+          const renewed = await this.renewSession(config?.adapter);
+          if (renewed && config) {
+            return this.instance.request(this.replayConfig(config));
+          }
+        }
+        return Promise.reject(this.handleError(error));
+      }
     );
+  }
+
+  /** 这次 401 是「令牌过期」而不是「密钥不对」，值得就地换一个会话。 */
+  private shouldRenewSession(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) return false;
+    if (error.response?.status !== 401) return false;
+    const config = error.config as SessionAwareConfig | undefined;
+    if (!config || config.cpaSessionRetried) return false;
+    if (!sentSessionToken(config)) return false;
+    if (isPassphraseRoute(config.url) || isSessionProbe(config.method, config.url)) return false;
+    return true;
+  }
+
+  /**
+   * 用当前管理密钥换一个新会话。
+   *
+   * 并发的多个 401 共用同一次换会话：三个请求同时过期时不该开三个会话。换失败
+   * 只返回 false，让调用方照常走登出；这里不抛错，免得把 401 变成别的样子。
+   */
+  private renewSession(adapter: AxiosRequestConfig['adapter']): Promise<boolean> {
+    if (this.sessionRenewal) return this.sessionRenewal;
+    const revision = this.connectionRevision;
+    const renewal = this.instance
+      .post<{ token?: string }>(
+        '/session',
+        undefined,
+        { cpaSessionRenewal: true, ...(adapter ? { adapter } : {}) } as SessionAwareConfig
+      )
+      .then((response) => {
+        const token = response.data?.token;
+        // 换会话期间连接被换掉（重新登录/切服务器）：新令牌不属于这次请求。
+        if (!token || this.connectionRevision !== revision) return false;
+        writeSessionToken(token);
+        return true;
+      })
+      .catch(() => false)
+      .finally(() => {
+        if (this.sessionRenewal === renewal) this.sessionRenewal = null;
+      });
+    this.sessionRenewal = renewal;
+    return renewal;
+  }
+
+  /**
+   * 重放用的一次性请求配置。
+   *
+   * 旧令牌必须摘掉：它已经失效，留着只会让重放再 401 一次。标记 `cpaSessionRetried`
+   * 让重放本身失败时走正常错误路径，不再递归换会话。
+   */
+  private replayConfig(config: SessionAwareConfig): SessionAwareConfig {
+    const headers = config.headers as
+      | (Record<string, unknown> & { delete?: (name: string) => void })
+      | undefined;
+    if (headers) {
+      if (typeof headers.delete === 'function') headers.delete(SESSION_HEADER);
+      else delete headers[SESSION_HEADER];
+    }
+    return { ...config, cpaSessionRetried: true };
   }
 
   /**
@@ -191,7 +325,15 @@ class ApiClient {
       // 401 未授权 - 触发登出事件。例外：携带主密码的三条路由，401 表示「主密码
       // 不符」而不是「会话失效」，属于可就地更正的输入错误，绝不能让操作者登出
       // （旧主密码填错只应提示重填，而不是把人踢回登录页）。
-      if (error.response?.status === 401 && !isPassphraseRoute(error.config?.url)) {
+      //
+      // 换会话那条请求的 401 也不在此列：它由 renewSession 自己消化，随后原来
+      // 那条请求会带着「仍然失败」的结果走到这里，登出只发生一次。
+      if (
+        error.response?.status === 401 &&
+        !isPassphraseRoute(error.config?.url) &&
+        !isSessionProbe(error.config?.method, error.config?.url) &&
+        !(error.config as SessionAwareConfig | undefined)?.cpaSessionRenewal
+      ) {
         window.dispatchEvent(new Event('unauthorized'));
       }
 
