@@ -32,6 +32,8 @@ export function SmsServicePage() {
   const [view, setView] = useState<PageView>('pool');
   const [category, setCategory] = useState<SupplyKind>('phone');
   const [importOpen, setImportOpen] = useState(false);
+  // 导入写的是台账，而台账只在挂载时读一次：靠这个计数器叫它重读。
+  const [poolReloadKey, setPoolReloadKey] = useState(0);
 
   const categories: { id: SupplyKind; label: string }[] = [
     { id: 'phone', label: t('sms_service.tab_phone') },
@@ -74,7 +76,7 @@ export function SmsServicePage() {
       </header>
 
       <div key={view} className={styles.viewContent}>
-        {view === 'pool' && <SupplyPoolCard />}
+        {view === 'pool' && <SupplyPoolCard reloadKey={poolReloadKey} />}
         {view === 'config' && (
           <>
             <div className={styles.tabs} role="tablist" aria-label={t('sms_service.tabs_label')}>
@@ -101,13 +103,13 @@ export function SmsServicePage() {
         )}
       </div>
 
-      {/* 导入完成就落到邮箱配置页：那批邮箱在那里，验证也在那里。 */}
+      {/* 导入完成就停在台账：导进来的号就在这一页上，跳到配置页等于让人自己再找回来。 */}
       <ImportMailboxesModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
         onImported={() => {
-          setCategory('email');
-          setView('config');
+          setView('pool');
+          setPoolReloadKey((value) => value + 1);
         }}
       />
     </div>

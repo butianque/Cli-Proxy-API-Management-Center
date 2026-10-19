@@ -57,13 +57,11 @@ import {
   CATEGORY_LABEL,
   EMAIL_CATEGORY_OPTIONS,
   EMAIL_DEFAULT_NATURE,
-  EMAIL_NATURES,
   NATURE_LABEL,
   PHONE_CATEGORY_OPTIONS,
   SMS_PLATFORMS,
   isCatchAllCategory,
   resolvePlatformId,
-  usesRefreshToken,
 } from './smsMapping';
 import type {
   PhoneCredentialState,
@@ -201,15 +199,11 @@ export function ChannelEditorModal({
   /**
    * 这一类能用的接入方式。
    *
-   * 邮箱两种，都是连上那个信箱按收件地址找信，区别只在拿什么证明身份（授权码 /
-   * OAuth2）。基座虽然还认得邮箱的 `api`，但没有实现，勾上只会得到一条永远连不上的
-   * 渠道。
+   * 手机号是勾选（API + 网页可以同时开）；邮箱只有一种（授权码），由基座声明，
+   * 所以邮箱这一段根本不画选择器 —— 一个选项的单选/多选，点它不会改变任何东西。
    */
   const allowed = useMemo(
-    () =>
-      natures
-        .filter((item) => item.kinds.includes(kind))
-        .filter((item) => kind !== 'email' || EMAIL_NATURES.includes(item.nature)),
+    () => natures.filter((item) => item.kinds.includes(kind)),
     [natures, kind]
   );
   /**
@@ -257,14 +251,11 @@ export function ChannelEditorModal({
    * 勾选框、连接块、必填判据、提交**都读这一个集合** —— 否则界面勾着两种、提交却只写
    * 一种，或反过来。
    *
-   * 邮箱是**二选一**：同一个信箱只有一种凭据，两种并存是基座会拒收的矛盾记录。已存的
-   * 那一种优先，没存过就是授权码（绝大多数邮箱都走它）。
+   * 邮箱只有一种（授权码）：渠道是「一条连接覆盖很多地址」，微软那两种按邮箱自带凭据
+   * 读信，属于供应池里的身份，不是渠道。
    */
   const chosenNatures = useMemo(() => {
-    if (kind === 'email') {
-      const stored = EMAIL_NATURES.find((nature) => block.natures.has(nature));
-      return new Set<SupplyNature>([stored ?? EMAIL_DEFAULT_NATURE]);
-    }
+    if (kind === 'email') return new Set<SupplyNature>([EMAIL_DEFAULT_NATURE]);
     const defaults = platformFacts?.defaultNatures;
     if (!defaults || naturesEdited) return block.natures;
     return platformNatures(defaults, allowed.map((item) => item.nature));
@@ -296,7 +287,17 @@ export function ChannelEditorModal({
     setError(null);
   }, [open, channel, kind]);
 
-  const selected = allowed.filter((item) => chosenNatures.has(item.nature));
+  /**
+   * 要画连接信息的那几种方式。
+   *
+   * 邮箱不查 `allowed`：它只有授权码一种，而 `allowed` 依赖基座声明的 natures 列表 ——
+   * 列表没读到或前后端版本对不上时它是空的，整段连接信息就跟着消失，编辑器打开就是
+   * 一片空白。那正是这个弹窗以前的样子。手机号照旧按勾选取。
+   */
+  const selected: SupplyNature[] =
+    kind === 'email'
+      ? [EMAIL_DEFAULT_NATURE]
+      : allowed.filter((item) => chosenNatures.has(item.nature)).map((item) => item.nature);
 
   const apiSelected = kind === 'phone' && chosenNatures.has('api');
   const webSelected = kind === 'phone' && chosenNatures.has('web');
@@ -320,12 +321,9 @@ export function ChannelEditorModal({
   /** 邮箱选中的那一种接入方式；手机号没有「唯一一种」这回事。 */
   const mailNature: SupplyNature | null =
     kind === 'email' ? ([...chosenNatures][0] ?? EMAIL_DEFAULT_NATURE) : null;
-  /** 邮箱这一种方式自己的连接信息 —— 域名、应用 ID 都挂在它下面。 */
+  /** 邮箱这一种方式自己的连接信息 —— 域名挂在它下面。 */
   const mailConnection = mailNature ? (block.connections[mailNature] ?? emptyConnection()) : null;
   const domainMissing = attempted && catchAll && (mailConnection?.domain ?? '').trim() === '';
-  /** 用刷新令牌的两种方式少了应用 ID 就换不到令牌，保存下去就是一条读不到信的渠道。 */
-  const clientIdMissing =
-    attempted && usesRefreshToken(mailNature) && (mailConnection?.clientId ?? '').trim() === '';
 
   /** 上一次的测试结果与错误，都随输入变化失效。 */
   const resetFeedback = () => {
@@ -350,24 +348,6 @@ export function ChannelEditorModal({
       if (!connections[nature]) connections[nature] = emptyConnection();
       return { ...current, natures: next, connections };
     });
-    setAttempted(false);
-    resetFeedback();
-  };
-
-  /**
-   * 邮箱换一种接入方式：**替换**，不是叠加。
-   *
-   * 同一个信箱只有一种凭据。顺带清掉已经填进框里的值：那是上一种方式的凭据，带过去
-   * 会存进另一种方式的条目里 —— 读不到信，而报错只会说「登录被拒」。
-   */
-  const chooseEmailNature = (nature: SupplyNature) => {
-    setNaturesEdited(true);
-    updateBlock((current) => {
-      const connections = { ...current.connections };
-      if (!connections[nature]) connections[nature] = emptyConnection();
-      return { ...current, natures: new Set([nature]), connections };
-    });
-    setMailCredential('');
     setAttempted(false);
     resetFeedback();
   };
@@ -412,8 +392,6 @@ export function ChannelEditorModal({
     if (apiPairBroken || webPairBroken) return;
     // 类别说这是自己的域，却没有域名：基座会拒收，而界面上只有这一格是空的。
     if (catchAll && (mailConnection?.domain ?? '').trim() === '') return;
-    // 用刷新令牌的方式没有应用 ID 就换不到令牌：基座会拒收，界面上也只有这一格是空的。
-    if (usesRefreshToken(mailNature) && (mailConnection?.clientId ?? '').trim() === '') return;
     setSaving(true);
     setError(null);
     try {
@@ -435,15 +413,15 @@ export function ChannelEditorModal({
           if (!applyCredentialResult(result)) return;
         }
       }
-      if (kind === 'email' && mailNature && mailCredential.trim() !== '') {
-        // 条目名由邮箱账号和接入方式共同决定，界面不问：凭据属于那个邮箱，不属于渠道。
+      if (kind === 'email' && mailCredential.trim() !== '') {
+        // 条目名由邮箱账号决定，界面不问：凭据属于那个邮箱，不属于渠道。
         // 已存的条目名照旧带上，老渠道指向的条目不会因此被孤立。
         const result = await emailApi.saveCredential(
           {
             account: (mailConnection?.account ?? '').trim(),
             name: (mailConnection?.secret ?? '').trim(),
             secret: mailCredential.trim(),
-            nature: mailNature === 'graph' ? 'graph' : mailNature === 'oauth2' ? 'oauth2' : 'imap',
+            nature: 'imap',
           },
           passphrase
         );
@@ -570,13 +548,18 @@ export function ChannelEditorModal({
         )}
 
         {kind === 'email' && (
-          <Input
-            label={t('sms_service.source_field_imap_host')}
-            placeholder="imap.qq.com:993"
-            hint={t('sms_service.source_hint_imap_host')}
-            value={connection.endpoint}
-            onChange={(event) => updateConnection(nature, 'endpoint', event.target.value)}
-          />
+          <>
+            {/* 一句话说清「这里的邮箱」与「导入进来的邮箱」不是同一类东西：
+                没有这句话，人会把买来的单个 Outlook 号也建成一条渠道。 */}
+            <div className={styles.blockLead}>{t('sms_service.config_email_nature_note')}</div>
+            <Input
+              label={t('sms_service.source_field_imap_host')}
+              placeholder="imap.qq.com:993"
+              hint={t('sms_service.source_hint_imap_host')}
+              value={connection.endpoint}
+              onChange={(event) => updateConnection(nature, 'endpoint', event.target.value)}
+            />
+          </>
         )}
 
         {kind === 'phone' && nature === 'api' ? (
@@ -747,34 +730,16 @@ export function ChannelEditorModal({
                 />
               </>
             )}
-            {/* 用刷新令牌的两种方式都要两样东西：哪个应用在问（应用 ID，随渠道记录
-                保存、可回读），以及那个应用的刷新令牌（只进密钥库）。 */}
-            {usesRefreshToken(nature) && (
-              <Input
-                label={t('sms_service.field_mail_client_id')}
-                placeholder="00000000-0000-0000-0000-000000000000"
-                hint={t('sms_service.field_mail_client_id_hint')}
-                error={clientIdMissing ? t('sms_service.config_required') : undefined}
-                value={connection.clientId}
-                onChange={(event) => updateConnection(nature, 'clientId', event.target.value)}
-              />
-            )}
-            {/* 凭据只写进密钥库、保存后清空。条目名由邮箱账号和接入方式决定，界面不问：
+            {/* 凭据只写进密钥库、保存后清空。条目名由邮箱账号决定，界面不问：
                 这个值属于那个邮箱，不属于这条渠道。 */}
             <Input
-              label={
-                usesRefreshToken(nature)
-                  ? t('sms_service.field_mail_refresh_token')
-                  : t('sms_service.field_mail_auth_code')
-              }
+              label={t('sms_service.field_mail_auth_code')}
               type="password"
               autoComplete="off"
               hint={
                 gatePhase === 'locked'
                   ? t('sms_service.config_gate_locked_hint')
-                  : usesRefreshToken(nature)
-                    ? t('sms_service.field_mail_refresh_token_hint')
-                    : t('sms_service.field_mail_auth_code_hint')
+                  : t('sms_service.field_mail_auth_code_hint')
               }
               value={mailCredential}
               onChange={(event) => {
@@ -913,29 +878,13 @@ export function ChannelEditorModal({
     });
   }
 
-  sections.push({
-    key: 'natures',
-    label: t('sms_service.config_step_natures'),
-    body:
-      kind === 'email' ? (
-        <>
-          {/* 二选一：同一个信箱只有一种凭据，所以画成单选。 */}
-          <div className={styles.natureCards}>
-            {allowed.map(({ nature }) => (
-              <label className={styles.natureCard} key={nature}>
-                <input
-                  type="radio"
-                  name="sms-email-nature"
-                  checked={chosenNatures.has(nature)}
-                  onChange={() => chooseEmailNature(nature)}
-                />
-                <span>{t(NATURE_LABEL[nature])}</span>
-              </label>
-            ))}
-          </div>
-          <div className={styles.blockLead}>{t('sms_service.config_email_nature_note')}</div>
-        </>
-      ) : (
+  // 邮箱只有一种接入方式，这一段没有可选项：画一个点了不改变任何东西的单选框，
+  // 只会让人以为还有别的选法。它的连接信息直接写在下一段。
+  if (kind === 'phone') {
+    sections.push({
+      key: 'natures',
+      label: t('sms_service.config_step_natures'),
+      body: (
         <>
           <div className={styles.natureCards}>
             {allowed.map(({ nature }) => (
@@ -954,14 +903,15 @@ export function ChannelEditorModal({
           )}
         </>
       ),
-  });
+    });
+  }
 
   // 一种接入方式都没勾时，不留一个空的「连接信息」段。
   if (selected.length > 0) {
     sections.push({
       key: 'connection',
       label: t('sms_service.config_step_connection'),
-      body: <>{selected.map((item) => connectionBlock(item.nature))}</>,
+      body: <>{selected.map((nature) => connectionBlock(nature))}</>,
     });
   }
 

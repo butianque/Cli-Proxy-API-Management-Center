@@ -10,9 +10,9 @@
  * 调用方给。表里不再放第二个「添加」入口 —— 它在有数据后就消失，只会让「去哪加」
  * 变成一个本来不存在的问题。
  *
- * 每条渠道下面挂一条**状态带**（`ChannelStatusStrip`）：它属于上面那一行，说的是
- * 这条渠道自己的事 —— 这个邮箱收到了几封、最新一封是什么码，或者这个平台的余额
- * 还剩多少、取过几个号。收件箱不另开入口：自动化脚本要的是接口，人要的是「这一条
+ * 每条渠道下面挂一条**状态带**（`ChannelStatusStrip`）：它属于上面那一行，先说这条
+ * 渠道往供应池送了多少身份，再说它自己的运行情况 —— 这个平台的余额还剩多少，或者这个
+ * 邮箱最新一封是什么码。收件箱不另开入口：自动化脚本要的是接口，人要的是「这一条
  * 现在要不要管」。
  *
  * 探活是**只读**的：进页面探一次，探不动就如实显示「未检查」，不把「探不了」说成
@@ -278,6 +278,7 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
                       <ChannelStatusStrip
                         kind={kind}
                         status={statuses.get(channel.id) ?? { kind: 'loading' }}
+                        pooled={channel.pooled[kind]}
                       />
                     </TableCell>
                   </TableRow>

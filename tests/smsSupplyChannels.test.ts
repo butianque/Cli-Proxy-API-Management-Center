@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
 import {
   SMS_PLATFORMS,
+  identityState,
   projectLabel,
+  projectSite,
   resolvePlatformId,
   toNatureOptions,
   toPool,
@@ -125,6 +127,94 @@ describe('the pool records what was handed out, without inventing', () => {
     expect(toPool([entry()])[0].source).toBe('ormnes');
   });
 
+  test('a mailbox identity carries its own receiving method', () => {
+    // A mailbox imported on its own reads mail with its own credential, so the
+    // row has to say how — there is no channel to ask.
+    const mapped = toPool([
+      entry({
+        channel_id: '',
+        mailbox: { nature: 'graph', endpoint: '', has_credential: true, has_password: true },
+      }),
+    ])[0];
+    expect(mapped.mailbox).toEqual({ nature: 'graph', endpoint: '', hasCredential: true });
+    // A channel identity has none: it reads mail through the channel.
+    expect(toPool([entry({ channel_id: 'ormnes' })])[0].mailbox).toBeNull();
+  });
+
+  test('the pool row names an imported mailbox by its origin, not by a channel', () => {
+    // An imported mailbox has no channel, so the source cell must say where it
+    // came from instead of falling back to "—" as if the record were incomplete.
+    const card = read('features/sms/SupplyPoolCard.tsx');
+    expect(card).toContain('identityState');
+    expect(card).toContain("t('sms_service.pool_origin_import')");
+    expect(card).toContain('NATURE_LABEL[mailbox.nature]');
+  });
+
+  test('the pool card separates the kind of identity from the channel it came from', () => {
+    // The category cell answers "phone or mailbox", which is a property of the
+    // identity. The channel's own category (third-party / self-built) belongs to
+    // the channel table; repeating it here would make one word mean two things.
+    const card = read('features/sms/SupplyPoolCard.tsx');
+    expect(card).not.toContain('CATEGORY_LABEL');
+    expect(card).toContain("t('sms_service.ledger_col_channel')");
+    expect(card).toContain("t('sms_service.ledger_col_source')");
+    expect(card).toContain("'sms_service.tab_phone'");
+    expect(card).toContain("'sms_service.tab_email'");
+  });
+
+  test('the source cell shows the line inside the channel, not the platform', () => {
+    // 豪猪's 对接码 is what says which line a number came from; the channel name
+    // alone cannot. The mailbox kind records the domain instead.
+    expect(toPool([entry({ kind: 'phone', meta: { channel: '21614-a' } })])[0].sourceDetail).toBe(
+      '21614-a'
+    );
+    expect(toPool([entry({ meta: { domain: 'ormnes.com' } })])[0].sourceDetail).toBe('ormnes.com');
+    // A kind never borrows the other kind's key.
+    expect(toPool([entry({ kind: 'phone', meta: { domain: 'ormnes.com' } })])[0].sourceDetail).toBe(
+      ''
+    );
+    expect(toPool([entry()])[0].sourceDetail).toBe('');
+  });
+
+  test('the pool card re-reads when an import finishes', () => {
+    // The table loads once on mount; an import happens elsewhere on the page.
+    expect(read('features/sms/SupplyPoolCard.tsx')).toContain('reloadKey');
+  });
+
+  test('a channel identity is online, offline or unknown — never "credential ready"', () => {
+    // Online: at least one declared nature answered. A phone number only needs
+    // its API to take a code, so a dead web login does not make it unusable.
+    expect(identityState(null, ['api', 'web'], { api: 'online', web: 'offline' }).key).toBe(
+      'sms_service.pool_state_online'
+    );
+    expect(identityState(null, ['imap'], { imap: 'offline' }).key).toBe(
+      'sms_service.pool_state_offline'
+    );
+    // Never probed, no nature declared, or the probe could not run: unknown.
+    expect(identityState(null, ['imap'], undefined).key).toBe('sms_service.pool_state_unknown');
+    expect(identityState(null, ['imap'], { imap: 'unready' }).key).toBe(
+      'sms_service.pool_state_unknown'
+    );
+    expect(identityState(null, [], { imap: 'online' }).key).toBe('sms_service.pool_state_unknown');
+  });
+
+  test('a mailbox identity never claims to be online just because it has a credential', () => {
+    // Having the credential only means it could connect; nothing has connected
+    // yet. Claiming "online" here would be fabricated.
+    expect(identityState({ nature: 'imap', endpoint: '', hasCredential: true }, [], undefined).key).toBe(
+      'sms_service.pool_state_unknown'
+    );
+    // A locked key store cannot tell whether the credential is there, so it is
+    // not "missing" either.
+    expect(identityState({ nature: 'imap', endpoint: '', hasCredential: null }, [], undefined).key).toBe(
+      'sms_service.pool_state_unknown'
+    );
+    // A credential that is definitely gone cannot authenticate: offline.
+    expect(identityState({ nature: 'imap', endpoint: '', hasCredential: false }, [], undefined).key).toBe(
+      'sms_service.pool_state_offline'
+    );
+  });
+
   test('every registration on an identity is kept, one per project and account', () => {
     const mapped = toPool([
       entry({
@@ -185,6 +275,41 @@ describe('a project shows the name the credentials page already uses', () => {
     expect(projectLabel('loomy', translate)).toBe('Loomy');
     expect(projectLabel('', translate)).toBe('');
   });
+
+  test('the site comes from the same table the credential card reads', () => {
+    // 台账说「这个号注册在哪个站点」，卡片说「这张凭证属于哪个站点」——同一件事，
+    // 必须查同一张表，否则同一个号在两个页面上会显示成两个站点。
+    expect(projectSite('workbuddy-global')).toEqual({
+      brand: 'WorkBuddy',
+      region: 'intl',
+      domain: 'workbuddy.ai',
+    });
+    expect(projectSite('zcode-zai')?.domain).toBe('z.ai');
+    expect(projectSite('zcode-bigmodel')).toMatchObject({ region: 'cn', domain: 'bigmodel.cn' });
+  });
+
+  test('a platform with no single site domain shows its name, not a borrowed domain', () => {
+    // loomy 的模型在 loomyad.xunfei.cn、账号在 account.xfinfr.com，没有单一站点域名。
+    // 填任何一个都是把内部接口当站点；它只有一个注册通道，域名也不承担区分作用。
+    expect(projectSite('loomy')).toBeNull();
+    expect(projectSite('')).toBeNull();
+  });
+
+  test('the registration strip names the site and the outcome, not a raw key', () => {
+    const card = read('features/sms/SupplyPoolCard.tsx');
+    expect(card).toContain('projectSite');
+    expect(card).toContain('auth_files.region_');
+    expect(card).toContain('site.domain');
+    // 模板串「{{project}}：{{state}}」不再使用：站点、结果、凭证名各占一格。
+    expect(card).not.toContain('ledger_project');
+  });
+
+  test('every identity carries a strip, so an unused one says so', () => {
+    // 一个刚导进来还没用过的号，如果整条带都不画，看起来就是「面板没做这一块」。
+    const card = read('features/sms/SupplyPoolCard.tsx');
+    expect(card).toContain('ledger_unused');
+    expect(card).not.toContain('hasStrip');
+  });
 });
 
 describe('the source surface keeps backend field names out of the components', () => {
@@ -244,8 +369,10 @@ describe('the source surface keeps backend field names out of the components', (
     expect(editor).not.toContain("['phone', 'email']");
     // The methods offered still come from the backend's per-nature capability list.
     expect(editor).toContain('item.kinds.includes(kind)');
-    // Email then narrows to the two mailbox readers the base implements.
-    expect(editor).toContain('EMAIL_NATURES.includes(item.nature)');
+    // Email then keeps the one method a channel can speak; a mailbox with its own
+    // credential is imported into the pool instead.
+    expect(editor).toContain('EMAIL_DEFAULT_NATURE');
+    expect(editor).not.toContain('EMAIL_NATURES');
     // Both views open it.
     expect(read('features/sms/SupplyChannelCard.tsx')).toContain('ChannelEditorModal');
     expect(read('features/sms/PhoneSupplyView.tsx')).toContain('ChannelEditorModal');

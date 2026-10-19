@@ -4,7 +4,6 @@ import { SUPPLY_EMAIL_BASE } from '../src/services/api/email';
 import {
   EMAIL_CATEGORY_OPTIONS,
   EMAIL_DEFAULT_NATURE,
-  EMAIL_NATURES,
   PHONE_CATEGORY_OPTIONS,
   isCatchAllCategory,
 } from '../src/features/sms/smsMapping';
@@ -261,13 +260,15 @@ describe('the category is what says "a domain of my own that catches everything"
     // A mailbox of my own is mine, but it is still one address. Merging it with
     // a self-built domain would promise addresses that can never arrive.
     expect(isCatchAllCategory('self-built')).toBe(true);
-    expect(isCatchAllCategory('self-owned')).toBe(false);
     expect(isCatchAllCategory('third-party')).toBe(false);
     expect(isCatchAllCategory('')).toBe(false);
   });
 
-  test('a mailbox offers three categories, and each says something different', () => {
-    expect([...EMAIL_CATEGORY_OPTIONS]).toEqual(['third-party', 'self-built', 'self-owned']);
+  test('a mailbox offers two categories, and each says something different', () => {
+    // "A mailbox of my own" is gone: one address with its own credential is a
+    // supply-pool identity, not a channel. Keeping it here made one bought
+    // mailbox occupy a whole row of the channel table.
+    expect([...EMAIL_CATEGORY_OPTIONS]).toEqual(['third-party', 'self-built']);
   });
 
   test('a phone channel offers only a third-party service for now', () => {
@@ -280,19 +281,21 @@ describe('the category is what says "a domain of my own that catches everything"
     expect(editor).toContain("t(CATEGORY_LABEL[phoneCategory])");
   });
 
-  test('a mailbox connects one way: an authorization code, OAuth2, or Graph', () => {
-    // All three read the same mailbox; they differ in which route the credential
-    // buys. Offering them as checkboxes would let an operator tick two — a record
-    // the base refuses, because one mailbox holds one credential.
-    //
-    // OAuth2 and Graph are the same refresh token spent on two different
-    // resources, so both are offered: a token is granted one route, and the
-    // operator's answer is which one it was.
-    expect([...EMAIL_NATURES]).toEqual(['imap', 'oauth2', 'graph']);
+  test('a channel mailbox speaks one way: an authorization code', () => {
+    // A channel is one connection covering many addresses (a catch-all domain, a
+    // forwarding service) and it logs in with an authorization code. OAuth2 and
+    // Graph are one mailbox reading its own mail with its own credential — that is
+    // an identity in the supply pool, not a channel, so the editor does not offer
+    // them here.
     expect(EMAIL_DEFAULT_NATURE).toBe('imap');
     const editor = read('features/sms/ChannelEditorModal.tsx');
-    expect(editor).toContain('type="radio"');
-    expect(editor).toContain('name="sms-email-nature"');
+    // A single-option picker changes nothing when clicked: there is no picker.
+    expect(editor).not.toContain('name="sms-email-nature"');
+    expect(editor).not.toContain('type="radio"');
+    // What the editor saves is the one method the base accepts for a channel.
+    expect(editor).toContain("nature: 'imap'");
+    // It does say, in one line, where a single purchased mailbox belongs.
+    expect(editor).toContain("t('sms_service.config_email_nature_note')");
   });
 
   test('the editor does not ask for a usage the backend derives', () => {
@@ -319,12 +322,14 @@ describe('the category is what says "a domain of my own that catches everything"
     expect(editor).toContain("t('sms_service.source_field_imap_host')");
   });
 
-  test('the mailbox category offers only the methods that are implemented', () => {
-    // The base accepts email/api but implements only the mailbox readers;
-    // offering the checkbox builds a channel that can never connect.
+  test('the mailbox editor offers no method the base would refuse', () => {
+    // The base narrows an email channel to imap: oauth2 and graph belong to a
+    // pool identity. Rendering them would build a channel that is rejected on
+    // save, with an error the operator cannot act on.
     const editor = read('features/sms/ChannelEditorModal.tsx');
-    expect(editor).toContain('EMAIL_NATURES');
-    expect(editor).toContain("kind !== 'email' || EMAIL_NATURES.includes(item.nature)");
+    expect(editor).not.toContain('EMAIL_NATURES');
+    expect(editor).not.toContain("'oauth2'");
+    expect(editor).not.toContain("'graph'");
   });
 });
 
@@ -338,22 +343,16 @@ describe('every locale can say the channel-row words', () => {
     'row_status_unready_phone',
     'row_status_error',
     'row_status_error_unknown',
-    'row_email_window_days',
-    'row_email_window_hours',
-    'row_email_count',
+    'row_pooled_phone',
+    'row_pooled_email',
     'row_email_latest',
     'row_email_code',
     'row_phone_balance',
     'row_phone_balance_unknown',
-    'row_phone_taken',
     'row_phone_latest',
     'field_mail_auth_code',
     'field_mail_auth_code_hint',
     'nature_oauth2',
-    'field_mail_client_id',
-    'field_mail_client_id_hint',
-    'field_mail_refresh_token',
-    'field_mail_refresh_token_hint',
     'source_field_imap_host',
     'source_hint_imap_host',
     'source_field_mail_account',
@@ -381,18 +380,19 @@ describe('every locale can say the channel-row words', () => {
     }
   });
 
-  test('the phone count says it is the platform\'s, in every locale', () => {
-    // The pool records the platform's own channel uid, so a number cannot be
-    // attributed to one supply channel; the copy has to say where it comes from
-    // or the row implies something the data does not support.
-    const platformWord = /平台|Platform|платформ|Nền tảng|플랫폼/;
+  test('the pooled count is attributed to this channel, in every locale', () => {
+    // The number is a channel's contribution to the pool, not a platform reading
+    // — the platform figure in the row is the balance. The two kinds also have to
+    // stay distinguishable, or a phone row would claim addresses.
     for (const locale of locales) {
       const bundle = JSON.parse(
         readFileSync(new URL(`../src/i18n/locales/${locale}.json`, import.meta.url), 'utf8')
       ) as { sms_service?: Record<string, unknown> };
-      const value = String(bundle.sms_service?.row_phone_taken ?? '');
-      expect(value).toMatch(platformWord);
-      expect(value).toContain('{{n}}');
+      const phone = String(bundle.sms_service?.row_pooled_phone ?? '');
+      const email = String(bundle.sms_service?.row_pooled_email ?? '');
+      expect(phone).toContain('{{n}}');
+      expect(email).toContain('{{n}}');
+      expect(phone).not.toBe(email);
     }
   });
 });

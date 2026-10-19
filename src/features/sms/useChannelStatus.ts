@@ -118,8 +118,6 @@ async function readEmail(
       kind: 'email',
       mailbox: summary.mailbox || box?.mailbox || '',
       domain: summary.domain || box?.domain || '',
-      count: summary.count,
-      windowHours: reading?.windowHours ?? 0,
       latest: summary.latest,
     });
   }
@@ -127,11 +125,14 @@ async function readEmail(
 }
 
 /**
- * 手机号这一类：余额与取号数都是**平台级**的。
+ * 手机号这一类：余额与最近取号时间都是**平台级**的。
  *
  * 这不是偷懒 —— 号码池里那条记录带的是**平台自己的渠道 uid**（`21614-a` 这种），
- * 不是这里的渠道 id（`haozhuma`）；按渠道 id 去数永远数出 0，那是编数据。手机号这一
- * 类只有**一份**平台凭据，所以平台读数对每条渠道都是同一组事实，文案里明说是平台的。
+ * 不是这里的渠道 id；按渠道 id 去数永远数出 0，那是编数据。手机号这一类只有**一份**
+ * 平台凭据，所以平台读数对每条渠道都是同一组事实，文案里明说是平台的。
+ *
+ * 「这条渠道入池几个号」不在这里数：那是台账按渠道归集出来的，随渠道清单一起回来
+ * （见 `SupplyChannel.pooled`）。
  */
 async function readPhone(
   channels: SupplyChannel[],
@@ -171,7 +172,6 @@ async function readPhone(
       balanceCny: view.balanceCny,
       // 余额读不到时把原因留着：页面只说「读不到」，悬停才看到为什么。
       balanceError: view.balanceCny === null ? (view.connectionReason ?? '') : '',
-      taken: view.ledger.length,
       latestAt: times.length > 0 ? times[times.length - 1] : null,
     });
   }

@@ -101,7 +101,6 @@ export interface EmailImportLineWire {
   outcome?: string;
   /** 失败原因；成功时缺省。 */
   detail?: string;
-  channel_id?: string;
 }
 
 /** 批量导入的结果：一批里每个邮箱各一条，另有三个计数。 */

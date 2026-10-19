@@ -367,6 +367,40 @@ tr.stripRow:hover td {
   color: var(--text-tertiary);
 }
 
+/* 台账状态带里的「站点」：与凭证卡片「站点」行同一套读法 —— 域名是这一格唯一的
+ * 事实，国内/国际只是它的限定语。没有站点映射时这一格只放品牌名。 */
+.stripSite {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.stripRegion {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.stripDomain {
+  font-family: $font-mono;
+  color: var(--text-secondary);
+  @include text-ellipsis;
+}
+
+/* 注册结果：这一行里唯一带颜色的部分。没成的那条要能一眼挑出来。 */
+.stripState {
+  color: var(--text-tertiary);
+}
+
+.stripStateGood {
+  color: var(--success-color);
+}
+
+.stripStateBad {
+  color: var(--warning-color);
+}
+
 /* 只给读屏器看的文字：表头最后一列只有一个图标按钮，没有它就念不出这一列是什么。 */
 .srOnly {
   position: absolute;

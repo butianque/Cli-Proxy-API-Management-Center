@@ -7,14 +7,14 @@ import { formatReceivedAt } from '../src/features/sms/emailMapping';
 import type { ChannelStatus, EmailMessage } from '../src/features/sms/types';
 
 /**
- * The strip under a channel row is the only place a mailbox's numbers appear.
- * These render it for real (server-side markup) so the words are checked as
- * output, not as source text: a state that says the wrong thing is a bug the
- * operator reads, not a style preference.
+ * The strip under a channel row is where a channel's own numbers appear. These
+ * render it for real (server-side markup) so the words are checked as output,
+ * not as source text: a state that says the wrong thing is a bug the operator
+ * reads, not a style preference.
  */
 
-const render = (status: ChannelStatus, kind: 'email' | 'phone' = 'email') =>
-  renderToStaticMarkup(createElement(ChannelStatusStrip, { kind, status }));
+const render = (status: ChannelStatus, kind: 'email' | 'phone' = 'email', pooled?: number) =>
+  renderToStaticMarkup(createElement(ChannelStatusStrip, { kind, status, pooled }));
 
 const message: EmailMessage = {
   channelId: 'ormnesqq',
@@ -27,19 +27,52 @@ const message: EmailMessage = {
   preview: 'Use 552211 to sign in.',
 };
 
-describe('a mailbox row states its own count and its own newest message', () => {
-  test('the count, the sender and the code all appear', () => {
+describe('a channel row leads with what it contributed to the pool', () => {
+  test('the count is stated for the kind this row shows', () => {
+    const markup = render(
+      { kind: 'email', mailbox: 'box@qq.com', domain: 'ormnes.com', latest: null },
+      'email',
+      3
+    );
+    expect(markup).toContain(i18n.t('sms_service.row_pooled_email', { n: 3 }));
+  });
+
+  test('zero is a counted answer, so it is said out loud', () => {
+    const markup = render(
+      { kind: 'phone', balanceCny: 1, balanceError: '', latestAt: null },
+      'phone',
+      0
+    );
+    expect(markup).toContain(i18n.t('sms_service.row_pooled_phone', { n: 0 }));
+  });
+
+  test('a count the base could not produce is left out, never shown as zero', () => {
+    const markup = render(
+      { kind: 'phone', balanceCny: 1, balanceError: '', latestAt: null },
+      'phone'
+    );
+    expect(markup).not.toContain(i18n.t('sms_service.row_pooled_phone', { n: 0 }));
+    expect(markup).toContain(i18n.t('sms_service.row_phone_balance', { amount: '1.00' }));
+  });
+
+  test('a row whose platform reading failed still states its count', () => {
+    // The count is a ledger fact, not a platform reading: a locked store does not
+    // make it unknown, and hiding it would leave the operator with less than the
+    // base knows.
+    const markup = render({ kind: 'locked' }, 'phone', 2);
+    expect(markup).toContain(i18n.t('sms_service.row_pooled_phone', { n: 2 }));
+    expect(markup).toContain(i18n.t('sms_service.row_status_locked'));
+  });
+});
+
+describe('a mailbox row states its own newest message', () => {
+  test('the sender and the code appear', () => {
     const markup = render({
       kind: 'email',
       mailbox: 'box@qq.com',
       domain: 'ormnes.com',
-      count: 3,
-      windowHours: 72,
       latest: message,
     });
-    // "3 in the last 3 days" — the window comes from the base, so 72h reads as
-    // days rather than a number the reader has to divide.
-    expect(markup).toContain(i18n.t('sms_service.row_email_window_days', { days: 3, n: 3 }));
     expect(markup).toContain('noreply@example.com');
     expect(markup).toContain(i18n.t('sms_service.row_email_code', { code: '552211' }));
     // The mailbox it reads is part of the row: two channels can share a domain.
@@ -47,29 +80,13 @@ describe('a mailbox row states its own count and its own newest message', () => 
     expect(markup).toContain('@ormnes.com');
   });
 
-  test('a window the base did not state is not turned into "3 days"', () => {
-    const markup = render({
-      kind: 'email',
-      mailbox: 'box@qq.com',
-      domain: '',
-      count: 2,
-      windowHours: 0,
-      latest: null,
-    });
-    expect(markup).toContain(i18n.t('sms_service.row_email_count', { n: 2 }));
-    expect(markup).not.toContain(i18n.t('sms_service.row_email_window_days', { days: 3, n: 2 }));
-  });
-
-  test('an empty mailbox says zero, and says nothing about a latest message', () => {
+  test('an empty mailbox says nothing about a latest message', () => {
     const markup = render({
       kind: 'email',
       mailbox: 'box@qq.com',
       domain: 'ormnes.com',
-      count: 0,
-      windowHours: 72,
       latest: null,
     });
-    expect(markup).toContain(i18n.t('sms_service.row_email_window_days', { days: 3, n: 0 }));
     expect(markup).not.toContain(i18n.t('sms_service.row_email_code', { code: '' }));
   });
 });
@@ -97,20 +114,18 @@ describe('a row that could not be read says so', () => {
   });
 });
 
-describe('a phone row states the balance and what this channel took', () => {
-  test('balance, count and the last use', () => {
+describe('a phone row states the platform balance and the last use', () => {
+  test('balance and the last use', () => {
     const markup = render(
       {
         kind: 'phone',
         balanceCny: 12.4,
         balanceError: '',
-        taken: 3,
         latestAt: '2026-10-14T02:00:00.000Z',
       },
       'phone'
     );
     expect(markup).toContain(i18n.t('sms_service.row_phone_balance', { amount: '12.40' }));
-    expect(markup).toContain(i18n.t('sms_service.row_phone_taken', { n: 3 }));
     // The instant is rendered in the reader's own locale and zone, so the
     // expectation comes from the same formatter rather than a fixed string.
     expect(markup).toContain(
@@ -125,7 +140,6 @@ describe('a phone row states the balance and what this channel took', () => {
         kind: 'phone',
         balanceCny: null,
         balanceError: 'balance endpoint timed out',
-        taken: 0,
         latestAt: null,
       },
       'phone'
@@ -134,17 +148,5 @@ describe('a phone row states the balance and what this channel took', () => {
     expect(markup).not.toContain('0.00');
     // The reason travels with it, so the tooltip is not empty.
     expect(markup).toContain('balance endpoint timed out');
-  });
-
-  test('the phone numbers are labelled as the platform\'s, not this channel\'s', () => {
-    // The pool records the platform's own channel uid, not the supply channel
-    // id, so a per-channel count would always be zero — a made-up number. The
-    // phone kind has one platform credential, so the copy says so (pinned in
-    // the locale test).
-    const markup = render(
-      { kind: 'phone', balanceCny: 1, balanceError: '', taken: 4, latestAt: null },
-      'phone'
-    );
-    expect(markup).toContain(i18n.t('sms_service.row_phone_taken', { n: 4 }));
   });
 });

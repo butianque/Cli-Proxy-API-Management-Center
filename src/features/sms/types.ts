@@ -221,6 +221,12 @@ export interface SupplyChannel {
   category: string;
   phone: SupplyKindConfig | null;
   email: SupplyKindConfig | null;
+  /**
+   * 这条渠道已经往供应池送了几个身份，按类别分。
+   *
+   * `undefined` = 后端报不出计数（没有供应池可数），与 `0`（数过，是零个）不同。
+   */
+  pooled: Partial<Record<SupplyKind, number>>;
 }
 
 /** 一条渠道的某一种连接方式**能不能真连上**（由基座真发一次请求得到）。 */
@@ -260,6 +266,21 @@ export interface PoolRegistration {
   registeredAt: string | null;
 }
 
+/**
+ * 一个自带凭据的邮箱身份怎么收信。
+ *
+ * 这类身份是**单独入池**的：一个地址一份凭据，读信不经过任何渠道。渠道发出来的
+ * 身份没有这一块 —— 它读信靠渠道那条连接。
+ */
+export interface PoolMailbox {
+  /** 收信方式。 */
+  nature: SupplyNature;
+  /** 收信服务器；Graph 没有这一项。 */
+  endpoint: string;
+  /** 凭据是否在密钥库里；`null` = 主密码没解锁，此刻判断不了（不猜）。 */
+  hasCredential: boolean | null;
+}
+
 /** 池里的一条身份记录（哪个身份、从哪来、注册了哪些账号）。 */
 export interface PoolEntry {
   /** 它属于哪一类身份（手机号 / 邮箱）。同一张台账里两类的列一样，靠它取对应种类块。 */
@@ -268,8 +289,15 @@ export interface PoolEntry {
   identity: string;
   /** 记录指向的渠道 id；`''` = 后端没记（老记录）。 */
   channelId: string;
-  /** 它来自哪条来源（后端记录的名字）；`''` = 未记录。 */
+  /** 它来自哪个平台（后端记录的服务名，如 `haozhuma`）；`''` = 未记录。 */
   source: string;
+  /**
+   * 渠道内部**具体是哪一项**给了它：手机号是平台的对接码，邮箱是那个域。
+   *
+   * 「渠道」列只说得出「豪猪接码」；同一个平台下有好几条对接码时，只有这一项
+   * 才说得清这个号是从哪条线来的。后端没记就是 `''`，不拿渠道名顶替。
+   */
+  sourceDetail: string;
   /** 它注册的账号；`''` = 还没绑定。 */
   account: string;
   /** 它注册的平台（如 `loomy`）；`''` = 未绑定。 */
@@ -279,6 +307,8 @@ export interface PoolEntry {
   lastUsedAt: string | null;
   /** 这个身份注册过的平台，一次注册一条；空 = 还没注册过。 */
   projects: PoolRegistration[];
+  /** 自带凭据的收信方式；`null` = 渠道发出来的身份（读信走渠道）。 */
+  mailbox: PoolMailbox | null;
 }
 
 /* ---------------------------------------------------------------------------
@@ -354,9 +384,10 @@ export interface EmailInboxReading {
 /**
  * 渠道池里**一行下面那条状态带**的内容。
  *
- * 状态带属于这一条渠道，所以这里只有「这条渠道现在怎么样」：能不能读、读到几封、
- * 最新一封是什么、平台余额多少、取过几个号。它不是收件箱 —— 收件箱是给人翻的列表，
- * 这里只回答「需不需要管它」。
+ * 状态带属于这一条渠道，所以这里只有「这条渠道现在怎么样」：能不能读、最新一封是
+ * 什么、平台余额多少。它不是收件箱 —— 收件箱是给人翻的列表，这里只回答「需不需要
+ * 管它」。这条渠道往供应池送了多少身份不在这里：那是台账数出来的，随渠道清单一起
+ * 回来，与平台读得通不通无关。
  */
 export type ChannelStatus =
   /** 还没读到（首次加载 / 正在读）。 */
@@ -369,28 +400,18 @@ export type ChannelStatus =
   | { kind: 'unready' }
   /** 读了但失败了：把原因原样说出来，不冒充「没有信」。 */
   | { kind: 'error'; message: string }
-  /** 邮箱：读到几封、最新一封是什么。 */
+  /** 邮箱：读的是哪个信箱、最新一封是什么。 */
   | {
       kind: 'email';
       mailbox: string;
       domain: string;
-      count: number;
-      windowHours: number;
       latest: EmailMessage | null;
     }
-  /** 手机号：平台余额与平台取号数。 */
+  /** 手机号：平台余额与最近一次取号时间。 */
   | {
       kind: 'phone';
       balanceCny: number | null;
       balanceError: string;
-      /**
-       * 平台已取号数。
-       *
-       * 号码池里的记录带的是**平台自己的渠道 uid**，不是这里的渠道 id，所以按渠道数
-       * 是数不出来的 —— 手机号这一类只有一份平台凭据，这一组读数对每条渠道都一样，
-       * 文案里明说是平台的。
-       */
-      taken: number;
       latestAt: string | null;
     };
 

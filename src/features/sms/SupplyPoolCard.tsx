@@ -29,10 +29,10 @@ import {
 import { IconAlertTriangle, IconChevronDown, IconChevronUp, IconTimer } from '@/components/ui/icons';
 import { supplyApi } from '@/services/api/supply';
 import {
-  CATEGORY_LABEL,
   NATURE_LABEL,
-  connectionState,
+  identityState,
   projectLabel,
+  projectSite,
   toPool,
   toProbes,
   toSupplyChannels,
@@ -43,11 +43,17 @@ import styles from './SmsServicePage.module.scss';
 export interface SupplyPoolCardProps {
   /** 只看这一类身份（手机号 / 邮箱）；不传 = 两类一起。 */
   kind?: SupplyKind;
+  /**
+   * 外部要求重读的计数器（导入完成后 +1）。
+   *
+   * 台账没有推送，导入发生在别处，所以「刚导进来的号」只能靠父组件叫它重读一次。
+   */
+  reloadKey?: number;
 }
 
 const ALL_KINDS: readonly SupplyKind[] = ['phone', 'email'];
 
-export function SupplyPoolCard({ kind }: SupplyPoolCardProps) {
+export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
   const { t } = useTranslation();
   const [entries, setEntries] = useState<PoolEntry[]>([]);
   const [channels, setChannels] = useState<SupplyChannel[]>([]);
@@ -87,7 +93,7 @@ export function SupplyPoolCard({ kind }: SupplyPoolCardProps) {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, reloadKey]);
 
   useEffect(() => {
     const remeasure = () => setMeasureTick((value) => value + 1);
@@ -106,26 +112,32 @@ export function SupplyPoolCard({ kind }: SupplyPoolCardProps) {
    * 邮箱记的是渠道 id，直接命中。手机号记的是平台自己的渠道 uid（号码来自平台，
    * 不是来自某条渠道），所以按「凭据条目名」再找一次；仍然找不到就是找不到 ——
    * 不按平台名猜一条渠道出来，那是编造归属。
+   *
+   * 手机号还有一条退路：这一类只有**一份**平台凭据，所以当渠道池里正好只有一条
+   * 手机号渠道时，那个号就是它发出来的。有第二条时无从判断，宁可不写。
    */
   const resolveChannel = useCallback(
     (entry: PoolEntry): SupplyChannel | null => {
       const wanted = entry.channelId.trim().toLowerCase();
-      if (!wanted) return null;
-      const direct = channelById.get(entry.channelId);
-      if (direct) return direct;
-      for (const channel of channels) {
-        const block = entry.kind === 'phone' ? channel.phone : channel.email;
-        const connections = block?.connections ?? {};
-        for (const connection of Object.values(connections)) {
-          if ((connection?.secret ?? '').trim().toLowerCase() === wanted) return channel;
+      if (wanted) {
+        const direct = channelById.get(entry.channelId);
+        if (direct) return direct;
+        for (const channel of channels) {
+          const block = entry.kind === 'phone' ? channel.phone : channel.email;
+          const connections = block?.connections ?? {};
+          for (const connection of Object.values(connections)) {
+            if ((connection?.secret ?? '').trim().toLowerCase() === wanted) return channel;
+          }
         }
+      }
+      if (entry.kind === 'phone') {
+        const phoneChannels = channels.filter((channel) => channel.phone !== null);
+        return phoneChannels.length === 1 ? phoneChannels[0] : null;
       }
       return null;
     },
     [channelById, channels]
   );
-
-  const natureLabel = useCallback((nature: SupplyNature) => t(NATURE_LABEL[nature]), [t]);
 
   /**
    * 平台显示名：与凭据列表共用一份标签，查不到就用原始 id，不另编一个。
@@ -187,8 +199,9 @@ export function SupplyPoolCard({ kind }: SupplyPoolCardProps) {
           <TableHeader>
             <TableRow>
               <TableHead>{t('sms_service.ledger_col_account')}</TableHead>
-              <TableHead>{t('sms_service.ledger_col_channel')}</TableHead>
               <TableHead>{t('sms_service.ledger_col_category')}</TableHead>
+              <TableHead>{t('sms_service.ledger_col_channel')}</TableHead>
+              <TableHead>{t('sms_service.ledger_col_source')}</TableHead>
               <TableHead>{t('sms_service.ledger_col_natures')}</TableHead>
               <TableHead>{t('sms_service.ledger_col_state')}</TableHead>
               <TableHead alignRight>
@@ -205,42 +218,60 @@ export function SupplyPoolCard({ kind }: SupplyPoolCardProps) {
                   ? channel.phone
                   : channel.email
                 : null;
-              const connection = connectionState(
-                block?.natures ?? [],
-                channel ? probes.get(channel.id) : undefined,
-                natureLabel
+              const declared = block?.natures ?? [];
+              const mailbox = entry.mailbox;
+              const state = identityState(
+                mailbox,
+                declared,
+                channel ? probes.get(channel.id) : undefined
               );
-              const categoryLabel = channel?.category ? CATEGORY_LABEL[channel.category] : '';
+              /**
+               * 类别说的是**这是哪一类身份**（手机号 / 邮箱），不是渠道的性质。
+               *
+               * 一张表里两类的列一样，只有这一列说得出「这一行是号码还是地址」；
+               * 渠道的性质（第三方 / 自建域）属于渠道那一页，在这里再写一遍只会
+               * 让同一个词在一行里出现两次、意思还不一样。
+               */
+              const kindLabel = t(
+                entry.kind === 'phone' ? 'sms_service.tab_phone' : 'sms_service.tab_email'
+              );
+              // 渠道：这个身份是哪条渠道发出来的。自带凭据的邮箱没有渠道 —— 它
+              // 不是渠道发出来的，是直接买进来入池的。
+              const channelLabel = mailbox ? '—' : channel?.label || '—';
+              /**
+               * 来源：渠道内部**具体哪一项**给了它。
+               *
+               * 手机号是平台的对接码（同一个平台下有好几条线），邮箱是那个域。
+               * 自带凭据的邮箱没有渠道，它的来源就是「导入」。
+               */
+              const sourceLabel = mailbox
+                ? t('sms_service.pool_origin_import')
+                : entry.sourceDetail || '—';
+              const naturesLabel = mailbox
+                ? t(NATURE_LABEL[mailbox.nature])
+                : declared.map((nature) => t(NATURE_LABEL[nature])).join(' + ');
               const isOpen = expanded.has(rowKey);
               const canExpand = overflowing.has(rowKey);
-              // 只有真的带状态带的那一行才去掉下边框：没有项目的一行下面什么都没有，
-              // 跟着去掉边框会让它看起来「后面还有东西」。
-              const hasStrip = entry.projects.length > 0;
+              // 每个身份下面都有一条状态带：它回答「这个号注册过哪些平台」，
+              // 没注册过本身就是答案（「未注册任何平台」），不摆空行也不藏起来 ——
+              // 藏起来时，一个刚导进来还没用过的号看起来就像「面板没做这一块」。
+              const unused = entry.projects.length === 0;
 
               return (
                 <Fragment key={rowKey}>
-                  <TableRow className={hasStrip ? styles.stripLead : undefined}>
+                  <TableRow className={styles.stripLead}>
                     <TableCell>
                       <span className={styles.mono}>{entry.identity || '—'}</span>
                     </TableCell>
-                    <TableCell>{channel?.label || '—'}</TableCell>
                     <TableCell>
-                      {categoryLabel ? (
-                        <span className={`${styles.tag} ${styles.tagMuted}`}>
-                          {t(categoryLabel)}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
+                      <span className={`${styles.tag} ${styles.tagMuted}`}>{kindLabel}</span>
                     </TableCell>
+                    <TableCell>{channelLabel}</TableCell>
+                    <TableCell>{sourceLabel}</TableCell>
+                    <TableCell>{naturesLabel || '—'}</TableCell>
                     <TableCell>
-                      {(block?.natures ?? []).length > 0
-                        ? (block?.natures ?? []).map((nature) => t(NATURE_LABEL[nature])).join(' + ')
-                        : '—'}
-                    </TableCell>
-                    <TableCell>
-                      <span className={`${styles.tag} ${styles[connection.tone]}`}>
-                        {t(connection.key, connection.params)}
+                      <span className={`${styles.tag} ${styles[state.tone]}`}>
+                        {t(state.key, state.params)}
                       </span>
                     </TableCell>
                     <TableCell alignRight>
@@ -262,30 +293,57 @@ export function SupplyPoolCard({ kind }: SupplyPoolCardProps) {
                       ) : null}
                     </TableCell>
                   </TableRow>
-                  {/* 没注册过任何平台就没有这一行：空状态不摆一条空带。 */}
-                  {hasStrip ? (
-                    <TableRow className={styles.stripRow}>
-                      <TableCell colSpan={6}>
-                        <div
-                          ref={(node) => {
-                            // 展开时量的是「不裁剪」的高度，量出来永远不会溢出，所以只在
-                            // 收起状态下测量 —— 否则按钮会在展开的瞬间自己消失。
-                            if (!isOpen) measure(rowKey, node);
-                          }}
-                          className={`${styles.strip} ${styles.stripProjects} ${
-                            isOpen ? '' : styles.stripClamp
-                          }`}
-                        >
-                          {entry.projects.map((project) => (
+                  <TableRow className={styles.stripRow}>
+                    <TableCell colSpan={7}>
+                      <div
+                        ref={(node) => {
+                          // 展开时量的是「不裁剪」的高度，量出来永远不会溢出，所以只在
+                          // 收起状态下测量 —— 否则按钮会在展开的瞬间自己消失。
+                          if (!isOpen) measure(rowKey, node);
+                        }}
+                        className={`${styles.strip} ${styles.stripProjects} ${
+                          isOpen ? '' : styles.stripClamp
+                        }`}
+                      >
+                        {unused ? (
+                          <span className={styles.stripNote}>
+                            {t('sms_service.ledger_unused')}
+                          </span>
+                        ) : null}
+                        {entry.projects.map((project) => {
+                          const site = projectSite(project.target);
+                          // 结果只有三种语气：成了、没成、还在等/已释放。这一行
+                          // 里只有它带颜色，扫一眼就知道哪条要处理。
+                          const stateTone =
+                            project.state === 'registered'
+                              ? styles.stripStateGood
+                              : project.state === 'failed'
+                                ? styles.stripStateBad
+                                : styles.stripState;
+                          return (
                             <span
                               className={styles.stripItem}
                               key={`${project.target}@${project.account}`}
                             >
-                              <span>
-                                {t('sms_service.ledger_project', {
-                                  project: projectName(project.target),
-                                  state: t(`sms_service.pool_state_${project.state}`),
-                                })}
+                              {/* 站点与凭证卡片「站点」行同一套读法：域名是事实，
+                                  国内/国际是它的限定语。没有映射就只说品牌名，
+                                  不拿别的平台的域名凑。 */}
+                              <span className={styles.stripSite}>
+                                {site ? (
+                                  <>
+                                    <span className={styles.stripRegion}>
+                                      {t(`auth_files.region_${site.region}`)}
+                                    </span>
+                                    <span className={styles.stripDomain}>{site.domain}</span>
+                                  </>
+                                ) : (
+                                  <span className={styles.stripDomain}>
+                                    {projectName(project.target)}
+                                  </span>
+                                )}
+                              </span>
+                              <span className={stateTone}>
+                                {t(`sms_service.pool_state_${project.state}`)}
                               </span>
                               {project.account ? (
                                 <span className={styles.stripAccount}>
@@ -293,11 +351,11 @@ export function SupplyPoolCard({ kind }: SupplyPoolCardProps) {
                                 </span>
                               ) : null}
                             </span>
-                          ))}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
+                          );
+                        })}
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 </Fragment>
               );
             })}

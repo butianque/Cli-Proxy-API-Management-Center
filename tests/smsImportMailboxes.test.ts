@@ -45,8 +45,15 @@ describe('the entry sits beside the configuration entry', () => {
     expect(header.indexOf('import_mailboxes')).toBeLessThan(header.indexOf('config_button'));
   });
 
-  test('a finished import lands on the email channel table', () => {
-    expect(page).toContain("setCategory('email')");
+  test('a finished import stays on the pool and re-reads it', () => {
+    // The imported mailboxes are pool identities, so they appear in the table the
+    // operator is already looking at. Jumping to the channel settings would send
+    // them looking for rows that are not there.
+    const done = page.slice(page.indexOf('onImported'));
+    expect(done).toContain("setView('pool')");
+    expect(done).toContain('setPoolReloadKey((value) => value + 1)');
+    expect(done).not.toContain("setView('config')");
+    expect(done).not.toContain("setCategory('email')");
   });
 });
 
@@ -136,11 +143,14 @@ describe('the receiving method travels with the batch', () => {
     expect(api).toContain("nature?: 'oauth2' | 'graph'");
   });
 
-  test('the channel editor treats Graph like the other token method', () => {
-    // 应用 ID 与刷新令牌是两种令牌方式共用的；只认 oauth2 会让 Graph 渠道少一格。
+  test('the channel editor never asks for a mailbox credential', () => {
+    // A channel mailbox logs in with an authorization code only. The token fields
+    // that used to sit here now belong to the pool import: one mailbox, one
+    // credential, its own identity.
     const editor = read('features/sms/ChannelEditorModal.tsx');
-    expect(editor).toContain('usesRefreshToken(nature)');
-    expect(editor).toContain('usesRefreshToken(mailNature)');
-    expect(editor).not.toContain("nature === 'oauth2' &&");
+    expect(editor).not.toContain('usesRefreshToken');
+    expect(editor).not.toContain('field_mail_client_id');
+    expect(editor).not.toContain('field_mail_refresh_token');
+    expect(editor).toContain("nature: 'imap'");
   });
 });

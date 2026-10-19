@@ -11,11 +11,13 @@
 
 import type { SmsChannelWire, SmsLedgerWire, SmsStatusResponse } from '@/services/api/sms';
 import { resolveCredentialSite } from '@/features/authFiles/siteIdentity';
+import type { CredentialSite } from '@/features/authFiles/siteIdentity';
 import { normalizeOAuthProviderKey } from '@/utils/providerKeys';
 import type {
   SupplyChannelWire,
   SupplyConnectionWire,
   SupplyKindConfigWire,
+  SupplyLedgerMailboxWire,
   SupplyLedgerProjectWire,
   SupplyLedgerWire,
   SupplyNatureWireInfo,
@@ -26,6 +28,7 @@ import type {
   PhoneLedgerEntry,
   PlatformConnection,
   PoolEntry,
+  PoolMailbox,
   PoolRegistration,
   PoolState,
   SmsChannel,
@@ -57,7 +60,6 @@ export const NATURE_LABEL: Record<SupplyNature, string> = {
 export const CATEGORY_LABEL: Record<string, string> = {
   'third-party': 'sms_service.category_third_party',
   'self-built': 'sms_service.category_self_built',
-  'self-owned': 'sms_service.category_self_owned',
 };
 
 /**
@@ -74,14 +76,15 @@ export const PHONE_CATEGORY_OPTIONS = ['third-party'] as const;
 /**
  * 邮箱能选的类别，顺序即选择器里的顺序。
  *
- * 三种说的是三件不同的事，不是同一件事的三种叫法：
+ * 两种说的是两件不同的事，不是同一件事的两种叫法：
  *   - 第三方服务：别人的邮箱服务，一个地址。
  *   - 自建域名：自己的域 + catch-all，每次注册都能现编一个地址，全落进同一个信箱。
- *   - 自有邮箱：自己的信箱（比如 QQ 邮箱）。是我的，但仍然只有一个地址，编不出新的。
  *
- * 所以 `self-owned` 与 `self-built` 不能合并：前者只能收那一个地址，后者能凭空发地址。
+ * 「自己的信箱」（比如买来的一个 Outlook 号）**不在这里**：它只对应一个地址、一份
+ * 凭据，读信不需要一条连接 —— 那是供应池里的一个身份，不是一条渠道。把它当成一种
+ * 渠道类别，渠道表就会一个号长一行。
  */
-export const EMAIL_CATEGORY_OPTIONS = ['third-party', 'self-built', 'self-owned'] as const;
+export const EMAIL_CATEGORY_OPTIONS = ['third-party', 'self-built'] as const;
 
 /**
  * 这个类别是不是「一个能凭空发地址的域」。
@@ -95,32 +98,15 @@ export function isCatchAllCategory(category: string): boolean {
 }
 
 /**
- * 邮箱这一类能选的接入方式，顺序即界面上的顺序。
+ * 渠道邮箱唯一的接入方式。
  *
- * 三种都是连上同一个信箱取码，区别在**走哪条路、拿什么证明身份**：
- *   - 授权码：QQ、163、Gmail（应用专用密码）这类邮箱的口令登录；
- *   - OAuth2：微软的邮箱只认这条 —— 它的服务器直接关掉了口令登录；
- *   - Graph：同样是微软的邮箱，但走它的邮件接口而不是邮箱服务器。
+ * 渠道是「一条连接覆盖很多地址」：自建域的 catch-all、转发服务，靠授权码登录收信。
+ * 微软那两种（OAuth2 / Graph）是**一个信箱用自己的凭据读自己的信** —— 那是供应池里
+ * 的一个身份，不是一条渠道。基座据此只认 imap，编辑器也只画这一种。
  *
- * 所以它们是**单选**，不是多选：同一个信箱不会同时存在两种凭据。做成勾选框会让人
- * 勾上两种，然后卡在「到底用哪一份」上。
- *
- * OAuth2 与 Graph 不是两种登录，是同一份刷新令牌能换到的两种访问权：卖家给的令牌
- * 通常只带其中一种，选错那一种的报错是「令牌没有被授予这条路的权限」，而不是号坏了。
+ * 批量导入的收信方式在导入弹窗里选（`ImportMailboxesModal`），与这里无关。
  */
-export const EMAIL_NATURES: readonly SupplyNature[] = ['imap', 'oauth2', 'graph'];
-
-/** 还没选过时默认哪一种：绝大多数邮箱用授权码就能读。 */
 export const EMAIL_DEFAULT_NATURE: SupplyNature = 'imap';
-
-/**
- * 这个接入方式用刷新令牌（而不是授权码或口令）证明身份。
- *
- * OAuth2 与 Graph 共用同一份令牌：换发时问的资源不同，存的位置相同。
- */
-export function usesRefreshToken(nature: SupplyNature | null | undefined): boolean {
-  return nature === 'oauth2' || nature === 'graph';
-}
 
 /**
  * 可选平台（L1）。内置平台已知协议、地址固定；自定义平台由使用者自填。
@@ -425,12 +411,19 @@ function toSupplyKindConfig(raw: SupplyKindConfigWire | undefined): SupplyKindCo
 
 /** 后端一条来源 → 页面形状。 */
 export function toSupplyChannel(raw: SupplyChannelWire): SupplyChannel {
+  // 已入池计数只认真实非负数：后端没报就是「数不出来」，不能当成 0。
+  const pooled: Partial<Record<SupplyKind, number>> = {};
+  for (const kind of ['phone', 'email'] as const) {
+    const value = raw.pooled?.[kind];
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) pooled[kind] = value;
+  }
   return {
     id: raw.id,
     label: raw.label ?? '',
     category: raw.category ?? 'third-party',
     phone: toSupplyKindConfig(raw.phone),
     email: toSupplyKindConfig(raw.email),
+    pooled,
   };
 }
 
@@ -519,18 +512,85 @@ export function toPoolEntry(raw: SupplyLedgerWire): PoolEntry {
     const registration = toRegistration(item);
     if (registration) projects.push(registration);
   }
+  const kind: SupplyKind = raw.kind === 'phone' ? 'phone' : 'email';
   return {
-    kind: raw.kind === 'phone' ? 'phone' : 'email',
+    kind,
     identity: raw.address ?? '',
     channelId: (raw.channel_id ?? '').trim(),
     source: raw.source ?? '',
+    sourceDetail: sourceDetail(kind, raw.meta),
     account: raw.account ?? '',
     platform: raw.target ?? '',
     state: poolState(raw),
     // 后端没记时间就是没有（`null`），不拿 `now` 顶替 —— 那是编造数据。
     lastUsedAt: used > 0 ? new Date(used * 1000).toISOString() : null,
     projects,
+    mailbox: toPoolMailbox(raw.mailbox),
   };
+}
+
+/**
+ * 这个身份在渠道内部来自哪一项。
+ *
+ * 两类各自记账：手机号记的是平台的**对接码**（同一平台下有好几条线，只有它说得清
+ * 这个号从哪条线来），邮箱记的是**域**。键名不同是因为这两件事本来就不同，不是
+ * 同一件事的两个叫法 —— 所以按类别取，取不到就是空，不互相顶替。
+ */
+function sourceDetail(kind: SupplyKind, meta: Record<string, unknown> | undefined): string {
+  const key = kind === 'phone' ? 'channel' : 'domain';
+  const value = meta?.[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * 后端一个邮箱块 → 页面形状。
+ *
+ * `has_credential` 缺席时给 `null` 而不是 `false`：主密码锁着的时候基座报不出条目名，
+ * 那是「此刻判断不了」，不是「凭据没了」。把前者说成后者，人会去重新导入一个好好的号。
+ */
+function toPoolMailbox(raw: SupplyLedgerMailboxWire | undefined): PoolMailbox | null {
+  if (!raw) return null;
+  const nature = raw.nature;
+  if (!nature) return null;
+  return {
+    nature,
+    endpoint: (raw.endpoint ?? '').trim(),
+    hasCredential: typeof raw.has_credential === 'boolean' ? raw.has_credential : null,
+  };
+}
+
+/**
+ * 一个身份现在**通不通** —— 只有三种答案：在线 / 离线 / 未知。
+ *
+ * 台账的一行是一个可以拿来用的身份，所以要回答的就是「现在能不能用」，而不是
+ * 「它的凭据在不在」。凭据在只说明它有资格连，没连过就说不出通不通，那只能是未知。
+ *
+ * 两种身份的问法不同：
+ * - 渠道发出来的：问那条渠道的探活结果（基座真发过一次请求）。任一种连接方式
+ *   通就算在线 —— 手机号只要 API 通就能取码，网页登录断了不影响取号。
+ * - 自带凭据的邮箱：它没有渠道可问，也从没探过活。凭据**确定不在**就是离线
+ *   （它连认证都过不去）；凭据在、或者主密码锁着判断不了，都是未知。
+ */
+export function identityState(
+  mailbox: PoolMailbox | null,
+  declared: SupplyNature[],
+  probe: Partial<Record<SupplyNature, SupplyProbeState>> | undefined
+): ConnectionState {
+  const unknown: ConnectionState = { key: 'sms_service.pool_state_unknown', tone: 'tagMuted' };
+  if (mailbox) {
+    if (mailbox.hasCredential === false) {
+      return { key: 'sms_service.pool_state_offline', tone: 'tagWarning' };
+    }
+    return unknown;
+  }
+  if (declared.length === 0) return unknown;
+  if (declared.some((nature) => probe?.[nature] === 'online')) {
+    return { key: 'sms_service.pool_state_online', tone: 'tagGood' };
+  }
+  if (declared.some((nature) => probe?.[nature] === 'offline')) {
+    return { key: 'sms_service.pool_state_offline', tone: 'tagWarning' };
+  }
+  return unknown;
 }
 
 /** 批量归一化池记录。 */
@@ -549,13 +609,28 @@ export function toPool(list: SupplyLedgerWire[] | undefined): PoolEntry[] {
 export function projectLabel(target: string, translate: (key: string) => string): string {
   const id = target.trim();
   if (!id) return '';
-  const providerKey = normalizeOAuthProviderKey(id);
-  const site = resolveCredentialSite(providerKey);
+  const site = projectSite(id);
   if (site) return site.brand;
-  const key = `auth_files.filter_${providerKey}`;
+  const key = `auth_files.filter_${normalizeOAuthProviderKey(id)}`;
   const translated = translate(key);
   if (translated !== key) return translated;
   return id.charAt(0).toUpperCase() + id.slice(1);
+}
+
+/**
+ * 一个平台对应哪个站点 —— 与凭证卡片「站点」行是同一份映射，不是另抄一份。
+ *
+ * 台账要回答「这个号注册在哪个站点」，卡片要回答「这张凭证属于哪个站点」；两边
+ * 问的是同一件事，所以必须查同一张表，否则同一个号在两个页面上会显示成两个站点。
+ *
+ * 没有映射就是 `null`（不造站点）。例如 loomy：模型在 `loomyad.xunfei.cn`、账号在
+ * `account.xfinfr.com`，没有单一的站点域名，填任何一个都是把内部接口当站点；而它
+ * 只有一个注册通道，域名也不承担区分作用，所以按品牌名显示就够。
+ */
+export function projectSite(target: string): CredentialSite | null {
+  const id = target.trim();
+  if (!id) return null;
+  return resolveCredentialSite(normalizeOAuthProviderKey(id));
 }
 
 /**

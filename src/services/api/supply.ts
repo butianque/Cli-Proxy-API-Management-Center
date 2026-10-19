@@ -45,6 +45,12 @@ export interface SupplyChannelWire {
   email?: SupplyKindConfigWire;
   created?: number;
   updated?: number;
+  /**
+   * 这条渠道已经往供应池送了几个身份，按类别分。
+   *
+   * 缺这个字段表示后端报不出计数，不是「0 个」—— 两者不能互相顶替。
+   */
+  pooled?: Partial<Record<SupplyKindWire, number>>;
 }
 
 /** 后端声明的「哪种性质能服务哪种身份」。 */
@@ -111,6 +117,22 @@ export interface SupplyLedgerProjectWire {
   at?: number;
 }
 
+/**
+ * 一个自带凭据的邮箱身份怎么收信（基座 `/supply/pool` 的 `mailbox` 块）。
+ *
+ * 只有从外面买进来、单独入池的邮箱才有这个块；渠道发出来的身份没有 —— 它读信靠
+ * 渠道那条连接，而不是靠自己的凭据。
+ */
+export interface SupplyLedgerMailboxWire {
+  nature?: SupplyNatureWire;
+  endpoint?: string;
+  client_id?: string;
+  /** 凭据条目是否在密钥库里；密钥库锁着时基座报不出，此时**没有这个字段**。 */
+  has_credential?: boolean;
+  /** 邮箱口令是否也在密钥库里（只供人工登录网页邮箱）。 */
+  has_password?: boolean;
+}
+
 /** 池里的一条身份（基座 `/supply/pool` 的一行）。 */
 export interface SupplyLedgerWire {
   kind: SupplyKindWire;
@@ -128,6 +150,13 @@ export interface SupplyLedgerWire {
   last_used?: number;
   /** 这个身份注册过的平台，一次注册一条。 */
   projects?: SupplyLedgerProjectWire[];
+  /**
+   * 这一类自己的补充事实。手机号记平台对接码（`channel`），邮箱记域（`domain`）。
+   * 键随类别不同，面板只按类别读自己认识的那一个。
+   */
+  meta?: Record<string, unknown>;
+  /** 自带凭据的邮箱身份才有；渠道发出来的身份没有。 */
+  mailbox?: SupplyLedgerMailboxWire;
 }
 
 function errorMessage(error: unknown, fallback: string): string {
