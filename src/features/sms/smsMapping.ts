@@ -49,6 +49,7 @@ export const NATURE_LABEL: Record<SupplyNature, string> = {
   api: 'sms_service.nature_api',
   imap: 'sms_service.nature_imap',
   oauth2: 'sms_service.nature_oauth2',
+  graph: 'sms_service.nature_graph',
   web: 'sms_service.nature_web',
 };
 
@@ -96,17 +97,30 @@ export function isCatchAllCategory(category: string): boolean {
 /**
  * 邮箱这一类能选的接入方式，顺序即界面上的顺序。
  *
- * 两种都是连上同一个信箱取码，区别只在**拿什么证明身份**：
+ * 三种都是连上同一个信箱取码，区别在**走哪条路、拿什么证明身份**：
  *   - 授权码：QQ、163、Gmail（应用专用密码）这类邮箱的口令登录；
- *   - OAuth2：微软的邮箱只认这条 —— 它的服务器直接关掉了口令登录。
+ *   - OAuth2：微软的邮箱只认这条 —— 它的服务器直接关掉了口令登录；
+ *   - Graph：同样是微软的邮箱，但走它的邮件接口而不是邮箱服务器。
  *
- * 所以它们是**二选一**，不是多选：同一个信箱不会同时存在两种凭据。做成勾选框会让人
+ * 所以它们是**单选**，不是多选：同一个信箱不会同时存在两种凭据。做成勾选框会让人
  * 勾上两种，然后卡在「到底用哪一份」上。
+ *
+ * OAuth2 与 Graph 不是两种登录，是同一份刷新令牌能换到的两种访问权：卖家给的令牌
+ * 通常只带其中一种，选错那一种的报错是「令牌没有被授予这条路的权限」，而不是号坏了。
  */
-export const EMAIL_NATURES: readonly SupplyNature[] = ['imap', 'oauth2'];
+export const EMAIL_NATURES: readonly SupplyNature[] = ['imap', 'oauth2', 'graph'];
 
 /** 还没选过时默认哪一种：绝大多数邮箱用授权码就能读。 */
 export const EMAIL_DEFAULT_NATURE: SupplyNature = 'imap';
+
+/**
+ * 这个接入方式用刷新令牌（而不是授权码或口令）证明身份。
+ *
+ * OAuth2 与 Graph 共用同一份令牌：换发时问的资源不同，存的位置相同。
+ */
+export function usesRefreshToken(nature: SupplyNature | null | undefined): boolean {
+  return nature === 'oauth2' || nature === 'graph';
+}
 
 /**
  * 可选平台（L1）。内置平台已知协议、地址固定；自定义平台由使用者自填。

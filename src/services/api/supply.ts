@@ -11,7 +11,7 @@ export const SUPPLY_CHANNELS_BASE = '/supply/channels';
 export const SUPPLY_POOL_BASE = '/supply/pool';
 
 export type SupplyKindWire = 'phone' | 'email';
-export type SupplyNatureWire = 'api' | 'imap' | 'oauth2' | 'web';
+export type SupplyNatureWire = 'api' | 'imap' | 'oauth2' | 'graph' | 'web';
 
 /** 一条连接方式的连接信息（后端 Connection）。 */
 export interface SupplyConnectionWire {

@@ -92,6 +92,15 @@ describe('every locale carries the new copy', () => {
     'import_close',
     'import_err_empty',
     'import_err_generic',
+    'import_type_label',
+    'import_type_outlook',
+    'import_method_label',
+    'import_method_graph',
+    'import_method_graph_note',
+    'import_method_oauth2',
+    'import_method_oauth2_note',
+    'import_method_hint',
+    'nature_graph',
   ];
 
   for (const locale of ['en', 'zh-CN', 'zh-TW', 'ru', 'vi', 'ko']) {
@@ -104,4 +113,34 @@ describe('every locale carries the new copy', () => {
       }
     });
   }
+});
+
+/**
+ * 收信方式是使用者要回答的问题，不是基座能猜的。
+ *
+ * 同一份刷新令牌通常只带一条路的权限：走邮箱服务器（IMAP）或者走微软邮件接口
+ * （Graph）。所以导入时必须把选中的那一条发出去 —— 面板自己猜一个，猜错的表现是
+ * 「这个令牌没有那条路的权限」，看起来像号坏了。
+ */
+describe('the receiving method travels with the batch', () => {
+  test('the modal asks for the method and sends it', () => {
+    expect(modal).toContain('RECEIVING_METHODS');
+    expect(modal).toContain('nature: method');
+  });
+
+  test('both methods are offered, and neither is hidden behind the other', () => {
+    expect(modal).toContain("const RECEIVING_METHODS: readonly ReceivingMethod[] = ['graph', 'oauth2'];");
+  });
+
+  test('the API passes the method through to the backend', () => {
+    expect(api).toContain("nature?: 'oauth2' | 'graph'");
+  });
+
+  test('the channel editor treats Graph like the other token method', () => {
+    // 应用 ID 与刷新令牌是两种令牌方式共用的；只认 oauth2 会让 Graph 渠道少一格。
+    const editor = read('features/sms/ChannelEditorModal.tsx');
+    expect(editor).toContain('usesRefreshToken(nature)');
+    expect(editor).toContain('usesRefreshToken(mailNature)');
+    expect(editor).not.toContain("nature === 'oauth2' &&");
+  });
 });

@@ -280,11 +280,15 @@ describe('the category is what says "a domain of my own that catches everything"
     expect(editor).toContain("t(CATEGORY_LABEL[phoneCategory])");
   });
 
-  test('a mailbox connects one way: an authorization code, or OAuth2', () => {
-    // Both read the same mailbox; they differ only in what proves the identity.
-    // Offering them as checkboxes would let an operator tick both — a record the
-    // base refuses, because one mailbox holds one credential.
-    expect([...EMAIL_NATURES]).toEqual(['imap', 'oauth2']);
+  test('a mailbox connects one way: an authorization code, OAuth2, or Graph', () => {
+    // All three read the same mailbox; they differ in which route the credential
+    // buys. Offering them as checkboxes would let an operator tick two — a record
+    // the base refuses, because one mailbox holds one credential.
+    //
+    // OAuth2 and Graph are the same refresh token spent on two different
+    // resources, so both are offered: a token is granted one route, and the
+    // operator's answer is which one it was.
+    expect([...EMAIL_NATURES]).toEqual(['imap', 'oauth2', 'graph']);
     expect(EMAIL_DEFAULT_NATURE).toBe('imap');
     const editor = read('features/sms/ChannelEditorModal.tsx');
     expect(editor).toContain('type="radio"');

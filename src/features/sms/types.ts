@@ -188,7 +188,7 @@ export interface PhoneCredentialState {
 export type SupplyKind = 'phone' | 'email';
 
 /** 接入性质：我们怎么连它。 */
-export type SupplyNature = 'api' | 'imap' | 'oauth2' | 'web';
+export type SupplyNature = 'api' | 'imap' | 'oauth2' | 'graph' | 'web';
 
 /** 基座允许的一种性质，以及它能服务哪些身份种类（由后端给出，页面不自己维护一份）。 */
 export interface SupplyNatureOption {

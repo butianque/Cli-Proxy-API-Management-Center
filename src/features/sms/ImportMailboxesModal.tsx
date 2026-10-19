@@ -3,12 +3,15 @@
  *
  * 入口在号码池页头，紧挨「配置」：买回来的一批邮箱先落库，才谈得上用。
  *
- * 三条约定：
+ * 四条约定：
  * 1. **值不经过面板**：文本框里粘的是卖家的原始行，整段发给基座；基座解析、验证、
  *    写库，回包里只有账号与结局。面板既不解析凭据，也不缓存它。
- * 2. **验证默认打开**：验证不通过的邮箱不会入库 —— 一条连不上的渠道只会在表里
+ * 2. **先答一个问题是「怎么收信」**：同一份刷新令牌通常只带一种访问权 —— 邮箱服务器
+ *    或者微软邮件接口。这是使用者的答案，不是基座能猜的；选错时基座会说「令牌没有被
+ *    授予这条路的权限」，换另一个再导一次即可。
+ * 3. **验证默认打开**：验证不通过的邮箱不会入库 —— 一条连不上的渠道只会在表里
  *    多一行永远读不到信的东西，还得有人手工清。
- * 3. **分批发送**：一批里每个邮箱都要做一次令牌交换和一次 IMAP 登录，默认的 30 秒
+ * 4. **分批发送**：一批里每个邮箱都要做一次令牌交换和一次登录，默认的 30 秒
  *    请求超时只够几个；按 {@link IMPORT_CHUNK_LINES} 切片既能给出进度，也不会让
  *    一次请求等到超时。
  */
@@ -25,6 +28,21 @@ import styles from './ImportMailboxesModal.module.scss';
 
 /** 一次请求最多带多少行。基座在这批里并发验证，一片正好落在一次请求的超时之内。 */
 const IMPORT_CHUNK_LINES = 20;
+
+/**
+ * 能导入的邮箱类型。
+ *
+ * 现在只有一种：卖家给的批量文本是 Outlook 的（账号、密码、应用 ID、刷新令牌）。
+ * 别的邮箱类型要的是另一种文本格式与另一种凭据，所以这是**类型**而不是「收信方式」。
+ */
+const MAILBOX_TYPES = ['outlook'] as const;
+
+type MailboxType = (typeof MAILBOX_TYPES)[number];
+
+/** 收信方式。同一个信箱只走一条路，所以是单选。 */
+type ReceivingMethod = 'graph' | 'oauth2';
+
+const RECEIVING_METHODS: readonly ReceivingMethod[] = ['graph', 'oauth2'];
 
 /** 失败清单最多列多少条：整批都失败时，列 200 条既看不清也没有用。 */
 const FAILURE_LIST_LIMIT = 20;
@@ -50,6 +68,8 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
 
   const [text, setText] = useState('');
   const [verify, setVerify] = useState(true);
+  const [mailboxType, setMailboxType] = useState<MailboxType>('outlook');
+  const [method, setMethod] = useState<ReceivingMethod>('graph');
   const [phase, setPhase] = useState<Phase>('idle');
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -61,6 +81,8 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
     if (!open) return;
     setText('');
     setVerify(true);
+    setMailboxType('outlook');
+    setMethod('graph');
     setPhase('idle');
     setProgress({ done: 0, total: 0 });
     setSummary(null);
@@ -101,7 +123,7 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
       for (let start = 0; start < lines.length; start += IMPORT_CHUNK_LINES) {
         const chunk = lines.slice(start, start + IMPORT_CHUNK_LINES);
         const result = await emailApi.importMailboxes(
-          { text: chunk.join('\n'), probe: verify },
+          { text: chunk.join('\n'), probe: verify, nature: method },
           passphrase
         );
         if (!result.ok) {
@@ -163,6 +185,52 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
     <Modal open={open} title={t('sms_service.import_title')} onClose={onClose} footer={footer} width={640}>
       <div className={styles.body}>
         <p className={styles.lead}>{t('sms_service.import_lead')}</p>
+
+        {/* 先问类型，再问这条路怎么走：类型决定文本格式，方式决定基座去问哪一边。
+            类型只有一种时也不藏起来 —— 它是这一段的标题，也是以后加别的邮箱的落点。 */}
+        <div className={styles.choiceGroup}>
+          <span className={styles.fieldLabel}>{t('sms_service.import_type_label')}</span>
+          <div className={styles.choiceCards}>
+            {MAILBOX_TYPES.map((type) => (
+              <label className={`${styles.choiceCard} ${styles.choiceCardCompact}`} key={type}>
+                <input
+                  type="radio"
+                  name="mailbox-import-type"
+                  checked={mailboxType === type}
+                  onChange={() => setMailboxType(type)}
+                  disabled={phase === 'busy'}
+                />
+                <span className={styles.choiceTitle}>
+                  {t(`sms_service.import_type_${type}`)}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className={styles.choiceGroup}>
+          <span className={styles.fieldLabel}>{t('sms_service.import_method_label')}</span>
+          <div className={styles.choiceCards}>
+            {RECEIVING_METHODS.map((value) => (
+              <label className={styles.choiceCard} key={value}>
+                <input
+                  type="radio"
+                  name="mailbox-import-method"
+                  checked={method === value}
+                  onChange={() => setMethod(value)}
+                  disabled={phase === 'busy'}
+                />
+                <span className={styles.choiceTitle}>
+                  {t(`sms_service.import_method_${value}`)}
+                </span>
+                <span className={styles.choiceNote}>
+                  {t(`sms_service.import_method_${value}_note`)}
+                </span>
+              </label>
+            ))}
+          </div>
+          <span className={styles.note}>{t('sms_service.import_method_hint')}</span>
+        </div>
 
         <label className={styles.fieldLabel} htmlFor="mailbox-import-list">
           {t('sms_service.import_field_list')}

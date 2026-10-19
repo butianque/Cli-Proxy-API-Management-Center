@@ -63,6 +63,7 @@ import {
   SMS_PLATFORMS,
   isCatchAllCategory,
   resolvePlatformId,
+  usesRefreshToken,
 } from './smsMapping';
 import type {
   PhoneCredentialState,
@@ -322,9 +323,9 @@ export function ChannelEditorModal({
   /** 邮箱这一种方式自己的连接信息 —— 域名、应用 ID 都挂在它下面。 */
   const mailConnection = mailNature ? (block.connections[mailNature] ?? emptyConnection()) : null;
   const domainMissing = attempted && catchAll && (mailConnection?.domain ?? '').trim() === '';
-  /** OAuth2 少了应用 ID 就换不到令牌，保存下去就是一条读不到信的渠道。 */
+  /** 用刷新令牌的两种方式少了应用 ID 就换不到令牌，保存下去就是一条读不到信的渠道。 */
   const clientIdMissing =
-    attempted && mailNature === 'oauth2' && (mailConnection?.clientId ?? '').trim() === '';
+    attempted && usesRefreshToken(mailNature) && (mailConnection?.clientId ?? '').trim() === '';
 
   /** 上一次的测试结果与错误，都随输入变化失效。 */
   const resetFeedback = () => {
@@ -411,8 +412,8 @@ export function ChannelEditorModal({
     if (apiPairBroken || webPairBroken) return;
     // 类别说这是自己的域，却没有域名：基座会拒收，而界面上只有这一格是空的。
     if (catchAll && (mailConnection?.domain ?? '').trim() === '') return;
-    // OAuth2 没有应用 ID 就换不到令牌：基座会拒收，界面上也只有这一格是空的。
-    if (mailNature === 'oauth2' && (mailConnection?.clientId ?? '').trim() === '') return;
+    // 用刷新令牌的方式没有应用 ID 就换不到令牌：基座会拒收，界面上也只有这一格是空的。
+    if (usesRefreshToken(mailNature) && (mailConnection?.clientId ?? '').trim() === '') return;
     setSaving(true);
     setError(null);
     try {
@@ -442,7 +443,7 @@ export function ChannelEditorModal({
             account: (mailConnection?.account ?? '').trim(),
             name: (mailConnection?.secret ?? '').trim(),
             secret: mailCredential.trim(),
-            nature: mailNature === 'oauth2' ? 'oauth2' : 'imap',
+            nature: mailNature === 'graph' ? 'graph' : mailNature === 'oauth2' ? 'oauth2' : 'imap',
           },
           passphrase
         );
@@ -746,9 +747,9 @@ export function ChannelEditorModal({
                 />
               </>
             )}
-            {/* OAuth2 需要两样东西：哪个应用在问（应用 ID，随渠道记录保存、可回读），
-                以及那个应用的刷新令牌（只进密钥库）。 */}
-            {nature === 'oauth2' && (
+            {/* 用刷新令牌的两种方式都要两样东西：哪个应用在问（应用 ID，随渠道记录
+                保存、可回读），以及那个应用的刷新令牌（只进密钥库）。 */}
+            {usesRefreshToken(nature) && (
               <Input
                 label={t('sms_service.field_mail_client_id')}
                 placeholder="00000000-0000-0000-0000-000000000000"
@@ -762,7 +763,7 @@ export function ChannelEditorModal({
                 这个值属于那个邮箱，不属于这条渠道。 */}
             <Input
               label={
-                nature === 'oauth2'
+                usesRefreshToken(nature)
                   ? t('sms_service.field_mail_refresh_token')
                   : t('sms_service.field_mail_auth_code')
               }
@@ -771,7 +772,7 @@ export function ChannelEditorModal({
               hint={
                 gatePhase === 'locked'
                   ? t('sms_service.config_gate_locked_hint')
-                  : nature === 'oauth2'
+                  : usesRefreshToken(nature)
                     ? t('sms_service.field_mail_refresh_token_hint')
                     : t('sms_service.field_mail_auth_code_hint')
               }

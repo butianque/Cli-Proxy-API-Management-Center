@@ -176,7 +176,12 @@ export const emailApi = {
    * 一个条目：把刷新令牌交给口令登录，只会得到一句「密码错误」。
    */
   async saveCredential(
-    input: { account: string; name?: string; secret: string; nature?: 'imap' | 'oauth2' },
+    input: {
+      account: string;
+      name?: string;
+      secret: string;
+      nature?: 'imap' | 'oauth2' | 'graph';
+    },
     passphrase: string
   ): Promise<EmailCredentialWriteResult> {
     try {
@@ -200,11 +205,14 @@ export const emailApi = {
    * 基座解析整批、验证每个邮箱能否收信，再把刷新令牌写进密钥库、为每个邮箱建一条
    * 渠道。所以这里只发文本，不发逐条凭据 —— 值不经过面板，也不回到面板。
    *
-   * 超时单独放宽：一批里每个邮箱都要做一次令牌交换和一次 IMAP 登录，默认的 30 秒
-   * 只够几个。调用方按批分片（见 `ImportMailboxesModal`），这里给每片留足时间。
+   * `nature` 是这批邮箱的收信方式：`oauth2` 走邮箱服务器，`graph` 走微软的邮件接口。
+   * 同一份令牌通常只带其中一种权限，所以这是使用者要回答的问题，不是基座能猜的。
+   *
+   * 超时单独放宽：一批里每个邮箱都要做一次令牌交换和一次登录，默认的 30 秒只够几个。
+   * 调用方按批分片（见 `ImportMailboxesModal`），这里给每片留足时间。
    */
   async importMailboxes(
-    input: { text: string; probe?: boolean },
+    input: { text: string; probe?: boolean; nature?: 'oauth2' | 'graph' },
     passphrase: string
   ): Promise<EmailImportResult> {
     try {

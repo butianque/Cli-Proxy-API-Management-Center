@@ -58,6 +58,72 @@
   line-height: 1.5;
 }
 
+/* ---------- 两组选择：类型、收信方式 ---------- */
+
+.choiceGroup {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+}
+
+.choiceCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: $spacing-sm;
+}
+
+.choiceCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color $transition-fast, background-color $transition-fast,
+    box-shadow $transition-fast;
+
+  &:has(input:checked) {
+    border-color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 8%, var(--bg-primary));
+    box-shadow: var(--shadow);
+    color: var(--text-primary);
+  }
+
+  &:focus-within {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+
+  input {
+    margin: 0;
+    inline-size: 16px;
+    block-size: 16px;
+    accent-color: var(--primary-color);
+  }
+}
+
+.choiceTitle {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* 只有名字、没有说明的那一行：横排，和编辑器里的接入方式卡片一致。 */
+.choiceCardCompact {
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+}
+
+.choiceNote {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
 .verifyRow {
   display: flex;
   flex-direction: column;
