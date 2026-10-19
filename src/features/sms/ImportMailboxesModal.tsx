@@ -6,9 +6,10 @@
  * 四条约定：
  * 1. **值不经过面板**：文本框里粘的是卖家的原始行，整段发给基座；基座解析、验证、
  *    写库，回包里只有账号与结局。面板既不解析凭据，也不缓存它。
- * 2. **先答一个问题是「怎么收信」**：同一份刷新令牌通常只带一种访问权 —— 邮箱服务器
- *    或者微软邮件接口。这是使用者的答案，不是基座能猜的；选错时基座会说「令牌没有被
- *    授予这条路的权限」，换另一个再导一次即可。
+ * 2. **先说明白导入的是哪种邮箱，再问怎么收信**：这一批的文本格式是 Outlook 的，
+ *    而同一份刷新令牌通常只带一种访问权 —— 邮箱服务器或者微软邮件接口。收信方式是
+ *    使用者的答案，不是基座能猜的；选错时基座会说「令牌没有被授予这条路的权限」，
+ *    换另一个再导一次即可。
  * 3. **验证默认打开**：验证不通过的邮箱不会入库 —— 一条连不上的渠道只会在表里
  *    多一行永远读不到信的东西，还得有人手工清。
  * 4. **分批发送**：一批里每个邮箱都要做一次令牌交换和一次登录，默认的 30 秒
@@ -32,12 +33,11 @@ const IMPORT_CHUNK_LINES = 20;
 /**
  * 能导入的邮箱类型。
  *
- * 现在只有一种：卖家给的批量文本是 Outlook 的（账号、密码、应用 ID、刷新令牌）。
- * 别的邮箱类型要的是另一种文本格式与另一种凭据，所以这是**类型**而不是「收信方式」。
+ * 现在只有一种，所以它是一个**结论**而不是一个选项：卖家给的批量文本就是 Outlook 的
+ * （账号、密码、应用 ID、刷新令牌），别的邮箱要的是另一种文本格式与另一种凭据。
+ * 只有一个选项的单选画出来点不动任何东西，那是假控件；等真支持第二种再改回选择器。
  */
-const MAILBOX_TYPES = ['outlook'] as const;
-
-type MailboxType = (typeof MAILBOX_TYPES)[number];
+const MAILBOX_TYPE_LABEL = 'sms_service.import_type_outlook';
 
 /** 收信方式。同一个信箱只走一条路，所以是单选。 */
 type ReceivingMethod = 'graph' | 'oauth2';
@@ -68,7 +68,6 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
 
   const [text, setText] = useState('');
   const [verify, setVerify] = useState(true);
-  const [mailboxType, setMailboxType] = useState<MailboxType>('outlook');
   const [method, setMethod] = useState<ReceivingMethod>('graph');
   const [phase, setPhase] = useState<Phase>('idle');
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -81,7 +80,6 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
     if (!open) return;
     setText('');
     setVerify(true);
-    setMailboxType('outlook');
     setMethod('graph');
     setPhase('idle');
     setProgress({ done: 0, total: 0 });
@@ -186,26 +184,10 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
       <div className={styles.body}>
         <p className={styles.lead}>{t('sms_service.import_lead')}</p>
 
-        {/* 先问类型，再问这条路怎么走：类型决定文本格式，方式决定基座去问哪一边。
-            类型只有一种时也不藏起来 —— 它是这一段的标题，也是以后加别的邮箱的落点。 */}
+        {/* 先说明是哪种邮箱，再问这条路怎么走：类型决定文本格式，方式决定基座去问哪一边。 */}
         <div className={styles.choiceGroup}>
           <span className={styles.fieldLabel}>{t('sms_service.import_type_label')}</span>
-          <div className={styles.choiceCards}>
-            {MAILBOX_TYPES.map((type) => (
-              <label className={`${styles.choiceCard} ${styles.choiceCardCompact}`} key={type}>
-                <input
-                  type="radio"
-                  name="mailbox-import-type"
-                  checked={mailboxType === type}
-                  onChange={() => setMailboxType(type)}
-                  disabled={phase === 'busy'}
-                />
-                <span className={styles.choiceTitle}>
-                  {t(`sms_service.import_type_${type}`)}
-                </span>
-              </label>
-            ))}
-          </div>
+          <span className={styles.typeValue}>{t(MAILBOX_TYPE_LABEL)}</span>
         </div>
 
         <div className={styles.choiceGroup}>
