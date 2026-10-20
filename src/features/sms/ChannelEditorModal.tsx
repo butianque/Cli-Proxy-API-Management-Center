@@ -121,7 +121,6 @@ export function ChannelEditorModal({
   onSaved,
 }: ChannelEditorModalProps) {
   const { t } = useTranslation();
-  const passphrase = useSecretGateStore((state) => state.passphrase);
   const gatePhase = useSecretGateStore((state) => state.phase);
   const categoryId = useId();
 
@@ -403,28 +402,25 @@ export function ChannelEditorModal({
           };
           // 自定义平台：填了地址才带上；空串在后端是「保留旧值」，会把自定义地址静默吃掉。
           if (!endpointLocked && endpoint.trim() !== '') input.endpoint = endpoint.trim();
-          if (!applyCredentialResult(await smsApi.saveApiCredential(input, passphrase))) return;
+          if (!applyCredentialResult(await smsApi.saveApiCredential(input))) return;
         }
         if (webSelected && webFilled) {
-          const result = await smsApi.saveWebCredential(
-            { username: webUser.trim(), password: webPass.trim() },
-            passphrase
-          );
+          const result = await smsApi.saveWebCredential({
+            username: webUser.trim(),
+            password: webPass.trim(),
+          });
           if (!applyCredentialResult(result)) return;
         }
       }
       if (kind === 'email' && mailCredential.trim() !== '') {
         // 条目名由邮箱账号决定，界面不问：凭据属于那个邮箱，不属于渠道。
         // 已存的条目名照旧带上，老渠道指向的条目不会因此被孤立。
-        const result = await emailApi.saveCredential(
-          {
-            account: (mailConnection?.account ?? '').trim(),
-            name: (mailConnection?.secret ?? '').trim(),
-            secret: mailCredential.trim(),
-            nature: 'imap',
-          },
-          passphrase
-        );
+        const result = await emailApi.saveCredential({
+          account: (mailConnection?.account ?? '').trim(),
+          name: (mailConnection?.secret ?? '').trim(),
+          secret: mailCredential.trim(),
+          nature: 'imap',
+        });
         if (!result.ok) {
           if (result.reason === 'wrong-passphrase') setError(t('sms_service.config_err_passphrase'));
           else if (result.reason === 'locked') setError(t('sms_service.config_err_locked'));
@@ -500,10 +496,10 @@ export function ChannelEditorModal({
     setWebLogin({ kind: 'busy' });
     setError(null);
     try {
-      const result = await smsApi.webLogin(
-        { username: webUser.trim(), password: webPass.trim() },
-        passphrase
-      );
+      const result = await smsApi.webLogin({
+        username: webUser.trim(),
+        password: webPass.trim(),
+      });
       if (result.ok) setWebLogin({ kind: 'ok' });
       else setWebLogin({ kind: 'fail', message: result.message });
     } finally {

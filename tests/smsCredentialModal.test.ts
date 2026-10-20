@@ -85,7 +85,7 @@ describe('credentials are written before the channel record', () => {
 
   test('a failed credential write aborts the save instead of leaving a shell', () => {
     expect(saveBody).toContain(
-      'if (!applyCredentialResult(await smsApi.saveApiCredential(input, passphrase))) return;'
+      'if (!applyCredentialResult(await smsApi.saveApiCredential(input))) return;'
     );
     expect(saveBody).toContain('if (!applyCredentialResult(result)) return;');
   });

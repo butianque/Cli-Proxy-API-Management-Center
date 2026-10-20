@@ -103,15 +103,6 @@ function toCredentialWriteResult(error: unknown, fallback: string): CredentialWr
   return { ok: false, reason: 'error', message };
 }
 
-/** Body 里随写带的 passphrase：后端在密钥库需要时才校验（库已解锁且无口令可不传）。 */
-function withPassphrase<T extends object>(
-  body: T,
-  passphrase: string
-): T & { passphrase?: string } {
-  const trimmed = passphrase.trim();
-  return trimmed ? { ...body, passphrase: trimmed } : body;
-}
-
 /** 从 axios 错误里取后端给的原因（用于渠道操作这类非凭据写）。 */
 function errorMessage(error: unknown, fallback: string): string {
   const data = (error as { data?: unknown })?.data as { error?: string } | undefined;
@@ -125,12 +116,9 @@ export const smsApi = {
   },
 
   /** 写账密凭据（API 登录）。空字段保留旧值。 */
-  async saveApiCredential(
-    input: SmsApiCredentialInput,
-    passphrase: string
-  ): Promise<CredentialWriteResult> {
+  async saveApiCredential(input: SmsApiCredentialInput): Promise<CredentialWriteResult> {
     try {
-      await apiClient.post(`${SUPPLY_PHONE_BASE}/api`, withPassphrase(input, passphrase));
+      await apiClient.post(`${SUPPLY_PHONE_BASE}/api`, input);
       return { ok: true };
     } catch (error) {
       return toCredentialWriteResult(error, 'failed to store the account credential');
@@ -143,15 +131,12 @@ export const smsApi = {
    * 只想记下账号、稍后再点「获取网页会话」时用；真正落库复用 `/web-login` 的
    * 存值路径（同一对字段），避免两条写路径各写各的。
    */
-  async saveWebCredential(
-    input: { username?: string; password?: string },
-    passphrase: string
-  ): Promise<CredentialWriteResult> {
+  async saveWebCredential(input: {
+    username?: string;
+    password?: string;
+  }): Promise<CredentialWriteResult> {
     try {
-      await apiClient.post(
-        `${SUPPLY_PHONE_BASE}/web-credential`,
-        withPassphrase(input, passphrase)
-      );
+      await apiClient.post(`${SUPPLY_PHONE_BASE}/web-credential`, input);
       return { ok: true };
     } catch (error) {
       return toCredentialWriteResult(error, 'failed to store the web sign-in credential');
@@ -211,13 +196,12 @@ export const smsApi = {
    * 登录失败**不会**落库任何东西。空账号/密码字段复用已存值。
    */
   async webLogin(
-    input: { username?: string; password?: string },
-    passphrase: string
+    input: { username?: string; password?: string }
   ): Promise<{ ok: true; channels: number } | { ok: false; message: string }> {
     try {
       const result = await apiClient.post<{ channels?: number }>(
         `${SUPPLY_PHONE_BASE}/web-login`,
-        withPassphrase(input, passphrase)
+        input
       );
       return { ok: true, channels: typeof result?.channels === 'number' ? result.channels : 0 };
     } catch (error) {

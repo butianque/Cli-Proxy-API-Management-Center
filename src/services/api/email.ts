@@ -180,18 +180,13 @@ export const emailApi = {
       name?: string;
       secret: string;
       nature?: 'imap' | 'oauth2' | 'graph';
-    },
-    passphrase: string
+    }
   ): Promise<EmailCredentialWriteResult> {
     try {
-      const trimmed = passphrase.trim();
       // 空的名字不发：基座按账号派生，空串只是把「没有名字」传了一遍。
       const { name, ...rest } = input;
       const body = name?.trim() ? { ...rest, name: name.trim() } : rest;
-      await apiClient.post(
-        `${SUPPLY_EMAIL_BASE}/credential`,
-        trimmed ? { ...body, passphrase: trimmed } : body
-      );
+      await apiClient.post(`${SUPPLY_EMAIL_BASE}/credential`, body);
       return { ok: true };
     } catch (error) {
       return toCredentialWriteResult(error, 'failed to store the mailbox credential');
@@ -210,16 +205,15 @@ export const emailApi = {
    * 超时单独放宽：一批里每个邮箱都要做一次令牌交换和一次登录，默认的 30 秒只够几个。
    * 调用方按批分片（见 `ImportMailboxesModal`），这里给每片留足时间。
    */
-  async importMailboxes(
-    input: { text: string; probe?: boolean; nature?: 'oauth2' | 'graph' },
-    passphrase: string
-  ): Promise<EmailImportResult> {
+  async importMailboxes(input: {
+    text: string;
+    probe?: boolean;
+    nature?: 'oauth2' | 'graph';
+  }): Promise<EmailImportResult> {
     try {
-      const trimmed = passphrase.trim();
-      const body = trimmed ? { ...input, passphrase: trimmed } : input;
       const response = await apiClient.post<EmailImportResponse>(
         `${SUPPLY_EMAIL_BASE}/import`,
-        body,
+        input,
         { timeout: 180_000 }
       );
       return {

@@ -24,7 +24,6 @@ import { Modal } from '@/components/ui/Modal';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { IconAlertTriangle, IconCheckCircle2 } from '@/components/ui/icons';
 import { emailApi, type EmailImportLineWire } from '@/services/api/email';
-import { useSecretGateStore } from '@/stores/useSecretGateStore';
 import styles from './ImportMailboxesModal.module.scss';
 
 /** 一次请求最多带多少行。基座在这批里并发验证，一片正好落在一次请求的超时之内。 */
@@ -64,7 +63,6 @@ interface Summary {
 
 export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailboxesModalProps) {
   const { t } = useTranslation();
-  const passphrase = useSecretGateStore((state) => state.passphrase);
 
   const [text, setText] = useState('');
   const [verify, setVerify] = useState(true);
@@ -120,10 +118,11 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
     try {
       for (let start = 0; start < lines.length; start += IMPORT_CHUNK_LINES) {
         const chunk = lines.slice(start, start + IMPORT_CHUNK_LINES);
-        const result = await emailApi.importMailboxes(
-          { text: chunk.join('\n'), probe: verify, nature: method },
-          passphrase
-        );
+        const result = await emailApi.importMailboxes({
+          text: chunk.join('\n'),
+          probe: verify,
+          nature: method,
+        });
         if (!result.ok) {
           setError(
             result.reason === 'wrong-passphrase'
