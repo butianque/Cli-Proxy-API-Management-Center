@@ -241,10 +241,7 @@ export interface ChannelMappingOptions {
 }
 
 /** 批量归一化渠道行（写回渠道表时用同一个选项，避免两处各写一份）。 */
-export function toChannels(
-  list: SmsChannelWire[],
-  options: ChannelMappingOptions
-): SmsChannel[] {
+export function toChannels(list: SmsChannelWire[], options: ChannelMappingOptions): SmsChannel[] {
   return list.map((channel) => toChannel(channel, options));
 }
 
@@ -390,6 +387,10 @@ function toSupplyConnection(raw: SupplyConnectionWire | undefined): SupplyConnec
     secretPresent: raw?.secret_present === true,
     domain: raw?.domain ?? '',
     clientId: raw?.client_id ?? '',
+    egressId:
+      typeof raw?.egress_id === 'number' && Number.isInteger(raw.egress_id) && raw.egress_id > 0
+        ? raw.egress_id
+        : 0,
   };
 }
 
@@ -409,9 +410,24 @@ function toSupplyKindConfig(raw: SupplyKindConfigWire | undefined): SupplyKindCo
   };
 }
 
+/**
+ * 一个种类块共用的出口编号。
+ *
+ * 出口挂在**连接**上（同一个块里可以同时有 api 与 web 两种连接），但界面上是按块
+ * 给一个下拉框。块内各连接一致才报出那个编号；不一致时报 0 —— 下拉框只能表达一个
+ * 值，报其中任意一个都会让另一个连接的真实出口被这句话盖掉。
+ */
+export function blockEgressId(block: SupplyKindConfig | null | undefined): number {
+  if (!block) return 0;
+  const ids = Object.values(block.connections).map((connection) => connection?.egressId ?? 0);
+  if (ids.length === 0) return 0;
+  const [first] = ids;
+  return ids.every((id) => id === first) ? first : 0;
+}
+
 /** 后端一条来源 → 页面形状。 */
+// 已入池计数只认真实非负数：后端没报就是「数不出来」，不能当成 0。
 export function toSupplyChannel(raw: SupplyChannelWire): SupplyChannel {
-  // 已入池计数只认真实非负数：后端没报就是「数不出来」，不能当成 0。
   const pooled: Partial<Record<SupplyKind, number>> = {};
   for (const kind of ['phone', 'email'] as const) {
     const value = raw.pooled?.[kind];

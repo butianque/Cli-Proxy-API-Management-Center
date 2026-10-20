@@ -187,6 +187,11 @@ export type VisualConfigValues = {
    * 两段都放在同一个地址上也是对的（注册与使用看起来像同一台机器），所以默认沿用。
    */
   supplyEgress: string;
+  /**
+   * 取号、收信、注册走代理池的第几条出口；留空表示没指定，按 `supplyEgress`
+   * 或上面的代理地址走。存编号而不是地址：换 IP 只改池里那一条，这一格不用动。
+   */
+  supplyEgressId: string;
   forceModelPrefix: boolean;
   passthroughHeaders: boolean;
   requestRetry: string;
@@ -292,6 +297,7 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   redisUsageQueueRetentionSeconds: '',
   proxyUrl: '',
   supplyEgress: '',
+  supplyEgressId: '',
   forceModelPrefix: false,
   passthroughHeaders: false,
   requestRetry: '',

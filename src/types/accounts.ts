@@ -141,6 +141,10 @@ export interface AccountView {
   policy?: AccountPolicy;
   /** F1 恒缺失（`buildAccountView` 从未赋值），F3 接线前不得依赖。 */
   entitlement?: string;
+  /** 这条凭证绑在代理池的第几条；缺省 = 没绑，跟随默认出口。 */
+  egressId?: number;
+  /** 实际生效的出口地址（后端已脱敏）；缺省 = 不走代理。 */
+  egress?: string;
   quotaState: AccountQuotaState;
   /** RFC3339 UTC；仅有已抓取的快照时下发。 */
   fetchedAt?: string;

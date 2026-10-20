@@ -1251,6 +1251,7 @@ function getNextDirtyFields(
       'logsMaxTotalSizeMb',
       'proxyUrl',
       'supplyEgress',
+      'supplyEgressId',
       'forceModelPrefix',
       'requestRetry',
       'maxRetryCredentials',
@@ -1486,6 +1487,8 @@ function parseVisualValuesFromYaml(yamlContent: string): VisualConfigValues {
 
     proxyUrl: typeof v8Requests?.['proxy-url'] === 'string' ? v8Requests?.['proxy-url'] : '',
     supplyEgress: typeof v8Supply?.['egress'] === 'string' ? v8Supply?.['egress'] : '',
+    // 编号是整数，界面统一按字符串持有（选择框的值域就是字符串），写回时再转回整数。
+    supplyEgressId: String(v8Supply?.['egress-id'] ?? ''),
     forceModelPrefix: Boolean(v8Routing?.['force-model-prefix']),
     passthroughHeaders: Boolean(v8Requests?.['passthrough-headers']),
     requestRetry: String(v8RoutingRetry?.['request-retry'] ?? ''),
@@ -1830,6 +1833,9 @@ export function useVisualConfig() {
           setStringInDoc(doc, ['requests', 'proxy-url'], values.proxyUrl);
         if (dirtyFields.has('supplyEgress'))
           setStringInDoc(doc, ['supply', 'egress'], values.supplyEgress);
+        if (dirtyFields.has('supplyEgressId')) {
+          setIntFromStringInDoc(doc, ['supply', 'egress-id'], values.supplyEgressId);
+        }
         if (dirtyFields.has('forceModelPrefix')) {
           setBooleanInDoc(doc, ['routing', 'force-model-prefix'], values.forceModelPrefix);
         }

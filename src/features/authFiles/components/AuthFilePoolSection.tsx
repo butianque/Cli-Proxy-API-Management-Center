@@ -1,7 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { remainingMinutes, resolveResetInstant, sharedResetAt } from '@/features/authFiles/accountPool';
+import {
+  remainingMinutes,
+  resolveResetInstant,
+  sharedResetAt,
+} from '@/features/authFiles/accountPool';
 import { resolveCredentialSite } from '@/features/authFiles/siteIdentity';
+import { EgressBindingSelect } from '@/features/egress/EgressBindingSelect';
 import { useNow } from '@/hooks/useNow';
 import type { AccountQuotaBucket, AccountView } from '@/types/accounts';
 import { formatDateValue, formatDateTimeValue } from '@/utils/format';
@@ -46,12 +51,19 @@ export type AuthFilePoolSectionProps = {
   providerKey?: string;
   /** 该账号是否有宿主额度通道。false/缺省 ⇒ 不渲染额度区块。 */
   quotaCapable?: boolean;
+  /**
+   * 出口改完之后让页面重新读一次账号视图。
+   *
+   * 缺省时不渲染出口那一行：没有回读的地方，改完行上的值还是旧的，那比不给改更糟。
+   */
+  onEgressChanged?: () => void;
 };
 
 export function AuthFilePoolSection({
   account,
   providerKey = '',
   quotaCapable = false,
+  onEgressChanged,
 }: AuthFilePoolSectionProps) {
   const { t, i18n } = useTranslation();
   // 倒计时读应用级的分钟时钟（全应用一个定时器），而不是每张卡片各起一个。
@@ -92,6 +104,27 @@ export function AuthFilePoolSection({
           {t(POOL_STATE_LABEL[poolState])}
         </span>
       </div>
+
+      {/* 出口是这条凭证自己的事实（同一个账号池里的号可以各走各的），所以放在这里，
+          而不是页面顶部一个全局选择。改了就写后端，不参与页面上的「保存」。 */}
+      {onEgressChanged !== undefined && account.authId !== '' && (
+        <div className={styles.row}>
+          <span className={styles.fieldLabel}>{t('egress_pool.account_label')}</span>
+          <EgressBindingSelect
+            kind="account"
+            name={account.authId}
+            currentId={account.egressId ?? 0}
+            // 没有池编号但手填了地址：说「直连」就是假话，把实际地址摆出来。
+            noneLabel={
+              account.egress !== undefined && account.egress !== ''
+                ? t('egress_pool.account_manual', { address: account.egress })
+                : t('egress_pool.account_none')
+            }
+            ariaLabel={t('egress_pool.binding_aria', { name: account.displayName })}
+            onChanged={onEgressChanged}
+          />
+        </div>
+      )}
 
       {/* 账号多大年纪是账号自己的事实：宿主只在插件真的报了这个时刻时才下发，
           读不到就整行不出现，不拿凭证创建时间顶替。 */}
@@ -175,10 +208,7 @@ const QUOTA_STATE_LABEL: Record<string, string> = {
   'no-credential': 'account_pool.quota_no_credential',
 };
 
-const describeQuotaBucket = (
-  description: string | undefined,
-  t: TFunction
-): string | undefined => {
+const describeQuotaBucket = (description: string | undefined, t: TFunction): string | undefined => {
   if (!description) return undefined;
   const key = QUOTA_STATE_LABEL[description];
   return key ? t(key) : description;

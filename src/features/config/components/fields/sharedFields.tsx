@@ -6,13 +6,19 @@ import { useTranslation } from 'react-i18next';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { egressApi } from '@/services/api/egress';
 import type { EgressProbeResult } from '@/services/api/egress';
+import { egressOptions, egressPoolApi } from '@/services/api/egressPool';
+import { useEgressPool } from '@/hooks/useEgressPool';
 import type { VisualConfigValues } from '@/types/visualConfig';
 import { SPONSORS } from '../../sponsors';
 import { ApiKeysCardEditor } from '../blocks/ApiKeysCardEditor';
-import { FieldAnchor, FieldGroup, ToggleRow } from './FieldPrimitives';
+import { FieldAnchor, FieldGroup, FieldShell, ToggleRow } from './FieldPrimitives';
 import fieldStyles from './Field.module.scss';
+
+/** 下拉框里「自己填一个地址」的哨兵值：它不是编号，也不是空。 */
+const CUSTOM_EGRESS = 'custom';
 
 export type SharedFieldProps = {
   values: VisualConfigValues;
@@ -123,20 +129,56 @@ type EgressProbePhase =
  * 为什么它在这里而不是在接码页：这是一条网络出口，跟代理地址同属网络配置；放在接码页
  * 会让人以为它只管接码那一个页面，而它管的是取号、收信、注册整条链路。
  *
- * 留空沿用上面的代理地址。这个默认是有意的：注册与使用从同一个地址出去，本来就更像
- * 同一台机器。
+ * 三种取值，按「越具体越优先」排列：
+ *   1. 选池里的某条出口 —— 存的是编号，换 IP 只改池里那一条；
+ *   2. 自己填一个地址 —— 一次性的、不值得进池的地址；
+ *   3. 都不填 —— 沿用上面的代理地址。这个默认是有意的：注册与使用从同一个地址
+ *      出去，本来就更像同一台机器。
  *
  * 「测试」是这一格存在的理由：地址值不值，只能从外面问一次它看起来是哪儿。
+ * 选了池里的出口就测那一条（结论记在池上，四处共用），否则测手上的地址。
  */
 export function SupplyEgressField({ values, disabled, onChange }: SharedFieldProps) {
   const { t } = useTranslation();
+  const pool = useEgressPool();
   const [probe, setProbe] = useState<EgressProbePhase>({ kind: 'idle' });
   // 每次测试领一个号；地址被改或又点了一次，旧号作废，晚到的答案不覆盖新结论。
   const probeToken = useRef(0);
 
+  // 池不可用（旧版服务端）时退回手填地址，这一格照旧能用。
+  const poolReady = pool.status === 'ready' && pool.entries.length > 0;
+  const selectedId = values.supplyEgressId.trim();
+  // 「自己填一个地址」是一种模式，不是一种取值：刚切过去时地址还是空的，
+  // 只看 `supplyEgress` 会让下拉框弹回「沿用」，输入框永远出不来。
+  const [customMode, setCustomMode] = useState(
+    () => values.supplyEgressId.trim() === '' && values.supplyEgress.trim() !== ''
+  );
+
   const test = useCallback(async () => {
     const token = ++probeToken.current;
     setProbe({ kind: 'testing' });
+    if (selectedId !== '') {
+      // 测的是这条池出口本身：结论会写回池，卡片与三处下拉看到的是同一个答案。
+      const outcome = await egressPoolApi.probe(Number(selectedId));
+      if (probeToken.current !== token) return;
+      if (!outcome.ok || !outcome.entry) {
+        setProbe({ kind: 'failed', message: outcome.ok ? '' : outcome.message });
+        return;
+      }
+      const recorded = outcome.entry.probe;
+      setProbe({
+        kind: 'ok',
+        result: {
+          ip: recorded?.ip ?? '',
+          region: recorded?.region ?? '',
+          network: recorded?.network ?? '',
+          latencyMs: recorded?.latencyMs ?? null,
+          direct: false,
+        },
+      });
+      await pool.reload();
+      return;
+    }
     const typed = values.supplyEgress.trim();
     // 留空时测的是**当前生效**的出口，不是「没有出口」。
     const outcome = await egressApi.probe(typed === '' ? undefined : typed);
@@ -146,23 +188,80 @@ export function SupplyEgressField({ values, disabled, onChange }: SharedFieldPro
       return;
     }
     setProbe({ kind: 'ok', result: outcome.result });
-  }, [values.supplyEgress]);
+  }, [pool, selectedId, values.supplyEgress]);
+
+  const resetProbe = () => {
+    probeToken.current += 1;
+    setProbe({ kind: 'idle' });
+  };
+
+  const selectOptions = poolReady
+    ? [
+        { value: '', label: t('egress_pool.supply_inherit') },
+        ...egressOptions(pool.entries).map((option) => ({
+          value: option.value,
+          label: option.enabled ? option.label : `${option.label} (${t('egress_pool.paused')})`,
+        })),
+        { value: CUSTOM_EGRESS, label: t('egress_pool.supply_custom') },
+      ]
+    : [];
+
+  const selectValue = selectedId !== '' ? selectedId : customMode ? CUSTOM_EGRESS : '';
 
   return (
     <FieldAnchor fieldId="supplyEgress" wide>
-      <Input
-        label={t('config_management.visual.sections.network.supply_egress')}
-        hint={t('config_management.visual.sections.network.supply_egress_hint')}
-        placeholder="socks5://user:pass@127.0.0.1:1080/"
-        value={values.supplyEgress}
-        onChange={(e) => {
-          onChange({ supplyEgress: e.target.value });
-          // 改了地址，上一次的结论就不再属于这一格。
-          probeToken.current += 1;
-          setProbe({ kind: 'idle' });
-        }}
-        disabled={disabled}
-      />
+      {poolReady ? (
+        <>
+          <FieldShell
+            label={t('config_management.visual.sections.network.supply_egress')}
+            hint={t('egress_pool.supply_hint')}
+          >
+            <Select
+              value={selectValue}
+              options={selectOptions}
+              disabled={disabled}
+              fullWidth
+              ariaLabel={t('config_management.visual.sections.network.supply_egress')}
+              onChange={(nextValue) => {
+                resetProbe();
+                if (nextValue === CUSTOM_EGRESS) {
+                  setCustomMode(true);
+                  onChange({ supplyEgressId: '' });
+                  return;
+                }
+                setCustomMode(false);
+                // 选了池里的出口就把手填地址清掉：地址与编号同时存在时编号优先，
+                // 留着旧地址只会让下一回改成「沿用」时突然走回一条烧掉的 IP。
+                onChange({ supplyEgressId: nextValue, supplyEgress: '' });
+              }}
+            />
+          </FieldShell>
+          {selectValue === CUSTOM_EGRESS && (
+            <Input
+              label={t('egress_pool.supply_custom_label')}
+              placeholder="socks5://user:pass@127.0.0.1:1080/"
+              value={values.supplyEgress}
+              onChange={(e) => {
+                onChange({ supplyEgress: e.target.value });
+                resetProbe();
+              }}
+              disabled={disabled}
+            />
+          )}
+        </>
+      ) : (
+        <Input
+          label={t('config_management.visual.sections.network.supply_egress')}
+          hint={t('config_management.visual.sections.network.supply_egress_hint')}
+          placeholder="socks5://user:pass@127.0.0.1:1080/"
+          value={values.supplyEgress}
+          onChange={(e) => {
+            onChange({ supplyEgress: e.target.value });
+            resetProbe();
+          }}
+          disabled={disabled}
+        />
+      )}
       <div className={fieldStyles.probeRow}>
         <Button
           variant="secondary"

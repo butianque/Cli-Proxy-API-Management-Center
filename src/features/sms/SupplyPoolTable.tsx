@@ -35,6 +35,7 @@ import {
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { IconAlertTriangle, IconPencil, IconPlug, IconTrash2 } from '@/components/ui/icons';
 import { supplyApi, type SupplyChannelInput } from '@/services/api/supply';
+import { EgressBindingSelect } from '@/features/egress/EgressBindingSelect';
 import { ChannelStatusStrip } from './ChannelStatusStrip';
 import { useChannelStatus } from './useChannelStatus';
 import { kindBlockInput } from './channelDraft';
@@ -42,6 +43,7 @@ import {
   toNatureOptions,
   toProbes,
   toSupplyChannels,
+  blockEgressId,
   CATEGORY_LABEL,
   NATURE_LABEL,
   connectionState,
@@ -275,11 +277,24 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
                   </TableRow>
                   <TableRow className={styles.stripRow}>
                     <TableCell colSpan={7}>
-                      <ChannelStatusStrip
-                        kind={kind}
-                        status={statuses.get(channel.id) ?? { kind: 'loading' }}
-                        pooled={channel.pooled[kind]}
-                      />
+                      <div className={styles.stripCell}>
+                        <ChannelStatusStrip
+                          kind={kind}
+                          status={statuses.get(channel.id) ?? { kind: 'loading' }}
+                          pooled={channel.pooled[kind]}
+                        />
+                        <span className={styles.stripEgress}>
+                          <EgressBindingSelect
+                            kind="channel"
+                            name={channel.id}
+                            supplyKind={kind}
+                            currentId={blockEgressId(block)}
+                            noneLabel={t('egress_pool.channel_inherit')}
+                            ariaLabel={t('egress_pool.binding_aria', { name: channel.label })}
+                            onChanged={() => void load()}
+                          />
+                        </span>
+                      </div>
                     </TableCell>
                   </TableRow>
                 </Fragment>

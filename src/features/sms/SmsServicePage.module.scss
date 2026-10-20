@@ -298,6 +298,22 @@ tr.stripRow:hover td {
   background: transparent;
 }
 
+/* 状态带右边那一格出口下拉框：属于这一条渠道，与状态同一行，靠右。 */
+.stripCell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.stripEgress {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  flex: none;
+}
+
 .strip {
   display: flex;
   flex-wrap: wrap;

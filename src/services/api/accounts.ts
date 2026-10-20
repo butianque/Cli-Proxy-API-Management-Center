@@ -227,6 +227,8 @@ export const normalizeAccountView = (value: unknown): AccountView => {
   const entitlement = optionalString(entry.entitlement);
   const openedAt = optionalString(entry.opened_at);
   const fetchedAt = optionalString(entry.fetched_at);
+  const egressId = optionalNumber(entry.egress_id);
+  const egress = optionalString(entry.egress);
 
   if (accountId !== undefined) account.accountId = accountId;
   if (site !== undefined) account.site = site;
@@ -243,6 +245,11 @@ export const normalizeAccountView = (value: unknown): AccountView => {
   if (entitlement !== undefined) account.entitlement = entitlement;
   if (openedAt !== undefined) account.openedAt = openedAt;
   if (fetchedAt !== undefined) account.fetchedAt = fetchedAt;
+  // 池 id 是正整数；0 与缺失同义（没绑），不造一个不存在的「第 0 条」。
+  if (egressId !== undefined && Number.isInteger(egressId) && egressId > 0) {
+    account.egressId = egressId;
+  }
+  if (egress !== undefined) account.egress = egress;
 
   return account;
 };

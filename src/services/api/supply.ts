@@ -27,6 +27,8 @@ export interface SupplyConnectionWire {
   domain?: string;
   /** OAuth2 的应用 ID；别的接入方式没有这一项。 */
   client_id?: string;
+  /** 这条连接绑在代理池的第几条出口；缺省 = 跟随供应整体出口。 */
+  egress_id?: number;
 }
 
 /** 一个种类块（后端 KindConfig）。 */

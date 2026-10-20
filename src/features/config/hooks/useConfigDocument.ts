@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { parse as parseYaml, parseDocument } from 'yaml';
 import { useConfigStore, useNotificationStore } from '@/stores';
+import { loadEgressPool } from '@/hooks/useEgressPool';
 import { configFileApi } from '@/services/api/configFile';
 import { apiClient } from '@/services/api/client';
 import {
@@ -238,6 +239,12 @@ export function useConfigDocument({
       setMergedYaml(latestContent);
       setPreviewServerYaml(latestContent);
       loadVisualValuesFromYaml(latestContent);
+
+      // The supply chain's exit is part of the YAML just written, so the pool's
+      // binding counts are stale from this moment on: re-read them, or the card
+      // keeps saying "nothing uses this exit" right under the field that now
+      // points at it.
+      void loadEgressPool();
 
       // Keep the global config store in sync so sidebar / other pages reflect YAML changes immediately.
       try {

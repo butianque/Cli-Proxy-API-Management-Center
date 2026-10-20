@@ -1,0 +1,14 @@
+/* 出口下拉框：与相邻的状态文字同一行，出错时只多一行小字，不撑开行高。 */
+
+.wrap {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.error {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--danger-color, #ef4444);
+}

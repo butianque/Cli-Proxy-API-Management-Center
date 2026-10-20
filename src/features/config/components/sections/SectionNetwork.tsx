@@ -14,6 +14,7 @@ import {
   ToggleRow,
 } from '../fields/FieldPrimitives';
 import { ProxyUrlField, SponsorHintSpacer, SupplyEgressField } from '../fields/sharedFields';
+import { EgressPoolCard } from '../blocks/EgressPoolCard';
 import { getValidationMessage } from '../blocks/shared';
 
 const Icon = CONFIG_TAB_ICONS.network;
@@ -200,6 +201,10 @@ export function SectionNetwork({
             />
           </FieldAnchor>
         </FieldGrid>
+
+        {/* 出口池紧跟在两个出口字段下面：它管的就是这两格能选到的东西，
+            放在别处会让人以为它是另一件不相干的事。 */}
+        <EgressPoolCard disabled={disabled} />
 
         <FieldGrid>
           <FieldAnchor fieldId="routingSessionAffinitySubagents">

@@ -62,6 +62,11 @@ export type AuthFileCardProps = {
   onCooldownReset: (file: AuthFileItem) => void;
   /** 路由策略改动的回传；`null` = 清除策略（回到默认）。 */
   onPolicyChange?: (policy: AccountPolicy | null) => void | Promise<void>;
+  /**
+   * 出口改完之后重新读一次账号视图。
+   * 缺省时卡片不显示出口下拉框（没有回读的地方，改完行上还是旧值）。
+   */
+  onEgressChanged?: () => void;
   /** 该账号是否有宿主额度通道；透传给账号池区块，false/缺省时不渲染额度区块。 */
   quotaCapable?: boolean;
   onOpenPrefixProxyEditor: (file: AuthFileItem) => void;
@@ -91,6 +96,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
     onManualRefresh,
     onCooldownReset,
     onPolicyChange,
+    onEgressChanged,
     quotaCapable,
     onOpenPrefixProxyEditor,
     onDelete,
@@ -278,6 +284,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
         account={account}
         providerKey={providerKey}
         quotaCapable={quotaCapable}
+        onEgressChanged={onEgressChanged}
       />
 
       <footer className={styles.actions}>

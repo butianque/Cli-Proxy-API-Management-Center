@@ -15,6 +15,7 @@ import { useConfigStore } from './useConfigStore';
 import { useModelsStore } from './useModelsStore';
 import { useQuotaStore } from './useQuotaStore';
 import { useSecretGateStore } from './useSecretGateStore';
+import { resetEgressPool } from '@/hooks/useEgressPool';
 import { detectApiBaseFromLocation, normalizeApiBase } from '@/utils/connection';
 
 interface AuthStoreState extends AuthState {
@@ -134,6 +135,8 @@ export const useAuthStore = create<AuthStoreState>()(
           useConfigStore.getState().clearCache();
           useModelsStore.getState().clearCache();
           useQuotaStore.getState().clearQuotaCache();
+          // 出口池属于上一个服务器：留着会让新连接看到别人的出口编号。
+          resetEgressPool();
 
           // 配置 API 客户端
           apiClient.setConfig({
@@ -214,6 +217,8 @@ export const useAuthStore = create<AuthStoreState>()(
         useConfigStore.getState().clearCache();
         useModelsStore.getState().clearCache();
         useQuotaStore.getState().clearQuotaCache();
+        // 出口池同理：登出后不该还能看到上一个服务器的出口编号。
+        resetEgressPool();
         set({
           isAuthenticated: false,
           apiBase: '',

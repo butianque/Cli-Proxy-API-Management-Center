@@ -205,6 +205,13 @@ export interface SupplyConnection {
   domain: string;
   /** OAuth2 的应用 ID。它不是秘密（刷新令牌才是），所以随渠道记录读回。 */
   clientId: string;
+  /**
+   * 这条连接绑在代理池的第几条出口；`0` = 没单独指定，跟随供应整体出口。
+   *
+   * 一条渠道可能同时有手机号块和邮箱块，各块可以走不同出口，所以出口挂在连接上，
+   * 不挂在渠道上。
+   */
+  egressId: number;
 }
 
 /** 一个种类块（UI 侧）。 */

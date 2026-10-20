@@ -162,7 +162,7 @@ export const FIELD_VALUE_KEYS: Record<string, readonly string[]> = {
   rmPanelRepo: ['rmPanelRepo'],
   // ── network ───────────────────────────────────────────────────────────────
   proxyUrl: ['proxyUrl'],
-  supplyEgress: ['supplyEgress'],
+  supplyEgress: ['supplyEgress', 'supplyEgressId'],
   requestRetry: ['requestRetry'],
   maxRetryCredentials: ['maxRetryCredentials'],
   maxRetryInterval: ['maxRetryInterval'],
