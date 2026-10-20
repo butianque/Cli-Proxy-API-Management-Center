@@ -375,19 +375,6 @@ export const CONFIG_FIELD_SEARCH_INDEX: ConfigFieldSearchEntry[] = [
   },
   // ── network ───────────────────────────────────────────────────────────────
   {
-    fieldId: 'proxyUrl',
-    sectionId: 'network',
-    labelKey: L('sections.network.proxy_url'),
-    yamlKeys: ['requests', 'proxy-url'],
-  },
-  {
-    fieldId: 'supplyEgress',
-    sectionId: 'network',
-    labelKey: L('sections.network.supply_egress'),
-    hintKey: L('sections.network.supply_egress_hint'),
-    yamlKeys: ['supply', 'egress'],
-  },
-  {
     fieldId: 'requestRetry',
     sectionId: 'network',
     labelKey: L('sections.network.request_retry'),

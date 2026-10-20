@@ -46,6 +46,23 @@
   padding: 18px 0;
 }
 
+/* 没有默认出口时，这一行说明现在请求从哪儿出去，并给下一步。
+   有默认出口时不出现：那时行上的徽标已经说清楚了。 */
+.current {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
 .list {
   display: flex;
   flex-direction: column;
@@ -105,9 +122,22 @@
   color: var(--caution-color, #d97706);
 }
 
+/* 全进程出口。行上的徽标是这件事唯一的说法，所以用实色，比编号牌更显眼。 */
+.defaultPill {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--success-badge-border);
+  border-radius: 5px;
+  background: var(--success-badge-bg);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--success-badge-text);
+}
+
 .entryActions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   margin-left: auto;
 }

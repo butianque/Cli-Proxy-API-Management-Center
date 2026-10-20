@@ -50,10 +50,30 @@ export interface EgressPoolEntry {
   accounts: number;
   /** 挂在这条出口上的渠道数。 */
   channels: number;
-  /** 供应整条链路（取号、收信、注册）的出口是不是这条。 */
-  supply: boolean;
-  /** 以上三项之和。 */
+  /** 这条出口就是全进程的出口：所有请求都从它出去。 */
+  isDefault: boolean;
+  /** 以上三项之和（含「全进程出口」这一处占用）。 */
   total: number;
+}
+
+/**
+ * 全进程的出口。
+ *
+ * 三种情况，界面要能一眼分开：池里某条是默认（`pool`），配置里手写了一个地址
+ * （`custom`），或者什么都不走、直接连（`source` 为空）。
+ */
+export interface EgressGlobal {
+  source: 'pool' | 'custom' | '';
+  /** `source === 'pool'` 时是哪一条；否则为 0。 */
+  defaultId: number;
+  /** 当前生效地址的脱敏形式；直接连时为空。 */
+  address: string;
+}
+
+/** 一次读取的结果：出口列表，以及全进程出口是谁。 */
+export interface EgressPoolRead {
+  entries: EgressPoolEntry[];
+  global: EgressGlobal;
 }
 
 /** 一次出口测试的结论：失败时也带着刚测过的那条出口的新状态。 */ export type EgressProbeOutcome =
@@ -132,7 +152,7 @@ export function normalizeEgressPoolEntry(value: unknown): EgressPoolEntry | null
   const counts = isRecord(value.counts) ? value.counts : {};
   const accounts = readCount(counts.account);
   const channels = readCount(counts.channel);
-  const supply = counts.supply === 1 || counts.supply === true;
+  const isDefault = value.default === true;
   return {
     id,
     url: trimString(value.url),
@@ -142,18 +162,35 @@ export function normalizeEgressPoolEntry(value: unknown): EgressPoolEntry | null
     probe: normalizeProbe(value.last_probe),
     accounts,
     channels,
-    supply,
-    total: accounts + channels + (supply ? 1 : 0),
+    isDefault,
+    // The total comes from the server: it also counts the process-wide exit, and
+    // the "still in use" message has to quote the same number the server refuses
+    // on. Deriving it here would drift by exactly that one.
+    total: readCount(value.total) || accounts + channels + (isDefault ? 1 : 0),
   };
 }
 
-function normalizeEntries(payload: unknown): EgressPoolEntry[] {
+/** 全进程出口。`source` 认不出来的按「不知道」处理，不假装它是池里的某条。 */
+export function normalizeEgressGlobal(payload: unknown): EgressGlobal {
+  const source = isRecord(payload) ? payload : {};
+  const kind = trimString(source.source);
+  return {
+    source: kind === 'pool' || kind === 'custom' ? kind : '',
+    defaultId: readCount(source.default_id),
+    address: trimString(source.address),
+  };
+}
+
+function normalizePoolRead(payload: unknown): EgressPoolRead {
   const source = isRecord(payload) ? payload : {};
   const entries = Array.isArray(source.entries) ? source.entries : [];
-  return entries
-    .map(normalizeEgressPoolEntry)
-    .filter((entry): entry is EgressPoolEntry => entry !== null)
-    .sort((left, right) => left.id - right.id);
+  return {
+    entries: entries
+      .map(normalizeEgressPoolEntry)
+      .filter((entry): entry is EgressPoolEntry => entry !== null)
+      .sort((left, right) => left.id - right.id),
+    global: normalizeEgressGlobal(source.global),
+  };
 }
 
 /** 把绑定目标写成后端的请求体。空字段不发送，让后端按「全部」处理。 */
@@ -168,9 +205,9 @@ function targetBody(target: EgressTarget): Record<string, unknown> {
 
 export const egressPoolApi = {
   /** 列出全部出口。旧版后端没有这组接口时抛 `EgressPoolUnsupportedError`。 */
-  async list(): Promise<EgressPoolEntry[]> {
+  async list(): Promise<EgressPoolRead> {
     try {
-      return normalizeEntries(await apiClient.get<unknown>(POOL_BASE));
+      return normalizePoolRead(await apiClient.get<unknown>(POOL_BASE));
     } catch (error) {
       if (isMissingEndpoint(error)) throw new EgressPoolUnsupportedError();
       throw error;
@@ -213,6 +250,25 @@ export const egressPoolApi = {
   /** 删一条出口。还有东西挂在上头时后端返回 409，原因交给调用方显示。 */
   async remove(id: number): Promise<void> {
     await apiClient.delete<unknown>(`${POOL_BASE}/${id}`);
+  },
+
+  /**
+   * 指定全进程从哪条出口出去。传 0 表示取消默认。
+   *
+   * 改完立刻生效：消费方每次请求都问一次当前出口，没有需要重新加载的地方。
+   */
+  async setDefault(id: number): Promise<void> {
+    await apiClient.post<unknown>(`${POOL_BASE}/default`, { id });
+  },
+
+  /**
+   * 把配置里手写的地址收进池。
+   *
+   * 旧安装的出口写在配置里，那是同一个出口的第二份记录。收进池之后地址只有
+   * 一处，以后换地址就是改一行。
+   */
+  async importTyped(): Promise<void> {
+    await apiClient.post<unknown>(`${POOL_BASE}/import`);
   },
 
   /** 从外面问一次这条出口看起来是哪儿，并把答案记下来。 */

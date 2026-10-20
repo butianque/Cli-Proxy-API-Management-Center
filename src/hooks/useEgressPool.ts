@@ -1,9 +1,9 @@
 /**
  * 代理池的一份共享读取。
  *
- * 池被四个地方同时看着：网络配置里的池卡片，以及账号池、渠道池、供应出口三处
- * 下拉框。每处各拉一次会得到四个互相矛盾的快照（刚绑完的那一处显示已绑，
- * 另外三处还显示未绑），所以只留一份状态，谁改完谁喊一声重新读。
+ * 池被三处同时看着：网络配置里的代理 URL 池，以及账号池、渠道池两处下拉框。
+ * 每处各拉一次会得到互相矛盾的快照（刚绑完的那处显示已绑，别处还显示未绑），
+ * 所以只留一份状态，谁改完谁喊一声重新读。
  *
  * 状态里带 `unsupported`：旧版服务端没有这组接口，那不是错误，是「这版还没有」，
  * 面板要显示空态与下一步，而不是一条红色报错。
@@ -13,19 +13,25 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import {
   EgressPoolUnsupportedError,
   egressPoolApi,
+  type EgressGlobal,
   type EgressPoolEntry,
 } from '@/services/api/egressPool';
 
 export type EgressPoolStatus = 'idle' | 'loading' | 'ready' | 'unsupported' | 'error';
 
+/** 什么都没配时的全进程出口：不走代理，直接连。 */
+const DIRECT: EgressGlobal = { source: '', defaultId: 0, address: '' };
+
 export interface EgressPoolSnapshot {
   status: EgressPoolStatus;
   entries: EgressPoolEntry[];
+  /** 全进程从哪儿出去。池里的默认、配置里手写的地址，或直接连。 */
+  global: EgressGlobal;
   /** 上次读取失败的原因；成功时为空。 */
   error: string;
 }
 
-const EMPTY: EgressPoolSnapshot = { status: 'idle', entries: [], error: '' };
+const EMPTY: EgressPoolSnapshot = { status: 'idle', entries: [], global: DIRECT, error: '' };
 
 let snapshot: EgressPoolSnapshot = EMPTY;
 let inflight: Promise<void> | null = null;
@@ -53,21 +59,22 @@ function getSnapshot(): EgressPoolSnapshot {
 export function loadEgressPool(): Promise<void> {
   if (inflight) return inflight;
   if (snapshot.status !== 'ready') {
-    publish({ status: 'loading', entries: snapshot.entries, error: '' });
+    publish({ status: 'loading', entries: snapshot.entries, global: snapshot.global, error: '' });
   }
   inflight = egressPoolApi
     .list()
-    .then((entries) => {
-      publish({ status: 'ready', entries, error: '' });
+    .then((read) => {
+      publish({ status: 'ready', entries: read.entries, global: read.global, error: '' });
     })
     .catch((error: unknown) => {
       if (error instanceof EgressPoolUnsupportedError) {
-        publish({ status: 'unsupported', entries: [], error: '' });
+        publish({ status: 'unsupported', entries: [], global: DIRECT, error: '' });
         return;
       }
       publish({
         status: 'error',
         entries: [],
+        global: DIRECT,
         error: error instanceof Error && error.message ? error.message : '',
       });
     })

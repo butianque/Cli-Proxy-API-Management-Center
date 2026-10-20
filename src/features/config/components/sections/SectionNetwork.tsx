@@ -13,7 +13,7 @@ import {
   FieldStack,
   ToggleRow,
 } from '../fields/FieldPrimitives';
-import { ProxyUrlField, SponsorHintSpacer, SupplyEgressField } from '../fields/sharedFields';
+import { SponsorHintSpacer } from '../fields/sharedFields';
 import { EgressPoolCard } from '../blocks/EgressPoolCard';
 import { getValidationMessage } from '../blocks/shared';
 
@@ -69,9 +69,11 @@ export function SectionNetwork({
       animateIn={animateIn}
     >
       <FieldStack>
+        {/* 代理 URL 池是这个区块的主任务：所有出口都在这一处，账号与渠道按编号
+            指向其中一条。重试与路由是围绕它的设置，排在后面。 */}
+        <EgressPoolCard disabled={disabled} />
+
         <FieldGrid>
-          <ProxyUrlField values={values} disabled={disabled} onChange={onChange} />
-          <SupplyEgressField values={values} disabled={disabled} onChange={onChange} />
           <FieldAnchor fieldId="requestRetry">
             <Input
               label={t('config_management.visual.sections.network.request_retry')}
@@ -201,10 +203,6 @@ export function SectionNetwork({
             />
           </FieldAnchor>
         </FieldGrid>
-
-        {/* 出口池紧跟在两个出口字段下面：它管的就是这两格能选到的东西，
-            放在别处会让人以为它是另一件不相干的事。 */}
-        <EgressPoolCard disabled={disabled} />
 
         <FieldGrid>
           <FieldAnchor fieldId="routingSessionAffinitySubagents">

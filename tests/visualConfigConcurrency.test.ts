@@ -12,18 +12,18 @@ describe('visual config concurrency', () => {
 
       if (phase === 0) {
         visualConfig.loadVisualValuesFromYaml(
-          'requests:\n  proxy-url: http://old-proxy.example\nobservability:\n  logs:\n    debug: false\n'
+          'routing:\n  retry:\n    request-retry: 3\nobservability:\n  logs:\n    debug: false\n'
         );
         setPhase(1);
       } else if (phase === 1) {
-        visualConfig.setVisualValues({ proxyUrl: 'http://localhost:8080' });
+        visualConfig.setVisualValues({ requestRetry: '7' });
         setPhase(2);
       } else {
         return createElement(
           'pre',
           null,
           visualConfig.applyVisualChangesToYaml(
-            'requests:\n  proxy-url: http://old-proxy.example\nobservability:\n  logs:\n    debug: true\n'
+            'routing:\n  retry:\n    request-retry: 3\nobservability:\n  logs:\n    debug: true\n'
           )
         );
       }
@@ -36,7 +36,7 @@ describe('visual config concurrency', () => {
 
     expect(parseYaml(merged)).toEqual({
       observability: { logs: { debug: true } },
-      requests: { 'proxy-url': 'http://localhost:8080' },
+      routing: { retry: { 'request-retry': 7 } },
     });
   });
 });

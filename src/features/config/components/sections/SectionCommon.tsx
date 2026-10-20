@@ -10,7 +10,6 @@ import {
   HostField,
   LoggingToFileToggle,
   PortField,
-  ProxyUrlField,
   QuotaSwitchPreviewModelToggle,
   QuotaSwitchProjectToggle,
   SponsorHintSpacer,
@@ -54,7 +53,6 @@ export function SectionCommon({
             error={portError}
             topExtra={<SponsorHintSpacer />}
           />
-          <ProxyUrlField values={values} disabled={disabled} onChange={onChange} />
         </FieldGrid>
 
         <ApiKeysField values={values} disabled={disabled} onChange={onChange} />

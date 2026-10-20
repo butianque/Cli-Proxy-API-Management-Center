@@ -1,15 +1,20 @@
 /**
  * 代理池的读取面：把后端的一行归一成界面要的形状。
  *
- * 这里守三条不能含糊的规则：
+ * 这里守四条不能含糊的规则：
  *   1. 没有地址就不算测通 —— 「没测过」不能被显示成「通了」；
  *   2. 缺计数只保证不变成 NaN，不假装它是「没人用」的证据；
- *   3. 下拉框的编号必须能分辨，停用的也要能选（它还挂着账号）。
+ *   3. 下拉框的编号必须能分辨，停用的也要能选（它还挂着账号）；
+ *   4. 「全进程从哪儿出去」三种情况要能分开：池里某条、手写地址、直接连。
  */
 
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
-import { egressOptions, normalizeEgressPoolEntry } from '@/services/api/egressPool';
+import {
+  egressOptions,
+  normalizeEgressGlobal,
+  normalizeEgressPoolEntry,
+} from '@/services/api/egressPool';
 import { blockEgressId } from '@/features/sms/smsMapping';
 import type { SupplyKindConfig } from '@/features/sms/types';
 
@@ -36,7 +41,7 @@ describe('egress pool entry normalization', () => {
         latency_ms: 213,
         at: 1_760_000_000,
       },
-      counts: { account: 3, channel: 1, supply: 1 },
+      counts: { account: 3, channel: 1, global: 1 },
       total: 5,
     });
 
@@ -51,10 +56,11 @@ describe('egress pool entry normalization', () => {
       latencyMs: 213,
       at: 1_760_000_000,
     });
-    // 占用三项分开报，也合成一个总数：行上一句话要说清「这条出口占了多少地方」。
+    // 账号与渠道分开报，总数由后端给：删不掉时那句话里的数字必须是后端认的那个，
+    // 界面自己再加一遍就会和它差一。
     expect(entry?.accounts).toBe(3);
     expect(entry?.channels).toBe(1);
-    expect(entry?.supply).toBe(true);
+    expect(entry?.isDefault).toBe(false);
     expect(entry?.total).toBe(5);
   });
 
@@ -81,8 +87,26 @@ describe('egress pool entry normalization', () => {
     const entry = normalizeEgressPoolEntry({ id: 3, url: 'socks5://c' });
     expect(entry?.accounts).toBe(0);
     expect(entry?.channels).toBe(0);
-    expect(entry?.supply).toBe(false);
+    expect(entry?.isDefault).toBe(false);
     expect(entry?.total).toBe(0);
+  });
+
+  test('reads the process-wide exit, so the page can say where requests leave from', () => {
+    expect(
+      normalizeEgressGlobal({
+        source: 'pool',
+        default_id: 2,
+        address: 'socks5://u:***@1.2.3.4:1080',
+      })
+    ).toEqual({ source: 'pool', defaultId: 2, address: 'socks5://u:***@1.2.3.4:1080' });
+    expect(normalizeEgressGlobal({ source: 'custom', address: 'http://typed:8080' })).toEqual({
+      source: 'custom',
+      defaultId: 0,
+      address: 'http://typed:8080',
+    });
+    // 什么都不走代理时后端不带 source：不要把它读成「池里的某一条」。
+    expect(normalizeEgressGlobal({})).toEqual({ source: '', defaultId: 0, address: '' });
+    expect(normalizeEgressGlobal(null)).toEqual({ source: '', defaultId: 0, address: '' });
   });
 
   test('treats a missing enabled flag as enabled, since entries default to on', () => {

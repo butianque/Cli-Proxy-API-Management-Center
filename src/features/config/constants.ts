@@ -61,7 +61,6 @@ export const COMMON_FIELD_IDS = [
   'host',
   'port',
   'apiKeys',
-  'proxyUrl',
   'debug',
   'loggingToFile',
   'quotaSwitchProject',
@@ -161,8 +160,6 @@ export const FIELD_VALUE_KEYS: Record<string, readonly string[]> = {
   rmDisableAutoUpdatePanel: ['rmDisableAutoUpdatePanel'],
   rmPanelRepo: ['rmPanelRepo'],
   // ── network ───────────────────────────────────────────────────────────────
-  proxyUrl: ['proxyUrl'],
-  supplyEgress: ['supplyEgress', 'supplyEgressId'],
   requestRetry: ['requestRetry'],
   maxRetryCredentials: ['maxRetryCredentials'],
   maxRetryInterval: ['maxRetryInterval'],

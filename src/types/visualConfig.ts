@@ -178,20 +178,6 @@ export type VisualConfigValues = {
   errorLogsMaxFiles: string;
   usageStatisticsEnabled: boolean;
   redisUsageQueueRetentionSeconds: string;
-  proxyUrl: string;
-  /**
-   * 接码与注册的出口；留空表示沿用 `proxyUrl`。
-   *
-   * 与 `proxyUrl` 分开是因为它们是两段不同的流量：取号、收信、注册是一段，转发模型
-   * 请求是另一段。一个低质量的机房地址可以只用来接码，不拖累模型流量；反过来，把
-   * 两段都放在同一个地址上也是对的（注册与使用看起来像同一台机器），所以默认沿用。
-   */
-  supplyEgress: string;
-  /**
-   * 取号、收信、注册走代理池的第几条出口；留空表示没指定，按 `supplyEgress`
-   * 或上面的代理地址走。存编号而不是地址：换 IP 只改池里那一条，这一格不用动。
-   */
-  supplyEgressId: string;
   forceModelPrefix: boolean;
   passthroughHeaders: boolean;
   requestRetry: string;
@@ -295,9 +281,6 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   errorLogsMaxFiles: '',
   usageStatisticsEnabled: false,
   redisUsageQueueRetentionSeconds: '',
-  proxyUrl: '',
-  supplyEgress: '',
-  supplyEgressId: '',
   forceModelPrefix: false,
   passthroughHeaders: false,
   requestRetry: '',

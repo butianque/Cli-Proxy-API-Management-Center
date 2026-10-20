@@ -73,9 +73,10 @@ describe('YAML document editing semantics', () => {
   test('retains existing empty string keys rather than treating all blanks as numeric resets', () => {
     const yaml =
       'server:\n  tls:\n    cert: fixture.pem\n    key: fixture.key\nrequests:\n  proxy-url: http://proxy.example\n';
-    const config = runVisualConfig(yaml, [{ proxyUrl: '', tlsCert: '' }]);
+    const config = runVisualConfig(yaml, [{ tlsCert: '' }]);
+    // 手写的代理地址不再由面板管：改别的字段时它原样留在文件里，不会被顺手清掉。
     expect(parseYaml(config.applyVisualChangesToYaml(yaml))).toEqual({
-      requests: { 'proxy-url': '' },
+      requests: { 'proxy-url': 'http://proxy.example' },
       server: { tls: { cert: '', key: 'fixture.key' } },
     });
   });
