@@ -187,6 +187,55 @@
   }
 }
 
+/* 出口测试：按钮与结论同一行，结论只报问到的几件事（地址 / 地区 / 网络 / 往返）。
+   问不到就不写一行「看起来通了」——那是编的。 */
+.probeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+
+.probeResult {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.probeTag {
+  padding: 1px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  font-weight: 600;
+}
+
+.probeValue {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+.probeFailed {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+  color: var(--danger-color, #ef4444);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.probeFailedHint {
+  color: var(--text-secondary);
+}
+
 /* 与正文融为一体的高亮链接：同字号，复用全站金色（amber）badge 配方，hover 底色加深。 */
 .fieldSponsorLink {
   display: inline-flex;

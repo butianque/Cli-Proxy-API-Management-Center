@@ -13,7 +13,7 @@ import {
   FieldStack,
   ToggleRow,
 } from '../fields/FieldPrimitives';
-import { ProxyUrlField, SponsorHintSpacer } from '../fields/sharedFields';
+import { ProxyUrlField, SponsorHintSpacer, SupplyEgressField } from '../fields/sharedFields';
 import { getValidationMessage } from '../blocks/shared';
 
 const Icon = CONFIG_TAB_ICONS.network;
@@ -70,6 +70,7 @@ export function SectionNetwork({
       <FieldStack>
         <FieldGrid>
           <ProxyUrlField values={values} disabled={disabled} onChange={onChange} />
+          <SupplyEgressField values={values} disabled={disabled} onChange={onChange} />
           <FieldAnchor fieldId="requestRetry">
             <Input
               label={t('config_management.visual.sections.network.request_retry')}

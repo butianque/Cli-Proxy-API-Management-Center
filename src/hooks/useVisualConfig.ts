@@ -1250,6 +1250,7 @@ function getNextDirtyFields(
       'loggingToFile',
       'logsMaxTotalSizeMb',
       'proxyUrl',
+      'supplyEgress',
       'forceModelPrefix',
       'requestRetry',
       'maxRetryCredentials',
@@ -1424,6 +1425,7 @@ function parseVisualValuesFromYaml(yamlContent: string): VisualConfigValues {
   const v8RoutingRetry = asRecord(v8Routing?.['retry']);
   const v8RoutingCooldown = asRecord(v8Routing?.['cooldown']);
   const v8Requests = asRecord(parsed?.['requests']);
+  const v8Supply = asRecord(parsed?.['supply']);
   const v8Oauth = asRecord(parsed?.['oauth']);
   const v8OauthProviders = asRecord(v8Oauth?.['providers']);
   const v8OauthProvidersAistudio = asRecord(v8OauthProviders?.['aistudio']);
@@ -1483,6 +1485,7 @@ function parseVisualValuesFromYaml(yamlContent: string): VisualConfigValues {
     ),
 
     proxyUrl: typeof v8Requests?.['proxy-url'] === 'string' ? v8Requests?.['proxy-url'] : '',
+    supplyEgress: typeof v8Supply?.['egress'] === 'string' ? v8Supply?.['egress'] : '',
     forceModelPrefix: Boolean(v8Routing?.['force-model-prefix']),
     passthroughHeaders: Boolean(v8Requests?.['passthrough-headers']),
     requestRetry: String(v8RoutingRetry?.['request-retry'] ?? ''),
@@ -1825,6 +1828,8 @@ export function useVisualConfig() {
 
         if (dirtyFields.has('proxyUrl'))
           setStringInDoc(doc, ['requests', 'proxy-url'], values.proxyUrl);
+        if (dirtyFields.has('supplyEgress'))
+          setStringInDoc(doc, ['supply', 'egress'], values.supplyEgress);
         if (dirtyFields.has('forceModelPrefix')) {
           setBooleanInDoc(doc, ['routing', 'force-model-prefix'], values.forceModelPrefix);
         }

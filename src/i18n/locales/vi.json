@@ -1238,6 +1238,13 @@
           "ws_auth": "Xác thực WebSocket",
           "ws_auth_desc": "Bật xác thực WebSocket (/v1/ws)",
           "proxy_url_sponsor_hint": "Chưa có proxy phù hợp?",
+          "supply_egress": "Lối ra đăng ký",
+          "supply_egress_hint": "Thuê số, đọc hộp thư và đăng ký đều đi qua địa chỉ này. Để trống để dùng proxy ở trên.",
+          "supply_egress_test": "Kiểm tra lối ra",
+          "supply_egress_failed": "Kiểm tra thất bại: {{message}}",
+          "supply_egress_failed_hint": "Kiểm tra lại địa chỉ và cổng rồi thử lại.",
+          "supply_egress_no_ip": "Không nhận được địa chỉ. Hãy thử lại.",
+          "supply_egress_direct": "Trực tiếp",
           "max_retry_interval_hint": "Đặt thành 0 hoặc số nguyên âm để bỏ qua thời gian chờ cooldown giữa các lượt thử lại."
         },
         "quota": {

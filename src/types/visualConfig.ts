@@ -179,6 +179,14 @@ export type VisualConfigValues = {
   usageStatisticsEnabled: boolean;
   redisUsageQueueRetentionSeconds: string;
   proxyUrl: string;
+  /**
+   * 接码与注册的出口；留空表示沿用 `proxyUrl`。
+   *
+   * 与 `proxyUrl` 分开是因为它们是两段不同的流量：取号、收信、注册是一段，转发模型
+   * 请求是另一段。一个低质量的机房地址可以只用来接码，不拖累模型流量；反过来，把
+   * 两段都放在同一个地址上也是对的（注册与使用看起来像同一台机器），所以默认沿用。
+   */
+  supplyEgress: string;
   forceModelPrefix: boolean;
   passthroughHeaders: boolean;
   requestRetry: string;
@@ -283,6 +291,7 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   usageStatisticsEnabled: false,
   redisUsageQueueRetentionSeconds: '',
   proxyUrl: '',
+  supplyEgress: '',
   forceModelPrefix: false,
   passthroughHeaders: false,
   requestRetry: '',
