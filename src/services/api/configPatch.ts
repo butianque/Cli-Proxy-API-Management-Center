@@ -26,9 +26,12 @@ function parseConfig(source: string): Record<string, unknown> {
   function convert(value: unknown): unknown {
     if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
     if (typeof value === 'bigint') {
+      // JSON carries doubles, so an integer is only written as a number when it survives the
+      // round trip. Values such as 2^53 + 1 stay exact here: they can be compared and deleted,
+      // and are rejected only when a patch actually has to carry them.
       const number = Number(value);
-      if (!Number.isSafeInteger(number)) throw new Error('Configuration integer is not JSON-safe');
-      return number;
+      if (Number.isFinite(number) && BigInt(number) === value) return number;
+      return value;
     }
     if (typeof value === 'number' && Number.isFinite(value)) return value;
     if (typeof value !== 'object' || value === null || active.has(value)) {
@@ -53,6 +56,20 @@ function parseConfig(source: string): Record<string, unknown> {
   const result = convert(doc.toJS({ mapAsMap: true, maxAliasCount: 100 }));
   if (!isMap(result)) throw new Error('Configuration root must be a map');
   return result;
+}
+
+// A patch crosses the wire as JSON, so an exact integer with no double representation cannot
+// be carried. Rejecting it here keeps the failure on the field that changed instead of on the
+// whole document, where one untouched large id would block every unrelated save.
+function jsonSafe(value: unknown): unknown {
+  if (typeof value === 'bigint') throw new Error('Configuration integer is not JSON-safe');
+  if (Array.isArray(value)) return value.map(jsonSafe);
+  if (isMap(value)) {
+    const result = record();
+    for (const [key, child] of Object.entries(value)) result[key] = jsonSafe(child);
+    return result;
+  }
+  return value;
 }
 
 function equal(a: unknown, b: unknown): boolean {
@@ -120,7 +137,7 @@ export function buildConfigPatch(beforeYaml: string, afterYaml: string): ConfigP
         const child = diff(old[key], next[key], [...path, key]);
         if (Object.keys(child).length) patch[key] = child;
       } else {
-        patch[key] = next[key];
+        patch[key] = jsonSafe(next[key]);
       }
     }
     return patch;

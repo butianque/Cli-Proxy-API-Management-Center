@@ -144,7 +144,6 @@ describe('buildConfigPatch', () => {
     '42',
     'a: .nan',
     'a: .inf',
-    'a: 9007199254740993',
     '? [a, b]\n: 1',
     '1: value',
     'a: &a [*a]',
@@ -155,6 +154,30 @@ describe('buildConfigPatch', () => {
       expect(() => buildConfigPatch(invalid, '{}')).toThrow();
     });
   }
+
+  // Large ids such as a proxy-library id are ordinary integers as long as the double holds them.
+  test('accepts integers that survive the JSON round trip', () => {
+    const yaml = 'plugins: {id: 19809665271689216}';
+    expect(buildConfigPatch(yaml, yaml)).toEqual({ patch: {}, deletions: [] });
+    expect(buildConfigPatch('{}', yaml).patch).toEqual({ plugins: { id: 19809665271689216 } });
+  });
+
+  // 2^53 + 1 has no double representation: it can be compared and removed, but not written.
+  test('rejects an unwritable integer only when the patch must carry it', () => {
+    const yaml = 'plugins: {id: 9007199254740993}';
+    expect(() => buildConfigPatch('{}', yaml)).toThrow('Configuration integer is not JSON-safe');
+    expect(buildConfigPatch(yaml, '{}').deletions).toEqual([['plugins', 'id']]);
+  });
+
+  // One untouched large id must not block saving an unrelated field.
+  test('keeps an untouched unwritable integer out of the patch', () => {
+    const before = 'plugins: {id: 9007199254740993}\nserver: {port: 8317}';
+    const after = 'plugins: {id: 9007199254740993}\nserver: {port: 8318}';
+    expect(buildConfigPatch(before, after)).toEqual({
+      patch: { server: { port: 8318 } },
+      deletions: [],
+    });
+  });
 
   for (const key of ['', '.', '..', 'a/b', 'a\\b']) {
     test(`rejects unrepresentable deletion path ${JSON.stringify(key)}`, () => {
