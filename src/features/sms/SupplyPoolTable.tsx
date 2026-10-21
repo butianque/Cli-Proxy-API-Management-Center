@@ -289,7 +289,7 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
                             name={channel.id}
                             supplyKind={kind}
                             currentId={blockEgressId(block)}
-                            noneLabel={t('egress_pool.channel_inherit')}
+                            noneLabel={t('egress_pool.none_direct')}
                             ariaLabel={t('egress_pool.binding_aria', { name: channel.label })}
                             onChanged={() => void load()}
                           />

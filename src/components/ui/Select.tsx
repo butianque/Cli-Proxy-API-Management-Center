@@ -16,6 +16,13 @@ import styles from './Select.module.scss';
 export interface SelectOption {
   value: string;
   label: string;
+  /**
+   * 第二行说明，例如一条出口的地址。
+   *
+   * 有些选项光看名字分不清（几条同名的出口、几条只有编号的地址），把它们挤在
+   * 一行里只能靠截断，谁也认不出谁。第二行让「这是什么」和「它长什么样」各占一行。
+   */
+  description?: string;
 }
 
 interface SelectProps {
@@ -37,6 +44,11 @@ interface SelectProps {
 const VIEWPORT_MARGIN = 8;
 const DROPDOWN_OFFSET = 6;
 const DROPDOWN_MAX_HEIGHT = 240;
+/**
+ * 下拉最大宽度。窄触发器上的下拉如果只跟着触发器宽，选项就会折成「直／连」这种
+ * 两字一行的样子；宽度跟内容走、再用这个上限收住，长标签才不至于横到屏幕外面。
+ */
+const DROPDOWN_MAX_WIDTH = 420;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -44,11 +56,17 @@ const resolveDropdownStyle = (element: HTMLElement): CSSProperties => {
   const rect = element.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
-  const width = Math.min(rect.width, Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2));
+  // 触发器的宽度只是下限：真正宽度由内容决定（见 DROPDOWN_MAX_WIDTH）。
+  const available = Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2);
+  const minWidth = Math.min(rect.width, available);
   const left = clamp(
     rect.left,
     VIEWPORT_MARGIN,
-    Math.max(VIEWPORT_MARGIN, viewportWidth - width - VIEWPORT_MARGIN)
+    Math.max(VIEWPORT_MARGIN, viewportWidth - minWidth - VIEWPORT_MARGIN)
+  );
+  const maxWidth = Math.min(
+    Math.max(minWidth, DROPDOWN_MAX_WIDTH),
+    Math.max(0, viewportWidth - left - VIEWPORT_MARGIN)
   );
   const spaceBelow = viewportHeight - rect.bottom - VIEWPORT_MARGIN - DROPDOWN_OFFSET;
   const spaceAbove = rect.top - VIEWPORT_MARGIN - DROPDOWN_OFFSET;
@@ -63,14 +81,16 @@ const resolveDropdownStyle = (element: HTMLElement): CSSProperties => {
         position: 'fixed',
         top: rect.bottom + DROPDOWN_OFFSET,
         left,
-        width,
+        minWidth,
+        maxWidth,
         maxHeight,
       }
     : {
         position: 'fixed',
         bottom: viewportHeight - rect.top + DROPDOWN_OFFSET,
         left,
-        width,
+        minWidth,
+        maxWidth,
         maxHeight,
       };
 };
@@ -339,7 +359,14 @@ export function Select({
               onKeyDown={handleKeyDown}
               onClick={() => commitSelection(index)}
             >
-              <span className={styles.optionLabel}>{opt.label}</span>
+              <span className={styles.optionLabel}>
+                <span className={styles.optionTitle}>{opt.label}</span>
+                {opt.description ? (
+                  <span className={styles.optionDescription} title={opt.description}>
+                    {opt.description}
+                  </span>
+                ) : null}
+              </span>
               {active ? (
                 <span className={styles.optionCheck} aria-hidden="true">
                   <IconCheck size={14} />

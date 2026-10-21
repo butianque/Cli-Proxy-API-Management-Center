@@ -22,7 +22,7 @@ export interface EgressBindingSelectProps {
   kind: 'account' | 'channel';
   /** 现在绑的是第几条；`0` = 没绑。 */
   currentId: number;
-  /** 「没绑」在这一处的实际含义（账号是直连，渠道是跟随默认出口）。 */
+  /** 「没绑」在这一处的实际含义（不指定出口就是直连）。 */
   noneLabel: string;
   /** 渠道专用：只改这一类块（`phone` / `email`）；省略表示这条渠道的全部。 */
   supplyKind?: string;
@@ -80,6 +80,7 @@ export function EgressBindingSelect({
     ...egressOptions(pool.entries).map((option) => ({
       value: option.value,
       label: option.enabled ? option.label : `${option.label} (${t('egress_pool.paused')})`,
+      description: option.description,
     })),
   ];
 

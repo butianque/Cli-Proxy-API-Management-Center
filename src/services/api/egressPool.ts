@@ -50,30 +50,13 @@ export interface EgressPoolEntry {
   accounts: number;
   /** 挂在这条出口上的渠道数。 */
   channels: number;
-  /** 这条出口就是全进程的出口：所有请求都从它出去。 */
-  isDefault: boolean;
-  /** 以上三项之和（含「全进程出口」这一处占用）。 */
+  /** 以上两项之和（含后端算出的总占用）。 */
   total: number;
 }
 
-/**
- * 全进程的出口。
- *
- * 三种情况，界面要能一眼分开：池里某条是默认（`pool`），配置里手写了一个地址
- * （`custom`），或者什么都不走、直接连（`source` 为空）。
- */
-export interface EgressGlobal {
-  source: 'pool' | 'custom' | '';
-  /** `source === 'pool'` 时是哪一条；否则为 0。 */
-  defaultId: number;
-  /** 当前生效地址的脱敏形式；直接连时为空。 */
-  address: string;
-}
-
-/** 一次读取的结果：出口列表，以及全进程出口是谁。 */
+/** 一次读取的结果：出口列表。 */
 export interface EgressPoolRead {
   entries: EgressPoolEntry[];
-  global: EgressGlobal;
 }
 
 /** 一次出口测试的结论：失败时也带着刚测过的那条出口的新状态。 */ export type EgressProbeOutcome =
@@ -94,7 +77,10 @@ export interface EgressTarget {
 /** 下拉框里的一个选项。 */
 export interface EgressOption {
   value: string;
+  /** 第一行：`#3 香港 1`。没有名字就只有编号，两条没名字的出口仍然分得开。 */
   label: string;
+  /** 第二行：脱敏地址，用来认出是哪一条。 */
+  description: string;
   /** 停用的出口仍然可选（有东西挂在上头时必须能显示），但要标注出来。 */
   enabled: boolean;
 }
@@ -152,7 +138,6 @@ export function normalizeEgressPoolEntry(value: unknown): EgressPoolEntry | null
   const counts = isRecord(value.counts) ? value.counts : {};
   const accounts = readCount(counts.account);
   const channels = readCount(counts.channel);
-  const isDefault = value.default === true;
   return {
     id,
     url: trimString(value.url),
@@ -162,22 +147,9 @@ export function normalizeEgressPoolEntry(value: unknown): EgressPoolEntry | null
     probe: normalizeProbe(value.last_probe),
     accounts,
     channels,
-    isDefault,
-    // The total comes from the server: it also counts the process-wide exit, and
-    // the "still in use" message has to quote the same number the server refuses
-    // on. Deriving it here would drift by exactly that one.
-    total: readCount(value.total) || accounts + channels + (isDefault ? 1 : 0),
-  };
-}
-
-/** 全进程出口。`source` 认不出来的按「不知道」处理，不假装它是池里的某条。 */
-export function normalizeEgressGlobal(payload: unknown): EgressGlobal {
-  const source = isRecord(payload) ? payload : {};
-  const kind = trimString(source.source);
-  return {
-    source: kind === 'pool' || kind === 'custom' ? kind : '',
-    defaultId: readCount(source.default_id),
-    address: trimString(source.address),
+    // The total comes from the server so the "still in use" message quotes the
+    // same number the server refuses on; deriving it here would drift.
+    total: readCount(value.total) || accounts + channels,
   };
 }
 
@@ -189,7 +161,6 @@ function normalizePoolRead(payload: unknown): EgressPoolRead {
       .map(normalizeEgressPoolEntry)
       .filter((entry): entry is EgressPoolEntry => entry !== null)
       .sort((left, right) => left.id - right.id),
-    global: normalizeEgressGlobal(source.global),
   };
 }
 
@@ -252,25 +223,6 @@ export const egressPoolApi = {
     await apiClient.delete<unknown>(`${POOL_BASE}/${id}`);
   },
 
-  /**
-   * 指定全进程从哪条出口出去。传 0 表示取消默认。
-   *
-   * 改完立刻生效：消费方每次请求都问一次当前出口，没有需要重新加载的地方。
-   */
-  async setDefault(id: number): Promise<void> {
-    await apiClient.post<unknown>(`${POOL_BASE}/default`, { id });
-  },
-
-  /**
-   * 把配置里手写的地址收进池。
-   *
-   * 旧安装的出口写在配置里，那是同一个出口的第二份记录。收进池之后地址只有
-   * 一处，以后换地址就是改一行。
-   */
-  async importTyped(): Promise<void> {
-    await apiClient.post<unknown>(`${POOL_BASE}/import`);
-  },
-
   /** 从外面问一次这条出口看起来是哪儿，并把答案记下来。 */
   async probe(id: number): Promise<EgressProbeOutcome> {
     try {
@@ -300,18 +252,17 @@ export const egressPoolApi = {
 /**
  * 下拉框要的选项：`#1` 这样的编号加一句能认出来的描述。
  *
+ * 分两行：第一行是「哪一条」，第二行是「它长什么样」。挤成一行时，几条同名出口
+ * 只能靠截断分辨，而截断掉的恰好是唯一能分辨的那段地址。
+ *
  * 停用的出口也要列出来，否则一条正在检修的出口会让挂在上头的账号显示成
  * 「未绑定」，而它其实还绑着 —— 选项里带上 `enabled`，由调用方决定怎么标注。
  */
 export function egressOptions(entries: EgressPoolEntry[]): EgressOption[] {
-  return entries.map((entry) => {
-    const name = entry.label !== '' ? entry.label : entry.url;
-    const parts = [`#${entry.id}`, name];
-    if (entry.probe?.ok && entry.probe.ip !== '') parts.push(entry.probe.ip);
-    return {
-      value: String(entry.id),
-      label: parts.filter(Boolean).join(' '),
-      enabled: entry.enabled,
-    };
-  });
+  return entries.map((entry) => ({
+    value: String(entry.id),
+    label: entry.label === '' ? `#${entry.id}` : `#${entry.id} ${entry.label}`,
+    description: entry.url,
+    enabled: entry.enabled,
+  }));
 }

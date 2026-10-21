@@ -135,6 +135,29 @@
 .optionLabel {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.optionTitle {
+  overflow-wrap: anywhere;
+}
+
+/* 第二行是辨认用的说明（一条出口的地址），比标题低一级：
+   选中态把标题染成主色，地址仍然只是地址，不该跟着一起变成重点。
+   最多两行：地址长度不可控，整段摊开会让一条出口占掉半个下拉。 */
+.optionDescription {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-secondary);
 }
 
 .optionSelected {

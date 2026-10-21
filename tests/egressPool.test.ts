@@ -1,20 +1,15 @@
 /**
  * 代理池的读取面：把后端的一行归一成界面要的形状。
  *
- * 这里守四条不能含糊的规则：
+ * 这里守三条不能含糊的规则：
  *   1. 没有地址就不算测通 —— 「没测过」不能被显示成「通了」；
  *   2. 缺计数只保证不变成 NaN，不假装它是「没人用」的证据；
- *   3. 下拉框的编号必须能分辨，停用的也要能选（它还挂着账号）；
- *   4. 「全进程从哪儿出去」三种情况要能分开：池里某条、手写地址、直接连。
+ *   3. 下拉框的编号必须能分辨，停用的也要能选（它还挂着账号）。
  */
 
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
-import {
-  egressOptions,
-  normalizeEgressGlobal,
-  normalizeEgressPoolEntry,
-} from '@/services/api/egressPool';
+import { egressOptions, normalizeEgressPoolEntry } from '@/services/api/egressPool';
 import { blockEgressId } from '@/features/sms/smsMapping';
 import type { SupplyKindConfig } from '@/features/sms/types';
 
@@ -41,8 +36,8 @@ describe('egress pool entry normalization', () => {
         latency_ms: 213,
         at: 1_760_000_000,
       },
-      counts: { account: 3, channel: 1, global: 1 },
-      total: 5,
+      counts: { account: 3, channel: 1 },
+      total: 4,
     });
 
     expect(entry).not.toBeNull();
@@ -60,8 +55,7 @@ describe('egress pool entry normalization', () => {
     // 界面自己再加一遍就会和它差一。
     expect(entry?.accounts).toBe(3);
     expect(entry?.channels).toBe(1);
-    expect(entry?.isDefault).toBe(false);
-    expect(entry?.total).toBe(5);
+    expect(entry?.total).toBe(4);
   });
 
   test('keeps "never tested" distinct from "tested and failed"', () => {
@@ -87,26 +81,7 @@ describe('egress pool entry normalization', () => {
     const entry = normalizeEgressPoolEntry({ id: 3, url: 'socks5://c' });
     expect(entry?.accounts).toBe(0);
     expect(entry?.channels).toBe(0);
-    expect(entry?.isDefault).toBe(false);
     expect(entry?.total).toBe(0);
-  });
-
-  test('reads the process-wide exit, so the page can say where requests leave from', () => {
-    expect(
-      normalizeEgressGlobal({
-        source: 'pool',
-        default_id: 2,
-        address: 'socks5://u:***@1.2.3.4:1080',
-      })
-    ).toEqual({ source: 'pool', defaultId: 2, address: 'socks5://u:***@1.2.3.4:1080' });
-    expect(normalizeEgressGlobal({ source: 'custom', address: 'http://typed:8080' })).toEqual({
-      source: 'custom',
-      defaultId: 0,
-      address: 'http://typed:8080',
-    });
-    // 什么都不走代理时后端不带 source：不要把它读成「池里的某一条」。
-    expect(normalizeEgressGlobal({})).toEqual({ source: '', defaultId: 0, address: '' });
-    expect(normalizeEgressGlobal(null)).toEqual({ source: '', defaultId: 0, address: '' });
   });
 
   test('treats a missing enabled flag as enabled, since entries default to on', () => {
@@ -137,9 +112,12 @@ describe('egress select options', () => {
   test('leads with the id so two unnamed addresses stay distinguishable', () => {
     const options = egressOptions(entries);
     expect(options[0].value).toBe('1');
-    expect(options[0].label).toBe('#1 香港 1 1.2.3.4');
-    // 没有名字就用脱敏地址；它仍然能让人认出是哪一条。
-    expect(options[1].label).toBe('#2 socks5://user:***@5.6.7.8:1080');
+    expect(options[0].label).toBe('#1 香港 1');
+    // 地址单独一行：挤在标题里时，被截断掉的恰好是唯一能分辨的那一段。
+    expect(options[0].description).toBe('socks5://user:***@1.2.3.4:1080');
+    // 没有名字就只有编号，它仍然能让人认出是哪一条。
+    expect(options[1].label).toBe('#2');
+    expect(options[1].description).toBe('socks5://user:***@5.6.7.8:1080');
   });
 
   test('keeps paused exits selectable, marked for the caller to label', () => {
@@ -147,14 +125,16 @@ describe('egress select options', () => {
     expect(options.map((option) => option.enabled)).toEqual([true, false]);
   });
 
-  test('does not put a tested-but-failed address into the label', () => {
+  test('keeps the address out of the title even when the last test failed', () => {
     const failed = normalizeEgressPoolEntry({
       id: 3,
       url: 'socks5://user:***@9.9.9.9:1080',
       last_probe: { ok: false, error: 'timeout' },
       counts: {},
     })!;
-    expect(egressOptions([failed])[0].label).toBe('#3 socks5://user:***@9.9.9.9:1080');
+    const option = egressOptions([failed])[0];
+    expect(option.label).toBe('#3');
+    expect(option.description).toBe('socks5://user:***@9.9.9.9:1080');
   });
 });
 

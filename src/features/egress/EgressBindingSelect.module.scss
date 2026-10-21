@@ -4,7 +4,9 @@
   display: inline-flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
+  /* 下拉框跟着内容撑不开（它在一行 flex 里会被挤到只剩一个字宽），所以给一个下限：
+     至少能放下「#3 香港 1」，不用悬停才知道自己绑的是哪条。 */
+  min-width: 168px;
 }
 
 .error {

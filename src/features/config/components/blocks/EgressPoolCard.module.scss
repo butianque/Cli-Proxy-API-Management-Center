@@ -1,5 +1,6 @@
-/* 出口池：每条出口一行，行内三段——身份、地址、使用情况与结论。
-   间距与字号沿用配置面板既有字段的度量，不另起一套。 */
+/* 出口池：一张表 —— 编号、名称、地址、状态、备注，最后两列是行内动作。
+   表格度量沿用项目共享 Table 的那一套（12px 表头 / 13px 正文 / 10~14px 内边距），
+   这里只补这张表特有的列宽与两行单元格。 */
 
 .card {
   display: flex;
@@ -46,52 +47,84 @@
   padding: 18px 0;
 }
 
-/* 没有默认出口时，这一行说明现在请求从哪儿出去，并给下一步。
-   有默认出口时不出现：那时行上的徽标已经说清楚了。 */
-.current {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-  padding: 8px 10px;
-  border: 1px dashed var(--border-color);
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-secondary);
-  overflow-wrap: anywhere;
+/* 七列在窄屏上会被挤成竖排，所以给表一个下限，不够就横向滚动。 */
+.tableWrap {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.table {
+  width: 100%;
+  // 七列（含两列动作）压到 680px 以下就没法读了，再窄就横向滚动，
+  // 而不是把地址与状态挤成两个字一行。
+  min-width: 680px;
+  // 固定布局：列宽由 colgroup 决定，长地址才会被省略号截住，而不是把整列撑开。
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: var(--text-primary);
+
+  th {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--muted-bg);
+    font-size: 12px;
+    font-weight: 500;
+    text-align: left;
+    white-space: nowrap;
+    color: var(--muted-foreground, var(--text-secondary));
+  }
+
+  td {
+    padding: 10px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+
+  tbody tr:hover td {
+    background: color-mix(in srgb, var(--bg-tertiary) 45%, transparent);
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
 }
 
-.entry {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--bg-primary);
+.colId {
+  width: 48px;
 }
 
-.entryHead {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
+.colName {
+  width: 15%;
+}
+
+.colUrl {
+  width: 26%;
+}
+
+.colStatus {
+  width: 19%;
+}
+
+.colNote {
+  width: 14%;
+}
+
+.colAction {
+  width: 82px;
+}
+
+.colActionLast {
+  width: 44px;
+}
+
+.actionHead {
+  text-align: right;
 }
 
 .idPill {
-  flex: none;
+  display: inline-block;
   padding: 1px 7px;
   border: 1px solid var(--border-color);
   border-radius: 5px;
@@ -102,8 +135,15 @@
   color: var(--text-secondary);
 }
 
-.entryName {
+/* 名称与占用两行：名称是这一条的身份，占用是它牵动谁。 */
+.cellStack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
+}
+
+.name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -112,95 +152,126 @@
   color: var(--text-primary);
 }
 
-.pausedPill {
-  flex: none;
-  padding: 1px 7px;
-  border: 1px solid var(--caution-color, #d97706);
-  border-radius: 5px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--caution-color, #d97706);
-}
-
-/* 全进程出口。行上的徽标是这件事唯一的说法，所以用实色，比编号牌更显眼。 */
-.defaultPill {
-  flex: none;
-  padding: 1px 7px;
-  border: 1px solid var(--success-badge-border);
-  border-radius: 5px;
-  background: var(--success-badge-bg);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--success-badge-text);
-}
-
-.entryActions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-left: auto;
-}
-
-.entryUrl {
-  font-family: var(--font-mono, monospace);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  word-break: break-all;
-}
-
-.entryFoot {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .usage {
+  font-size: 11.5px;
+  line-height: 1.4;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-.probeLine {
+/* 地址只够辨认，不够连接；一整行摆不下就截断，完整值挂在 title 上。 */
+.url {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.note {
+  display: block;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.toggleRow {
   display: inline-flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 4px 10px;
-  min-width: 0;
+  gap: 6px;
+}
+
+.toggleLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.probeLine {
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.4;
 }
 
 .probeValue {
   font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .probeMuted {
   color: var(--text-tertiary, var(--text-secondary));
 }
 
-// 一条失败的探活原因可以有上百个字符（底层拨号错误），整段摊开会把这条出口的
-// 其余信息挤出屏幕。留两行，完整原因挂在 title 上，需要的人悬停就能看到。
+// 一条失败的探活原因可以有上百个字符（底层拨号错误），整段摊开会把这一行撑成
+// 一大块。留两行，完整原因挂在 title 上，需要的人悬停就能看到。
 .probeFailed {
-  color: var(--danger-color, #ef4444);
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
   overflow-wrap: anywhere;
+  color: var(--danger-color, #ef4444);
 }
 
-.enabledToggle {
+.cellAction {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 行内动作：与渠道池表格的那一对按钮同一形状，两处读起来是同一个控件。 */
+.actionPill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-left: auto;
+  gap: 5px;
+  padding: 4px 11px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-full;
+  background: none;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition:
+    border-color $transition-fast,
+    background-color $transition-fast,
+    color $transition-fast;
+
+  &:hover {
+    border-color: var(--border-hover, var(--primary-color));
+    background: color-mix(in srgb, var(--bg-tertiary) 55%, transparent);
+    color: var(--text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
 }
 
-.enabledLabel {
-  color: var(--text-secondary);
+/* 表单里那次测试的结论。 */
+.draftProbe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 「测试」放在弹窗底栏最左：它是这一行的动作，不是提交。 */
+.footerLead {
+  margin-right: auto;
 }

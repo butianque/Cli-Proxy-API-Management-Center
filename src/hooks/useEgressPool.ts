@@ -13,25 +13,19 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import {
   EgressPoolUnsupportedError,
   egressPoolApi,
-  type EgressGlobal,
   type EgressPoolEntry,
 } from '@/services/api/egressPool';
 
 export type EgressPoolStatus = 'idle' | 'loading' | 'ready' | 'unsupported' | 'error';
 
-/** 什么都没配时的全进程出口：不走代理，直接连。 */
-const DIRECT: EgressGlobal = { source: '', defaultId: 0, address: '' };
-
 export interface EgressPoolSnapshot {
   status: EgressPoolStatus;
   entries: EgressPoolEntry[];
-  /** 全进程从哪儿出去。池里的默认、配置里手写的地址，或直接连。 */
-  global: EgressGlobal;
   /** 上次读取失败的原因；成功时为空。 */
   error: string;
 }
 
-const EMPTY: EgressPoolSnapshot = { status: 'idle', entries: [], global: DIRECT, error: '' };
+const EMPTY: EgressPoolSnapshot = { status: 'idle', entries: [], error: '' };
 
 let snapshot: EgressPoolSnapshot = EMPTY;
 let inflight: Promise<void> | null = null;
@@ -59,22 +53,21 @@ function getSnapshot(): EgressPoolSnapshot {
 export function loadEgressPool(): Promise<void> {
   if (inflight) return inflight;
   if (snapshot.status !== 'ready') {
-    publish({ status: 'loading', entries: snapshot.entries, global: snapshot.global, error: '' });
+    publish({ status: 'loading', entries: snapshot.entries, error: '' });
   }
   inflight = egressPoolApi
     .list()
     .then((read) => {
-      publish({ status: 'ready', entries: read.entries, global: read.global, error: '' });
+      publish({ status: 'ready', entries: read.entries, error: '' });
     })
     .catch((error: unknown) => {
       if (error instanceof EgressPoolUnsupportedError) {
-        publish({ status: 'unsupported', entries: [], global: DIRECT, error: '' });
+        publish({ status: 'unsupported', entries: [], error: '' });
         return;
       }
       publish({
         status: 'error',
         entries: [],
-        global: DIRECT,
         error: error instanceof Error && error.message ? error.message : '',
       });
     })

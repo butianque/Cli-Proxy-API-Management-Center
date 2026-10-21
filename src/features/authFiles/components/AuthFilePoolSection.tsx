@@ -118,7 +118,7 @@ export function AuthFilePoolSection({
             noneLabel={
               account.egress !== undefined && account.egress !== ''
                 ? t('egress_pool.account_manual', { address: account.egress })
-                : t('egress_pool.account_none')
+                : t('egress_pool.none_direct')
             }
             ariaLabel={t('egress_pool.binding_aria', { name: account.displayName })}
             onChanged={onEgressChanged}

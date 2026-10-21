@@ -1,19 +1,18 @@
 /**
  * 代理 URL 池：这台机器买下的地址，以及谁在用。
  *
- * 这是代理这件事唯一的地方：全进程的出口（「默认」那条）和每条出口各自的地址
- * 都在这里。原来分散的「代理 URL」「接码出口」「出口池」三处说的是同一件事，
- * 现在只有这一处 —— 换一个 IP 就是改这一行，所有请求与账号立刻跟着走。
+ * 这是代理这件事唯一的地方：每条出口的地址只写在这一行里，账号与渠道按编号指向
+ * 其中一条。换一个 IP 就是改这一行，所有指向它的账号与渠道立刻跟着走。
  *
- * 池不参与「保存配置」：加一条、测一条、删一条、换默认都立即生效。放进网络配置
- * 是因为出口本来就是网络配置的一部分 —— 但它上面没有「保存」按钮，这一点必须
- * 让人一眼看出来，所以每条出口的改动都在行内即时完成。
+ * 池不参与「保存配置」：加一条、改一条、删一条都立即生效。放进网络配置是因为
+ * 出口本来就是网络配置的一部分 —— 但它上面没有「保存」按钮，这一点必须让人一眼
+ * 看出来，所以每条出口的改动都在行内即时完成。
  *
- * 一条出口的价值只有地址能证明，所以「测试」是每行的主操作，最近一次结论
- * 直接写在行上：测过就报问到的地址，没测过就说没测过，测失败就报原因。
+ * 一条出口的价值只有地址能证明，所以「测试」跟着地址走：它在编辑这个地址的那张
+ * 表单里，测完把结论写在按钮旁边。
  */
 
-import { useCallback, useId, useMemo, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -22,21 +21,54 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { Notice } from '@/components/ui/Notice';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { IconAlertTriangle, IconPlus, IconTrash2 } from '@/components/ui/icons';
+import { IconAlertTriangle, IconPencil, IconPlus, IconTrash2 } from '@/components/ui/icons';
 import { useEgressPool } from '@/hooks/useEgressPool';
-import { egressPoolApi, type EgressPoolEntry } from '@/services/api/egressPool';
+import {
+  egressPoolApi,
+  type EgressPoolEntry,
+  type EgressProbeSummary,
+} from '@/services/api/egressPool';
 import { useNotificationStore } from '@/stores';
 import { formatDateTimeValue } from '@/utils/format';
 import { SPONSORS } from '../../sponsors';
 import fieldStyles from '../fields/Field.module.scss';
 import styles from './EgressPoolCard.module.scss';
 
-type ProbePhase = { kind: 'idle' } | { kind: 'testing' } | { kind: 'failed'; message: string };
+/** 表单里那次测试的过程：没测、正在测、测完了。 */
+type DraftProbe =
+  | { kind: 'idle' }
+  | { kind: 'testing' }
+  | { kind: 'done'; ok: boolean; text: string; at: number };
+
+const IDLE_PROBE: DraftProbe = { kind: 'idle' };
 
 /** 一条出口的编辑表单。`url` 留空表示地址不变（读回来的是脱敏值）。 */
 type Draft = { id: number | null; url: string; label: string; note: string };
 
 const EMPTY_DRAFT: Draft = { id: null, url: '', label: '', note: '' };
+
+/** 上次测试的结论。没测过就说没测过，测失败就报原因 —— 不拿「没测」冒充「通了」。 */
+function ProbeLine({ probe }: { probe: EgressProbeSummary | null }) {
+  const { t } = useTranslation();
+  if (probe === null) {
+    return <span className={styles.probeMuted}>{t('egress_pool.untested')}</span>;
+  }
+  if (!probe.ok) {
+    return (
+      <span className={styles.probeFailed} title={probe.error}>
+        {probe.error === ''
+          ? t('egress_pool.probe_no_address')
+          : t('egress_pool.probe_failed', { message: probe.error })}
+      </span>
+    );
+  }
+  const seen = [probe.ip, probe.region].filter(Boolean).join(' · ');
+  return (
+    <span className={styles.probeValue} title={[seen, probe.network].filter(Boolean).join(' · ')}>
+      {seen === '' ? t('egress_pool.probe_no_address') : seen}
+    </span>
+  );
+}
 
 export type EgressPoolCardProps = {
   /** 页面处于只读态（源码模式 / 正在保存）时，这里也不能改。 */
@@ -45,19 +77,20 @@ export type EgressPoolCardProps = {
 
 export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
   const { t } = useTranslation();
-  const { status, entries, global, error, reload } = useEgressPool();
+  const { status, entries, error, reload } = useEgressPool();
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
-  const [probePhases, setProbePhases] = useState<Record<number, ProbePhase>>({});
   const [draft, setDraft] = useState<Draft | null>(null);
   const [draftError, setDraftError] = useState('');
+  const [draftProbe, setDraftProbe] = useState<DraftProbe>(IDLE_PROBE);
   const [saving, setSaving] = useState(false);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState('');
-  const [defaultPending, setDefaultPending] = useState<number | null>(null);
-  const [importPending, setImportPending] = useState(false);
   const titleId = useId();
 
-  /** 一条出口挂了多少账号与渠道。「全进程出口」由行上的徽标说，不在这里再说一遍。 */
+  /**
+   * 一条出口挂了多少账号与渠道。没人在用时这一行不出现：空着就是「没人用」，
+   * 再写一句「没有账号或渠道在用它」只是把空格填满。
+   */
   const describeUsage = useCallback(
     (entry: EgressPoolEntry): string => {
       const parts: string[] = [];
@@ -65,62 +98,42 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
         parts.push(t('egress_pool.count_accounts', { count: entry.accounts }));
       if (entry.channels > 0)
         parts.push(t('egress_pool.count_channels', { count: entry.channels }));
-      return parts.length === 0 ? t('egress_pool.count_none') : parts.join(' · ');
+      return parts.join(' · ');
     },
     [t]
   );
 
-  const setDefault = useCallback(
-    async (entry: EgressPoolEntry) => {
-      setActionError('');
-      setDefaultPending(entry.id);
-      try {
-        // 已经是默认的那条，再点就是取消：传 0 表示回到「没有默认出口」。
-        await egressPoolApi.setDefault(entry.isDefault ? 0 : entry.id);
-        await reload();
-      } catch (failure) {
-        setActionError(
-          t('egress_pool.default_failed', {
-            message: failure instanceof Error && failure.message ? failure.message : '',
-          })
-        );
-      } finally {
-        setDefaultPending(null);
-      }
-    },
-    [reload, t]
-  );
+  const openDraft = useCallback((next: Draft) => {
+    setDraftError('');
+    setDraftProbe(IDLE_PROBE);
+    setDraft(next);
+  }, []);
 
-  const importTyped = useCallback(async () => {
-    setActionError('');
-    setImportPending(true);
-    try {
-      await egressPoolApi.importTyped();
-      await reload();
-    } catch (failure) {
-      setActionError(
-        t('egress_pool.import_failed', {
-          message: failure instanceof Error && failure.message ? failure.message : '',
-        })
-      );
-    } finally {
-      setImportPending(false);
+  const closeDraft = useCallback(() => {
+    setDraft(null);
+    setDraftError('');
+    setDraftProbe(IDLE_PROBE);
+  }, []);
+
+  const testDraft = useCallback(async () => {
+    const id = draft?.id;
+    if (id === null || id === undefined) return;
+    setDraftProbe({ kind: 'testing' });
+    const outcome = await egressPoolApi.probe(id);
+    if (outcome.ok) {
+      const probe = outcome.entry?.probe ?? null;
+      setDraftProbe({
+        kind: 'done',
+        ok: true,
+        text: probe === null ? '' : [probe.ip, probe.region].filter(Boolean).join(' · '),
+        at: probe?.at ?? 0,
+      });
+    } else {
+      setDraftProbe({ kind: 'done', ok: false, text: outcome.message, at: 0 });
     }
-  }, [reload, t]);
-
-  const test = useCallback(
-    async (id: number) => {
-      setProbePhases((current) => ({ ...current, [id]: { kind: 'testing' } }));
-      const outcome = await egressPoolApi.probe(id);
-      setProbePhases((current) => ({
-        ...current,
-        [id]: outcome.ok ? { kind: 'idle' } : { kind: 'failed', message: outcome.message },
-      }));
-      // 结论落在池里，重新读一次让行上的地址与占用一起刷新。
-      await reload();
-    },
-    [reload]
-  );
+    // 结论落在池里，重新读一次让行上的地址与占用一起刷新。
+    await reload();
+  }, [draft, reload]);
 
   const submitDraft = useCallback(async () => {
     if (!draft) return;
@@ -141,7 +154,7 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
           note: draft.note,
         });
       }
-      setDraft(null);
+      closeDraft();
       await reload();
     } catch (failure) {
       setDraftError(
@@ -152,7 +165,7 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
     } finally {
       setSaving(false);
     }
-  }, [draft, reload, t]);
+  }, [closeDraft, draft, reload, t]);
 
   const toggleEnabled = useCallback(
     async (entry: EgressPoolEntry, enabled: boolean) => {
@@ -212,7 +225,13 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
 
   const unsupported = status === 'unsupported';
   const canEdit = !disabled && !unsupported;
-  const sorted = useMemo(() => entries, [entries]);
+
+  /** 表单里的地址改过还没保存：那时测的是旧地址，测了也不算数。 */
+  const addressChanged =
+    draft !== null &&
+    draft.id !== null &&
+    draft.url.trim() !== '' &&
+    draft.url.trim() !== (entries.find((entry) => entry.id === draft.id)?.url ?? '');
 
   return (
     <div className={styles.card}>
@@ -241,39 +260,13 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
         </div>
         <Button
           size="sm"
-          onClick={() => {
-            setDraftError('');
-            setDraft(EMPTY_DRAFT);
-          }}
+          onClick={() => openDraft(EMPTY_DRAFT)}
           disabled={!canEdit}
         >
           <IconPlus size={14} />
           {t('egress_pool.add')}
         </Button>
       </div>
-
-      {status === 'ready' &&
-        !entries.some((entry) => entry.isDefault) &&
-        (entries.length > 0 || global.source !== '') && (
-          <p className={styles.current}>
-            <span>
-              {global.source === 'custom' && global.address !== ''
-                ? t('egress_pool.current_typed', { address: global.address })
-                : t('egress_pool.current_direct')}
-            </span>
-            {global.source === 'custom' && global.address !== '' && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => void importTyped()}
-                loading={importPending}
-                disabled={!canEdit || importPending}
-              >
-                {t('egress_pool.import')}
-              </Button>
-            )}
-          </p>
-        )}
 
       {actionError !== '' && (
         <Notice tone="danger" role="alert" icon={<IconAlertTriangle size={15} />}>
@@ -286,7 +279,7 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
           title={t('egress_pool.unavailable_title')}
           description={t('egress_pool.unavailable_desc')}
         />
-      ) : status === 'loading' && sorted.length === 0 ? (
+      ) : status === 'loading' && entries.length === 0 ? (
         <div className={styles.loading}>
           <LoadingSpinner size={16} />
         </div>
@@ -305,134 +298,128 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
             ? t('egress_pool.load_failed')
             : t('egress_pool.load_failed_reason', { message: error })}
         </Notice>
-      ) : sorted.length === 0 ? (
+      ) : entries.length === 0 ? (
         <EmptyState
           title={t('egress_pool.empty_title')}
           description={t('egress_pool.empty_desc')}
         />
       ) : (
-        <ul className={styles.list}>
-          {sorted.map((entry) => {
-            const phase = probePhases[entry.id] ?? { kind: 'idle' };
-            const probe = entry.probe;
-            return (
-              <li key={entry.id} className={styles.entry}>
-                <div className={styles.entryHead}>
-                  <span className={styles.idPill}>{t('egress_pool.id', { id: entry.id })}</span>
-                  {/* The address has its own line below; naming the row after it
-                      again would print the same fact twice. */}
-                  {entry.label !== '' && (
-                    <span className={styles.entryName} title={entry.label}>
-                      {entry.label}
-                    </span>
-                  )}
-                  {entry.isDefault && (
-                    <span className={styles.defaultPill}>{t('egress_pool.default_badge')}</span>
-                  )}
-                  {!entry.enabled && (
-                    <span className={styles.pausedPill}>{t('egress_pool.paused')}</span>
-                  )}
-                  <div className={styles.entryActions}>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => void setDefault(entry)}
-                      loading={defaultPending === entry.id}
-                      disabled={!canEdit || defaultPending !== null}
-                    >
-                      {entry.isDefault
-                        ? t('egress_pool.clear_default')
-                        : t('egress_pool.set_default')}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => void test(entry.id)}
-                      loading={phase.kind === 'testing'}
-                      disabled={phase.kind === 'testing'}
-                    >
-                      {t('egress_pool.test')}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setDraftError('');
-                        setDraft({
-                          id: entry.id,
-                          url: entry.url,
-                          label: entry.label,
-                          note: entry.note,
-                        });
-                      }}
-                      disabled={!canEdit}
-                    >
-                      {t('egress_pool.edit')}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => remove(entry)}
-                      disabled={!canEdit || pendingId === entry.id}
-                      aria-label={t('egress_pool.remove_title', { id: entry.id })}
-                    >
-                      <IconTrash2 size={14} />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className={styles.entryUrl}>{entry.url}</div>
-
-                <div className={styles.entryFoot}>
-                  <span className={styles.usage}>{describeUsage(entry)}</span>
-                  <span className={styles.probeLine}>
-                    {phase.kind === 'failed' ? (
-                      <span className={styles.probeFailed} role="alert" title={phase.message}>
-                        {phase.message === ''
-                          ? t('egress_pool.probe_no_address')
-                          : t('egress_pool.probe_failed', { message: phase.message })}
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <colgroup>
+              <col className={styles.colId} />
+              <col className={styles.colName} />
+              <col className={styles.colUrl} />
+              <col className={styles.colStatus} />
+              <col className={styles.colNote} />
+              <col className={styles.colAction} />
+              <col className={styles.colActionLast} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">{t('egress_pool.col_id')}</th>
+                <th scope="col">{t('egress_pool.col_name')}</th>
+                <th scope="col">{t('egress_pool.col_url')}</th>
+                <th scope="col">{t('egress_pool.col_status')}</th>
+                <th scope="col">{t('egress_pool.col_note')}</th>
+                <th scope="col" className={styles.actionHead}>
+                  {t('egress_pool.edit')}
+                </th>
+                <th scope="col" className={styles.actionHead}>
+                  {t('egress_pool.remove')}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => {
+                const usage = describeUsage(entry);
+                const busy = pendingId === entry.id;
+                return (
+                  <tr key={entry.id}>
+                    <td>
+                      <span className={styles.idPill}>{entry.id}</span>
+                    </td>
+                    <td>
+                      <div className={styles.cellStack}>
+                        <span
+                          className={entry.label === '' ? styles.empty : styles.name}
+                          title={entry.label || undefined}
+                        >
+                          {entry.label === '' ? '—' : entry.label}
+                        </span>
+                        {usage !== '' && <span className={styles.usage}>{usage}</span>}
+                      </div>
+                    </td>
+                    <td>
+                      <span className={styles.url} title={entry.url}>
+                        {entry.url}
                       </span>
-                    ) : probe === null ? (
-                      <span className={styles.probeMuted}>{t('egress_pool.untested')}</span>
-                    ) : probe.ok ? (
-                      <>
-                        <span className={styles.probeValue}>{probe.ip}</span>
-                        {probe.region !== '' && (
-                          <span className={styles.probeValue}>{probe.region}</span>
-                        )}
-                        {probe.network !== '' && (
-                          <span className={styles.probeValue}>{probe.network}</span>
-                        )}
-                        {probe.at > 0 && (
-                          <span className={styles.probeMuted}>
-                            {t('egress_pool.probe_at', {
-                              time: formatDateTimeValue(probe.at * 1000),
-                            })}
+                    </td>
+                    <td>
+                      <div className={styles.cellStack}>
+                        <span className={styles.toggleRow}>
+                          <ToggleSwitch
+                            checked={entry.enabled}
+                            ariaLabel={t('egress_pool.enabled_toggle', { id: entry.id })}
+                            disabled={!canEdit || busy}
+                            onChange={(next) => void toggleEnabled(entry, next)}
+                          />
+                          <span className={styles.toggleLabel}>
+                            {entry.enabled
+                              ? t('egress_pool.enabled')
+                              : t('egress_pool.paused')}
                           </span>
-                        )}
-                      </>
-                    ) : (
-                      <span className={styles.probeFailed} title={probe.error}>
-                        {probe.error === ''
-                          ? t('egress_pool.probe_no_address')
-                          : t('egress_pool.probe_failed', { message: probe.error })}
+                        </span>
+                        <span className={styles.probeLine}>
+                          <ProbeLine probe={entry.probe} />
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <span
+                        className={entry.note === '' ? styles.empty : styles.note}
+                        title={entry.note || undefined}
+                      >
+                        {entry.note === '' ? '—' : entry.note}
                       </span>
-                    )}
-                  </span>
-                  <span className={styles.enabledToggle}>
-                    <span className={styles.enabledLabel}>{t('egress_pool.enabled')}</span>
-                    <ToggleSwitch
-                      checked={entry.enabled}
-                      ariaLabel={t('egress_pool.enabled_toggle', { id: entry.id })}
-                      disabled={!canEdit || pendingId === entry.id}
-                      onChange={(next) => void toggleEnabled(entry, next)}
-                    />
-                  </span>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                    </td>
+                    <td className={styles.cellAction}>
+                      <button
+                        type="button"
+                        className={styles.actionPill}
+                        onClick={() =>
+                          openDraft({
+                            id: entry.id,
+                            url: entry.url,
+                            label: entry.label,
+                            note: entry.note,
+                          })
+                        }
+                        disabled={!canEdit}
+                        title={t('egress_pool.form_edit_title', { id: entry.id })}
+                      >
+                        <IconPencil size={14} />
+                        {t('egress_pool.edit')}
+                      </button>
+                    </td>
+                    <td className={styles.cellAction}>
+                      <button
+                        type="button"
+                        className={styles.actionPill}
+                        onClick={() => remove(entry)}
+                        disabled={!canEdit || busy}
+                        title={t('egress_pool.remove_title', { id: entry.id })}
+                        aria-label={t('egress_pool.remove_title', { id: entry.id })}
+                      >
+                        <IconTrash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <Modal
@@ -444,20 +431,27 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
         }
         onClose={() => {
           if (saving) return;
-          setDraft(null);
-          setDraftError('');
+          closeDraft();
         }}
         closeDisabled={saving}
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setDraft(null);
-                setDraftError('');
-              }}
-              disabled={saving}
-            >
+            {draft !== null && draft.id !== null && (
+              <span className={styles.footerLead}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void testDraft()}
+                  loading={draftProbe.kind === 'testing'}
+                  disabled={
+                    !canEdit || saving || draftProbe.kind === 'testing' || addressChanged
+                  }
+                >
+                  {t('egress_pool.test')}
+                </Button>
+              </span>
+            )}
+            <Button variant="secondary" onClick={closeDraft} disabled={saving}>
               {t('egress_pool.form_cancel')}
             </Button>
             <Button onClick={() => void submitDraft()} loading={saving} disabled={saving}>
@@ -493,6 +487,33 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
               onChange={(event) => setDraft({ ...draft, note: event.target.value })}
               disabled={saving}
             />
+            {draft.id !== null && (
+              <div className={styles.draftProbe}>
+                {addressChanged ? (
+                  <span className={styles.probeMuted}>{t('egress_pool.form_test_after_save')}</span>
+                ) : draftProbe.kind === 'testing' ? (
+                  <span className={styles.probeMuted}>{t('egress_pool.testing')}</span>
+                ) : draftProbe.kind === 'done' ? (
+                  draftProbe.ok ? (
+                    <span className={styles.probeValue}>
+                      {draftProbe.text === ''
+                        ? t('egress_pool.probe_no_address')
+                        : draftProbe.text}
+                      {draftProbe.at > 0 &&
+                        ` · ${t('egress_pool.probe_at', {
+                          time: formatDateTimeValue(draftProbe.at * 1000),
+                        })}`}
+                    </span>
+                  ) : (
+                    <span className={styles.probeFailed} role="alert">
+                      {draftProbe.text === ''
+                        ? t('egress_pool.probe_no_address')
+                        : t('egress_pool.probe_failed', { message: draftProbe.text })}
+                    </span>
+                  )
+                ) : null}
+              </div>
+            )}
             {draftError !== '' && (
               <Notice tone="danger" role="alert" icon={<IconAlertTriangle size={15} />}>
                 {draftError}
