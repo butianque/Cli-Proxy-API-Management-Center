@@ -1,29 +1,21 @@
-// Client API key → credential pool scoping (v8 `access.key-pools`).
-// A key with no pools is unrestricted; the backend drops unknown keys and empty
-// pool lists, so this module keeps the visual editor on the same contract.
+// Client API key → account category scoping (v8 `access.key-pools`).
+// A key with no entries is unrestricted; the backend drops unknown keys and empty
+// lists, so this module keeps the visual editor on the same contract.
 
 import type { VisualConfigValues } from '@/types/visualConfig';
 
 export type ApiKeyPools = VisualConfigValues['apiKeyPools'];
 
 /**
- * Pools the management UI offers out of the box. `value` is the exact pool id
- * written to `access.key-pools`; `labelKey` is its i18n display name. Custom
- * pools can still be typed in by hand.
+ * Set equality, not sequence equality. A scope is a **set** of categories — the
+ * backend reads it as one, and the order is whatever the user happened to tick —
+ * so reordering the same entries is not a change. Comparing by index instead made
+ * "untick a category, tick it again" flag the field dirty and rewrite the YAML order.
  */
-export const KEY_POOL_OPTIONS: ReadonlyArray<{ value: string; labelKey: string }> = [
-  { value: 'loomy', labelKey: 'config_management.visual.api_keys.pool_loomy' },
-  { value: 'zcode-bigmodel', labelKey: 'config_management.visual.api_keys.pool_zcode_bigmodel' },
-  { value: 'zcode-zai', labelKey: 'config_management.visual.api_keys.pool_zcode_zai' },
-];
-
-/**
- * Set equality, not sequence equality. A pool list is a **set** of pool ids — the
- * backend reads it as one, and the order is whatever the user happened to build —
- * so reordering the same members is not a change. Comparing by index instead made
- * "untick a pool, tick it again" flag the field dirty and rewrite the YAML order.
- */
-const areStringArraysEqual = (left: readonly string[], right: readonly string[]): boolean => {
+export const areStringArraysEqual = (
+  left: readonly string[],
+  right: readonly string[]
+): boolean => {
   if (left === right) return true;
   if (left.length !== right.length) return false;
   const remaining = new Set(right);
@@ -120,10 +112,10 @@ export function renameApiKeyPools(pools: ApiKeyPools, from: string, to: string):
 }
 
 /**
- * Whether `candidate` is already used by another entry. Pool scoping is keyed by
- * the API key value, so a duplicate would give two rows one shared scope (editing
- * one edits both, deleting one drops the other's scope), and renaming a key onto
- * an existing value would overwrite that key's scope.
+ * Whether `candidate` is already used by another entry. Scoping is keyed by the
+ * API key value, so a duplicate would give two rows one shared scope (editing one
+ * edits both, deleting one drops the other's scope), and renaming a key onto an
+ * existing value would overwrite that key's scope.
  */
 export function isDuplicateApiKey(
   apiKeys: readonly string[],
@@ -131,22 +123,4 @@ export function isDuplicateApiKey(
   ignoreIndex: number
 ): boolean {
   return apiKeys.some((key, index) => index !== ignoreIndex && key === candidate);
-}
-
-/** Selectable pool ids: the known options first, then any custom ones in use. */
-export function candidateKeyPoolValues(selected: readonly string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const option of KEY_POOL_OPTIONS) {
-    if (seen.has(option.value)) continue;
-    seen.add(option.value);
-    result.push(option.value);
-  }
-  for (const value of selected) {
-    const trimmed = value.trim();
-    if (!trimmed || seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    result.push(trimmed);
-  }
-  return result;
 }

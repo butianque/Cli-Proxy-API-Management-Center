@@ -166,7 +166,12 @@ export type VisualConfigValues = {
   authDir: string;
   /** Client authentication keys at access.api-keys (never the upstream api-keys map). */
   apiKeysText: string;
-  /** access.key-pools: API key → credential pools. A key absent here is unrestricted. */
+  /**
+   * access.key-pools: API key → the account categories it may use. A key absent
+   * here is unrestricted. The categories are the credential groups the credentials
+   * page shows as its tabs; nothing declares them, so they follow the live
+   * credential set.
+   */
   apiKeyPools: Record<string, string[]>;
   pluginsEnabled: boolean;
   pluginStoreSources: string[];

@@ -1,19 +1,22 @@
-import { memo, useId, useMemo, useState } from 'react';
+import { memo, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { getTypeLabel, normalizeProviderKey } from '@/features/authFiles/constants';
+import { resolveCredentialSite } from '@/features/authFiles/siteIdentity';
+import { authFilesApi } from '@/services/api/authFiles';
 import { useAuthStore, useNotificationStore } from '@/stores';
+import type { AuthFileItem } from '@/types/authFile';
 import { apiKeyNameFingerprint, readApiKeyNames, saveApiKeyName } from '../../apiKeyNames';
 import {
-  KEY_POOL_OPTIONS,
   areApiKeyPoolsEqual,
-  candidateKeyPoolValues,
   isDuplicateApiKey,
   removeApiKeyPools,
   renameApiKeyPools,
   withApiKeyPools,
   type ApiKeyPools,
 } from '../../keyPools';
+import { accountCategories, accountCategoryOptions } from '../../accountCategories';
 import { copyToClipboard } from '@/utils/clipboard';
 import { makeClientId } from '@/types/visualConfig';
 import { generateSecureApiKey } from '@/utils/apiKey';
@@ -78,12 +81,48 @@ function ScopedApiKeysCardEditor({
   const [editingApiKeyId, setEditingApiKeyId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [draftPools, setDraftPools] = useState<string[]>([]);
-  const [poolValue, setPoolValue] = useState('');
   const [formError, setFormError] = useState('');
+  // The categories come from the credentials themselves, so the dialog offers
+  // exactly the groups that exist right now. Reading them here instead of from
+  // configuration keeps the list live: adding or removing an account changes what
+  // a key can reach without editing the YAML.
+  const [authFiles, setAuthFiles] = useState<AuthFileItem[] | null>(null);
+  const [categoriesFailed, setCategoriesFailed] = useState(false);
 
-  const poolLabel = (pool: string) => {
-    const option = KEY_POOL_OPTIONS.find((candidate) => candidate.value === pool);
-    return option ? t(option.labelKey) : pool;
+  // Read the credential list each time the dialog opens: the dialog is where the
+  // categories are offered, so it must show the accounts that exist now rather
+  // than a list captured when the section first rendered.
+  useEffect(() => {
+    if (!modalOpen) return;
+    let cancelled = false;
+    setCategoriesFailed(false);
+    authFilesApi
+      .list()
+      .then((response) => {
+        if (!cancelled) setAuthFiles(response.files ?? []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAuthFiles([]);
+        setCategoriesFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modalOpen]);
+
+  const categories = useMemo(() => accountCategories(authFiles ?? []), [authFiles]);
+  const categoryOptions = useMemo(
+    () => accountCategoryOptions(categories, draftPools),
+    [categories, draftPools]
+  );
+
+  // A category has to read the same here as on the credentials page, so the label
+  // comes from that page's provider naming rather than a second table.
+  const categoryLabel = (name: string): string => {
+    const brand = getTypeLabel(t, name);
+    const site = resolveCredentialSite(normalizeProviderKey(name));
+    return site ? `${brand} ${t(`auth_files.region_${site.region}`)}` : brand;
   };
 
   const openAddModal = () => {
@@ -91,7 +130,6 @@ function ScopedApiKeysCardEditor({
     setEditingApiKeyId(null);
     setInputValue('');
     setDraftPools([]);
-    setPoolValue('');
     setFormError('');
     setModalOpen(true);
   };
@@ -104,7 +142,6 @@ function ScopedApiKeysCardEditor({
     setEditingApiKeyId(apiKeyId);
     setInputValue(apiKeys[editingIndex] ?? '');
     setDraftPools(pools[apiKeys[editingIndex] ?? ''] ?? []);
-    setPoolValue('');
     setFormError('');
     setModalOpen(true);
   };
@@ -113,22 +150,17 @@ function ScopedApiKeysCardEditor({
     setModalOpen(false);
     setInputValue('');
     setDraftPools([]);
-    setPoolValue('');
     setEditingApiKeyId(null);
     setFormError('');
   };
 
   const toggleDraftPool = (pool: string) => {
+    // Compare case-insensitively: a scope entry written before the category list
+    // existed may carry different casing, and it still has to be untickable.
+    const matches = (value: string) => value.trim().toLowerCase() === pool.toLowerCase();
     setDraftPools((current) =>
-      current.includes(pool) ? current.filter((item) => item !== pool) : [...current, pool]
+      current.some(matches) ? current.filter((item) => !matches(item)) : [...current, pool]
     );
-  };
-
-  const addCustomPool = () => {
-    const trimmed = poolValue.trim();
-    if (!trimmed) return;
-    setDraftPools((current) => (current.includes(trimmed) ? current : [...current, trimmed]));
-    setPoolValue('');
   };
 
   const handleDelete = (apiKeyId: string) => {
@@ -221,7 +253,6 @@ function ScopedApiKeysCardEditor({
             return (
               <div key={renderApiKeyIds[index] ?? `${key}-${index}`} className="item-row">
                 <div className="item-meta">
-                  <div className="pill">#{index + 1}</div>
                   <div className="item-title">
                     {names[nameFingerprints[index]] ??
                       t('config_management.visual.api_keys.input_label')}
@@ -231,7 +262,7 @@ function ScopedApiKeysCardEditor({
                     {keyPools.length > 0 ? (
                       keyPools.map((pool) => (
                         <span key={pool} className="pill">
-                          {poolLabel(pool)}
+                          {categoryLabel(pool)}
                         </span>
                       ))
                     ) : (
@@ -355,48 +386,40 @@ function ScopedApiKeysCardEditor({
           <span id={poolsLabelId} className={styles.poolGroupLabel}>
             {t('config_management.visual.api_keys.pools_label')}
           </span>
-          <div className={styles.poolOptions}>
-            {candidateKeyPoolValues(draftPools).map((pool) => {
-              const option = KEY_POOL_OPTIONS.find((candidate) => candidate.value === pool);
-              return (
-                <label key={pool} className={styles.poolOption}>
-                  <input
-                    type="checkbox"
-                    checked={draftPools.includes(pool)}
-                    disabled={disabled}
-                    onChange={() => toggleDraftPool(pool)}
-                  />
-                  <span>{option ? t(option.labelKey) : pool}</span>
-                  {option ? <code className={styles.poolOptionValue}>{pool}</code> : null}
-                </label>
-              );
-            })}
-          </div>
-          <div className={styles.poolCustomRow}>
-            <input
-              className="input"
-              value={poolValue}
-              placeholder={t('config_management.visual.api_keys.pools_custom_placeholder')}
-              aria-label={t('config_management.visual.api_keys.pools_custom_placeholder')}
-              onChange={(event) => setPoolValue(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  addCustomPool();
-                }
-              }}
-              disabled={disabled}
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={addCustomPool}
-              disabled={disabled || !poolValue.trim()}
-            >
-              {t('config_management.visual.api_keys.pools_add')}
-            </Button>
-          </div>
+          {authFiles !== null && categoryOptions.length === 0 && (
+            <div className={styles.poolEmpty}>
+              {categoriesFailed
+                ? t('config_management.visual.api_keys.pools_unavailable')
+                : t('config_management.visual.api_keys.pools_none')}
+            </div>
+          )}
+          {authFiles !== null && categoryOptions.length > 0 && (
+            <div className={styles.poolOptions}>
+              {categoryOptions.map((option) => {
+                const checked = draftPools.some(
+                  (value) => value.trim().toLowerCase() === option.name.toLowerCase()
+                );
+                return (
+                  <label key={option.name} className={styles.poolOption}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={() => toggleDraftPool(option.name)}
+                    />
+                    <span>{categoryLabel(option.name)}</span>
+                    {option.missing ? (
+                      <span className={styles.poolOptionMissing}>
+                        {t('config_management.visual.api_keys.pools_missing')}
+                      </span>
+                    ) : (
+                      <span className={styles.poolOptionValue}>{option.count}</span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          )}
           <div id={poolsHintId} className="hint">
             {t('config_management.visual.api_keys.pools_hint')}
           </div>

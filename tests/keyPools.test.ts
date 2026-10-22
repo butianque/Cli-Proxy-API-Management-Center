@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import { parse as parseYaml } from 'yaml';
 import {
   areApiKeyPoolsEqual,
-  candidateKeyPoolValues,
   isDuplicateApiKey,
   parseApiKeyPools,
   removeApiKeyPools,
@@ -89,16 +88,6 @@ describe('api key pool mutations', () => {
     expect(isDuplicateApiKey(apiKeys, 'sk-a', 0)).toBe(false);
     expect(isDuplicateApiKey(apiKeys, 'sk-b', 0)).toBe(true);
     expect(isDuplicateApiKey(apiKeys, 'sk-c', -1)).toBe(false);
-  });
-
-  test('candidateKeyPoolValues lists known pools first, then custom ones', () => {
-    expect(candidateKeyPoolValues([])).toEqual(['loomy', 'zcode-bigmodel', 'zcode-zai']);
-    expect(candidateKeyPoolValues(['zcode-bigmodel', 'my-pool'])).toEqual([
-      'loomy',
-      'zcode-bigmodel',
-      'zcode-zai',
-      'my-pool',
-    ]);
   });
 });
 

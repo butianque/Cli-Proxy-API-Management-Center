@@ -182,16 +182,6 @@
   font-size: 11px;
 }
 
-.poolCustomRow {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-
-  :global(.input) {
-    flex: 1;
-  }
-}
-
 .poolBadges {
   display: flex;
   flex-wrap: wrap;
@@ -202,6 +192,19 @@
 .poolBadgesNone {
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+/* 没有可选的池时给出下一步，而不是渲染一个空的多选框。 */
+.poolEmpty {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 已选中的池被删除后，引用仍要可见，否则无从取消。 */
+.poolOptionMissing {
+  color: var(--warning-text);
+  font-size: 11px;
 }
 
 /* 强度参考条：四段承载档位，颜色承载严重度。
