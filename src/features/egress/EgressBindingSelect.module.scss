@@ -4,9 +4,46 @@
   display: inline-flex;
   flex-direction: column;
   gap: 2px;
-  /* 下拉框跟着内容撑不开（它在一行 flex 里会被挤到只剩一个字宽），所以给一个下限：
+  /* 触发器跟着内容撑不开（它在一行 flex 里会被挤到只剩一个字宽），所以给一个下限：
      至少能放下「#3 香港 1」，不用悬停才知道自己绑的是哪条。 */
   min-width: 168px;
+  /* 这一格可能落在一个加粗的值里（状态块的值是 600）。下拉框的选项名是控件文字，
+     不该跟着变粗 —— 这里把它拉回正文。 */
+  font-weight: 400;
+}
+
+/* 绑着的那条出口现在怎么样。
+ *
+ * 它不是第二个标签，是触发器的一句话注脚：颜色只给「通」和「不通」两种，其余
+ * （停用、没测过）都是灰的 —— 那两种不是结论，是「还没有结论」。 */
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.stateGood {
+  color: var(--success-color);
+}
+
+.stateBad {
+  color: var(--warning-color);
+}
+
+.stateMuted {
+  color: var(--text-tertiary);
 }
 
 .error {

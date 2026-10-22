@@ -111,6 +111,40 @@ export function EgressBindingSelect({
     selectedValue
   );
 
+  /**
+   * 触发器上那条出口**现在怎么样**。
+   *
+   * 下拉框本身只说「绑的是第几条」，说不出这条出口通不通 —— 那正是它在一排状态里
+   * 显得突兀的原因：旁边每一格都在报状态，只有它是个孤零零的选择框。这里补上池里
+   * 已有的结论（启用位 + 上次测试），而且读的是**触发器上正显示的那一条**，所以刚
+   * 改完就跟着变，不会先说旧的、再跳到新的。
+   */
+  const shownId = Number(selectedValue);
+  const bound = shownId > 0 ? (pool.entries.find((entry) => entry.id === shownId) ?? null) : null;
+  const boundState: { tone: string; text: string; title?: string } | null = (() => {
+    if (bound === null) return null;
+    if (!bound.enabled) return { tone: 'stateMuted', text: t('egress_pool.paused') };
+    if (bound.probe === null) return { tone: 'stateMuted', text: t('egress_pool.untested') };
+    if (!bound.probe.ok) {
+      return {
+        tone: 'stateBad',
+        text: t('egress_pool.bound_failed'),
+        title: bound.probe.error,
+      };
+    }
+    const latency =
+      bound.probe.latencyMs === null
+        ? ''
+        : t('egress_pool.bound_latency', { ms: Math.round(bound.probe.latencyMs) });
+    return {
+      tone: 'stateGood',
+      text:
+        [latency, bound.probe.region].filter((part) => part !== '').join(' · ') ||
+        t('egress_pool.bound_reachable'),
+      title: bound.probe.ip,
+    };
+  })();
+
   return (
     <span className={styles.wrap}>
       <Select
@@ -121,6 +155,12 @@ export function EgressBindingSelect({
         disabled={disabled || saving || pool.status === 'loading'}
         onChange={(nextValue) => void change(nextValue)}
       />
+      {boundState !== null && (
+        <span className={`${styles.state} ${styles[boundState.tone]}`} title={boundState.title}>
+          <span className={styles.dot} aria-hidden="true" />
+          {boundState.text}
+        </span>
+      )}
       {error !== '' && (
         <span role="alert" className={styles.error}>
           {error}

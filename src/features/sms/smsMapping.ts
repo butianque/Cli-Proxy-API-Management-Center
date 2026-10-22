@@ -616,6 +616,28 @@ export function toPool(list: SupplyLedgerWire[] | undefined): PoolEntry[] {
 }
 
 /**
+ * 一条台账记录**最后一次动过**的时刻。
+ *
+ * 后端没有单独的「更新时间」：它记的是两个具体事件 —— 这个身份最后一次被拿去用
+ * （`last_used`），以及它最近一次注册（每条注册记录各自的 `at`）。取其中较晚的那个，
+ * 回答的是「这条记录什么时候变过」。
+ *
+ * 两个时间都没记（或都读不成时间）就是 `null`：不拿「刚导进来」冒充一次更新。
+ */
+export function latestPoolActivity(entry: PoolEntry): string | null {
+  const times: number[] = [];
+  const remember = (iso: string | null): void => {
+    if (!iso) return;
+    const ms = Date.parse(iso);
+    if (Number.isFinite(ms)) times.push(ms);
+  };
+  remember(entry.lastUsedAt);
+  for (const project of entry.projects) remember(project.registeredAt);
+  if (times.length === 0) return null;
+  return new Date(Math.max(...times)).toISOString();
+}
+
+/**
  * 一个平台在台账里叫什么。
  *
  * 与登录凭据列表共用同一份名字：站点键走 `resolveCredentialSite`（产品名，与卡片

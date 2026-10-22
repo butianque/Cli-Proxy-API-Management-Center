@@ -290,7 +290,7 @@ tr.stripLead td {
 }
 
 tr.stripRow td {
-  padding: 0 14px 12px;
+  padding: 6px 14px 12px;
 }
 
 /* 状态带不可点，所以不跟着悬停变色：会亮的地方看起来就能点。 */
@@ -298,55 +298,10 @@ tr.stripRow:hover td {
   background: transparent;
 }
 
-/* 状态带右边那一格出口下拉框：属于这一条渠道，与状态同一行，靠右。 */
-.stripCell {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  flex-wrap: wrap;
-}
+/* 状态块本身就是一块面板（`EntryStatus`），所以这里只给它和上面那一行留出间距：
+ * 面板自己带底色与描边，再画一条表格的行线就多了一条。 */
 
-.stripEgress {
-  display: inline-flex;
-  align-items: center;
-  margin-left: auto;
-  flex: none;
-}
-
-.strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 0;
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
-
-.stripItem {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-
-/* 项目之间用一个中点分开，不给每个项目画框：这一行是补充说明，不是第二张表。 */
-.stripItem + .stripItem::before {
-  content: '·';
-  margin: 0 8px;
-  color: var(--text-tertiary);
-}
-
-.stripNote {
-  color: var(--text-tertiary);
-}
-
-.stripWarning {
-  color: var(--warning-color);
-}
-
-/* 验证码：这一行里唯一需要被一眼认出来的东西。 */
+/* 验证码：这一块里唯一需要被一眼认出来的东西。 */
 .stripCode {
   margin-left: 6px;
   border-radius: 5px;
@@ -359,31 +314,31 @@ tr.stripRow:hover td {
   letter-spacing: 0.04em;
 }
 
-/* 项目多了就只露两行（`line-height: 1.5` × 2 = `3em`，再加一行 4px 的行间距），
+/* 注册记录多了就只露两行（`line-height: 1.5` × 2 = `3em`，再加一行 3px 的行间距），
  * 剩下的由行尾按钮展开。溢出判断在组件里量真实高度，这里只负责「裁」。 */
 .stripClamp {
-  max-height: calc(3em + 4px);
+  max-height: calc(3em + 3px);
   overflow: hidden;
 }
 
-/* 台账的状态带：项目之间靠间距分开。`·` 在这一行里只表示「状态 ↔ 凭证名」，
- * 两种含义共用一个符号，人就分不清哪边开始是下一个项目。 */
-.stripProjects .stripItem + .stripItem::before {
-  content: none;
+/* 台账的注册记录：一条一行。
+ *
+ * 它们曾经用 `·` 串成一行，结果「已注册」后面那个名字既是账号又是平台，人分不清
+ * 哪一段属于哪一条。一行一条之后，站点、结果、凭证名各自占一格，谁也不用猜。 */
+.stripProjects {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
-.stripProjects .stripItem {
-  margin-right: 16px;
+.registrationRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
 }
 
-/* 「已使用」与凭证名之间的那个点：凭证名是补充，不该和项目名抢位置。 */
-.stripAccount::before {
-  content: '·';
-  margin-right: 6px;
-  color: var(--text-tertiary);
-}
-
-/* 台账状态带里的「站点」：与凭证卡片「站点」行同一套读法 —— 域名是这一格唯一的
+/* 台账状态块里的「站点」：与凭证卡片「站点」行同一套读法 —— 域名是这一格唯一的
  * 事实，国内/国际只是它的限定语。没有站点映射时这一格只放品牌名。 */
 .stripSite {
   display: inline-flex;

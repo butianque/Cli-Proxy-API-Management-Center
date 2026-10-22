@@ -36,6 +36,7 @@ import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { IconAlertTriangle, IconPencil, IconPlug, IconTrash2 } from '@/components/ui/icons';
 import { supplyApi, type SupplyChannelInput } from '@/services/api/supply';
 import { EgressBindingSelect } from '@/features/egress/EgressBindingSelect';
+import { useEgressPool } from '@/hooks/useEgressPool';
 import { ChannelStatusStrip } from './ChannelStatusStrip';
 import { useChannelStatus } from './useChannelStatus';
 import { kindBlockInput } from './channelDraft';
@@ -69,6 +70,10 @@ export interface SupplyPoolTableProps {
 
 export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: SupplyPoolTableProps) {
   const { t } = useTranslation();
+  // 出口池整块不可用时（旧版服务端），那一格连同它的下拉框一起不出现：
+  // 摆一个没有可选项的下拉框只会让人以为出口坏了。
+  const egressPool = useEgressPool();
+  const egressAvailable = egressPool.status !== 'unsupported' && egressPool.status !== 'error';
   const [channels, setChannels] = useState<SupplyChannel[]>([]);
   const [probes, setProbes] = useState<SupplyProbeResult[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -277,24 +282,24 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
                   </TableRow>
                   <TableRow className={styles.stripRow}>
                     <TableCell colSpan={7}>
-                      <div className={styles.stripCell}>
-                        <ChannelStatusStrip
-                          kind={kind}
-                          status={statuses.get(channel.id) ?? { kind: 'loading' }}
-                          pooled={channel.pooled[kind]}
-                        />
-                        <span className={styles.stripEgress}>
-                          <EgressBindingSelect
-                            kind="channel"
-                            name={channel.id}
-                            supplyKind={kind}
-                            currentId={blockEgressId(block)}
-                            noneLabel={t('egress_pool.none_direct')}
-                            ariaLabel={t('egress_pool.binding_aria', { name: channel.label })}
-                            onChanged={() => load()}
-                          />
-                        </span>
-                      </div>
+                      <ChannelStatusStrip
+                        kind={kind}
+                        status={statuses.get(channel.id) ?? { kind: 'loading' }}
+                        pooled={channel.pooled[kind]}
+                        egress={
+                          egressAvailable ? (
+                            <EgressBindingSelect
+                              kind="channel"
+                              name={channel.id}
+                              supplyKind={kind}
+                              currentId={blockEgressId(block)}
+                              noneLabel={t('egress_pool.none_direct')}
+                              ariaLabel={t('egress_pool.binding_aria', { name: channel.label })}
+                              onChanged={() => load()}
+                            />
+                          ) : null
+                        }
+                      />
                     </TableCell>
                   </TableRow>
                 </Fragment>

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import i18n from '../src/i18n/index';
 import { ChannelStatusStrip } from '../src/features/sms/ChannelStatusStrip';
@@ -7,14 +7,22 @@ import { formatReceivedAt } from '../src/features/sms/emailMapping';
 import type { ChannelStatus, EmailMessage } from '../src/features/sms/types';
 
 /**
- * The strip under a channel row is where a channel's own numbers appear. These
+ * The block under a channel row is where a channel's own numbers appear. These
  * render it for real (server-side markup) so the words are checked as output,
  * not as source text: a state that says the wrong thing is a bug the operator
  * reads, not a style preference.
+ *
+ * Each number now sits under its own label ("入池" / "平台余额" / "最近取号"), so the
+ * assertions check the label and the value separately: the label is what makes the
+ * number mean something, and a value alone would still read as a bare sentence.
  */
 
-const render = (status: ChannelStatus, kind: 'email' | 'phone' = 'email', pooled?: number) =>
-  renderToStaticMarkup(createElement(ChannelStatusStrip, { kind, status, pooled }));
+const render = (
+  status: ChannelStatus,
+  kind: 'email' | 'phone' = 'email',
+  pooled?: number,
+  egress?: ReactNode
+) => renderToStaticMarkup(createElement(ChannelStatusStrip, { kind, status, pooled, egress }));
 
 const message: EmailMessage = {
   channelId: 'ormnesqq',
@@ -34,7 +42,8 @@ describe('a channel row leads with what it contributed to the pool', () => {
       'email',
       3
     );
-    expect(markup).toContain(i18n.t('sms_service.row_pooled_email', { n: 3 }));
+    expect(markup).toContain(i18n.t('sms_service.pool_fact_pooled'));
+    expect(markup).toContain(i18n.t('sms_service.pool_value_pooled_email', { n: 3 }));
   });
 
   test('zero is a counted answer, so it is said out loud', () => {
@@ -43,7 +52,7 @@ describe('a channel row leads with what it contributed to the pool', () => {
       'phone',
       0
     );
-    expect(markup).toContain(i18n.t('sms_service.row_pooled_phone', { n: 0 }));
+    expect(markup).toContain(i18n.t('sms_service.pool_value_pooled_phone', { n: 0 }));
   });
 
   test('a count the base could not produce is left out, never shown as zero', () => {
@@ -51,8 +60,9 @@ describe('a channel row leads with what it contributed to the pool', () => {
       { kind: 'phone', balanceCny: 1, balanceError: '', latestAt: null },
       'phone'
     );
-    expect(markup).not.toContain(i18n.t('sms_service.row_pooled_phone', { n: 0 }));
-    expect(markup).toContain(i18n.t('sms_service.row_phone_balance', { amount: '1.00' }));
+    expect(markup).not.toContain(i18n.t('sms_service.pool_value_pooled_phone', { n: 0 }));
+    expect(markup).not.toContain(i18n.t('sms_service.pool_fact_pooled'));
+    expect(markup).toContain(i18n.t('sms_service.pool_value_balance', { amount: '1.00' }));
   });
 
   test('a row whose platform reading failed still states its count', () => {
@@ -60,8 +70,32 @@ describe('a channel row leads with what it contributed to the pool', () => {
     // make it unknown, and hiding it would leave the operator with less than the
     // base knows.
     const markup = render({ kind: 'locked' }, 'phone', 2);
-    expect(markup).toContain(i18n.t('sms_service.row_pooled_phone', { n: 2 }));
+    expect(markup).toContain(i18n.t('sms_service.pool_value_pooled_phone', { n: 2 }));
     expect(markup).toContain(i18n.t('sms_service.row_status_locked'));
+  });
+});
+
+describe('the exit control is part of the row state, not a stray dropdown', () => {
+  test('it carries the same label as the credential card, and renders in place', () => {
+    const markup = render(
+      { kind: 'phone', balanceCny: 1, balanceError: '', latestAt: null },
+      'phone',
+      undefined,
+      createElement('span', null, 'EGRESS-SLOT')
+    );
+    expect(markup).toContain(i18n.t('egress_pool.account_label'));
+    expect(markup).toContain('EGRESS-SLOT');
+  });
+
+  test('a server without an exit pool leaves the slot out entirely', () => {
+    // An empty labeled cell would say "there is an exit here and it is blank".
+    const markup = render(
+      { kind: 'phone', balanceCny: 1, balanceError: '', latestAt: null },
+      'phone',
+      undefined,
+      null
+    );
+    expect(markup).not.toContain(i18n.t('egress_pool.account_label'));
   });
 });
 
@@ -73,9 +107,11 @@ describe('a mailbox row states its own newest message', () => {
       domain: 'ormnes.com',
       latest: message,
     });
+    expect(markup).toContain(i18n.t('sms_service.pool_fact_latest_mail'));
     expect(markup).toContain('noreply@example.com');
     expect(markup).toContain(i18n.t('sms_service.row_email_code', { code: '552211' }));
     // The mailbox it reads is part of the row: two channels can share a domain.
+    expect(markup).toContain(i18n.t('sms_service.pool_fact_mailbox'));
     expect(markup).toContain('box@qq.com');
     expect(markup).toContain('@ormnes.com');
   });
@@ -88,6 +124,7 @@ describe('a mailbox row states its own newest message', () => {
       latest: null,
     });
     expect(markup).not.toContain(i18n.t('sms_service.row_email_code', { code: '' }));
+    expect(markup).not.toContain(i18n.t('sms_service.pool_fact_latest_mail'));
   });
 });
 
@@ -125,12 +162,12 @@ describe('a phone row states the platform balance and the last use', () => {
       },
       'phone'
     );
-    expect(markup).toContain(i18n.t('sms_service.row_phone_balance', { amount: '12.40' }));
+    expect(markup).toContain(i18n.t('sms_service.pool_fact_balance'));
+    expect(markup).toContain(i18n.t('sms_service.pool_value_balance', { amount: '12.40' }));
     // The instant is rendered in the reader's own locale and zone, so the
     // expectation comes from the same formatter rather than a fixed string.
-    expect(markup).toContain(
-      i18n.t('sms_service.row_phone_latest', { time: formatReceivedAt('2026-10-14T02:00:00.000Z') })
-    );
+    expect(markup).toContain(i18n.t('sms_service.pool_fact_latest_phone'));
+    expect(markup).toContain(formatReceivedAt('2026-10-14T02:00:00.000Z'));
   });
 
   test('an unreadable balance is stated, never shown as zero', () => {

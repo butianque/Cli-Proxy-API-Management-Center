@@ -28,9 +28,17 @@ import {
 } from '@/components/ui/Table';
 import { IconAlertTriangle, IconChevronDown, IconChevronUp, IconTimer } from '@/components/ui/icons';
 import { supplyApi } from '@/services/api/supply';
+import { formatDateTimeValue } from '@/utils/format';
+import {
+  EntryStatus,
+  EntryStatusFact,
+  EntryStatusFacts,
+  EntryStatusGroup,
+} from './EntryStatus';
 import {
   NATURE_LABEL,
   identityState,
+  latestPoolActivity,
   projectLabel,
   projectSite,
   toPool,
@@ -54,7 +62,7 @@ export interface SupplyPoolCardProps {
 const ALL_KINDS: readonly SupplyKind[] = ['phone', 'email'];
 
 export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [entries, setEntries] = useState<PoolEntry[]>([]);
   const [channels, setChannels] = useState<SupplyChannel[]>([]);
   const [probes, setProbes] = useState<
@@ -256,6 +264,10 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
               // 没注册过本身就是答案（「未注册任何平台」），不摆空行也不藏起来 ——
               // 藏起来时，一个刚导进来还没用过的号看起来就像「面板没做这一块」。
               const unused = entry.projects.length === 0;
+              // 「更新时间」= 这条记录最后一次动过的时刻（最近使用 / 最近一次注册里较晚的）。
+              // 两个时间都没记就是没有 —— 不拿「刚导进来」冒充一次更新。
+              const updatedAt = latestPoolActivity(entry);
+              const updatedText = updatedAt ? formatDateTimeValue(updatedAt, i18n.language) : '';
 
               return (
                 <Fragment key={rowKey}>
@@ -295,65 +307,83 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
                   </TableRow>
                   <TableRow className={styles.stripRow}>
                     <TableCell colSpan={7}>
-                      <div
-                        ref={(node) => {
-                          // 展开时量的是「不裁剪」的高度，量出来永远不会溢出，所以只在
-                          // 收起状态下测量 —— 否则按钮会在展开的瞬间自己消失。
-                          if (!isOpen) measure(rowKey, node);
-                        }}
-                        className={`${styles.strip} ${styles.stripProjects} ${
-                          isOpen ? '' : styles.stripClamp
-                        }`}
-                      >
-                        {unused ? (
-                          <span className={styles.stripNote}>
-                            {t('sms_service.ledger_unused')}
-                          </span>
-                        ) : null}
-                        {entry.projects.map((project) => {
-                          const site = projectSite(project.target);
-                          // 结果只有三种语气：成了、没成、还在等/已释放。这一行
-                          // 里只有它带颜色，扫一眼就知道哪条要处理。
-                          const stateTone =
-                            project.state === 'registered'
-                              ? styles.stripStateGood
-                              : project.state === 'failed'
-                                ? styles.stripStateBad
-                                : styles.stripState;
-                          return (
-                            <span
-                              className={styles.stripItem}
-                              key={`${project.target}@${project.account}`}
+                      <EntryStatus>
+                        <EntryStatusFacts>
+                          <EntryStatusFact
+                            label={t('sms_service.ledger_fact_registrations')}
+                            tone={unused ? 'muted' : 'plain'}
+                          >
+                            {unused
+                              ? t('sms_service.ledger_unused')
+                              : t('sms_service.ledger_registered_count', {
+                                  count: entry.projects.length,
+                                })}
+                          </EntryStatusFact>
+                          {updatedText !== '' && (
+                            <EntryStatusFact label={t('sms_service.ledger_fact_updated')}>
+                              {updatedText}
+                            </EntryStatusFact>
+                          )}
+                        </EntryStatusFacts>
+                        {unused ? null : (
+                          <EntryStatusGroup>
+                            <div
+                              ref={(node) => {
+                                // 展开时量的是「不裁剪」的高度，量出来永远不会溢出，所以只在
+                                // 收起状态下测量 —— 否则按钮会在展开的瞬间自己消失。
+                                if (!isOpen) measure(rowKey, node);
+                              }}
+                              className={`${styles.stripProjects} ${
+                                isOpen ? '' : styles.stripClamp
+                              }`}
                             >
-                              {/* 站点与凭证卡片「站点」行同一套读法：域名是事实，
-                                  国内/国际是它的限定语。没有映射就只说品牌名，
-                                  不拿别的平台的域名凑。 */}
-                              <span className={styles.stripSite}>
-                                {site ? (
-                                  <>
-                                    <span className={styles.stripRegion}>
-                                      {t(`auth_files.region_${site.region}`)}
+                              {entry.projects.map((project) => {
+                                const site = projectSite(project.target);
+                                // 结果只有三种语气：成了、没成、还在等/已释放。这一行
+                                // 里只有它带颜色，扫一眼就知道哪条要处理。
+                                const stateTone =
+                                  project.state === 'registered'
+                                    ? styles.stripStateGood
+                                    : project.state === 'failed'
+                                      ? styles.stripStateBad
+                                      : styles.stripState;
+                                return (
+                                  <div
+                                    className={styles.registrationRow}
+                                    key={`${project.target}@${project.account}`}
+                                  >
+                                    {/* 站点与凭证卡片「站点」行同一套读法：域名是事实，
+                                        国内/国际是它的限定语。没有映射就只说品牌名，
+                                        不拿别的平台的域名凑。 */}
+                                    <span className={styles.stripSite}>
+                                      {site ? (
+                                        <>
+                                          <span className={styles.stripRegion}>
+                                            {t(`auth_files.region_${site.region}`)}
+                                          </span>
+                                          <span className={styles.stripDomain}>
+                                            {site.domain}
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <span className={styles.stripDomain}>
+                                          {projectName(project.target)}
+                                        </span>
+                                      )}
                                     </span>
-                                    <span className={styles.stripDomain}>{site.domain}</span>
-                                  </>
-                                ) : (
-                                  <span className={styles.stripDomain}>
-                                    {projectName(project.target)}
-                                  </span>
-                                )}
-                              </span>
-                              <span className={stateTone}>
-                                {t(`sms_service.pool_state_${project.state}`)}
-                              </span>
-                              {project.account ? (
-                                <span className={styles.stripAccount}>
-                                  <span className={styles.mono}>{project.account}</span>
-                                </span>
-                              ) : null}
-                            </span>
-                          );
-                        })}
-                      </div>
+                                    <span className={stateTone}>
+                                      {t(`sms_service.pool_state_${project.state}`)}
+                                    </span>
+                                    {project.account !== '' && (
+                                      <span className={styles.mono}>{project.account}</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </EntryStatusGroup>
+                        )}
+                      </EntryStatus>
                     </TableCell>
                   </TableRow>
                 </Fragment>

@@ -343,13 +343,16 @@ describe('every locale can say the channel-row words', () => {
     'row_status_unready_phone',
     'row_status_error',
     'row_status_error_unknown',
-    'row_pooled_phone',
-    'row_pooled_email',
-    'row_email_latest',
+    'pool_fact_pooled',
+    'pool_fact_balance',
+    'pool_fact_latest_phone',
+    'pool_fact_mailbox',
+    'pool_fact_latest_mail',
+    'pool_value_pooled_phone',
+    'pool_value_pooled_email',
+    'pool_value_balance',
     'row_email_code',
-    'row_phone_balance',
     'row_phone_balance_unknown',
-    'row_phone_latest',
     'field_mail_auth_code',
     'field_mail_auth_code_hint',
     'nature_oauth2',
@@ -388,8 +391,10 @@ describe('every locale can say the channel-row words', () => {
       const bundle = JSON.parse(
         readFileSync(new URL(`../src/i18n/locales/${locale}.json`, import.meta.url), 'utf8')
       ) as { sms_service?: Record<string, unknown> };
-      const phone = String(bundle.sms_service?.row_pooled_phone ?? '');
-      const email = String(bundle.sms_service?.row_pooled_email ?? '');
+      const label = String(bundle.sms_service?.pool_fact_pooled ?? '');
+      const phone = String(bundle.sms_service?.pool_value_pooled_phone ?? '');
+      const email = String(bundle.sms_service?.pool_value_pooled_email ?? '');
+      expect(label.trim()).not.toBe('');
       expect(phone).toContain('{{n}}');
       expect(email).toContain('{{n}}');
       expect(phone).not.toBe(email);

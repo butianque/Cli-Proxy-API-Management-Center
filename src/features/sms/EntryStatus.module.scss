@@ -1,0 +1,93 @@
+/* ============================================================
+ * 列表条目下面的状态块（渠道池 / 供应池共用）。
+ *
+ * 版式取自凭证卡片的账号池区块：一块浅底、细边、圆角的内嵌面板。它比正文小
+ * 一号，压在条目主数据下面，读起来是「那一行的第二段」，不是第二张表。
+ * ============================================================ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* 事实横向排开，放不下就换行。每一格自己是一小列，宽度随内容走 ——
+ * 这样「入池」和「平台余额」不会互相挤压，也不用谁去数一列能放几个。 */
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 22px;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.factLabel {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.factValue {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.tonePlain {
+  color: var(--text-primary);
+}
+
+/* 没有值可说的一格：仍然占着标签，但不该比有值的一格更响。 */
+.toneMuted {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.toneGood {
+  color: var(--success-color);
+}
+
+.toneWarn {
+  color: var(--warning-color);
+}
+
+/* 机器标识（地址、账号、编号）用等宽字体：它们靠字形分辨，不靠读。 */
+.mono {
+  font-family: $font-mono;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* 分组：一条分割线，把「这一行是什么」和「它做过什么」分开。
+ * 线用满不透明的边框色，因为它是一条结构线，不是一层浅底。 */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.groupLabel {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.note {
+  overflow-wrap: anywhere;
+}
