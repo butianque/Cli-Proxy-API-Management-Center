@@ -42,6 +42,15 @@
   background: var(--bg-primary);
 }
 
+/* 一个条目拆成「主数据 + 状态带」两行时，悬停要整条一起变暗。
+ *
+ * 单行自己变色的规则仍然在（`.row:hover`），但组内任何一行被指到，这一组的所有
+ * 行都跟上 —— 否则状态带和它上面那一行会一深一浅，看起来是两个东西。
+ * 状态带的底色是半透明的（`EntryStatus` 的浅底），所以它会跟着一起暗下去。 */
+.group:hover .row td {
+  background: color-mix(in srgb, var(--accent-bg) 50%, transparent);
+}
+
 .row {
   transition: background-color $transition-fast;
 
@@ -61,7 +70,9 @@
   }
 }
 
-.body .row:last-child td {
+/* 最后一个条目的最后一行不画线。一个条目自成一个 `<tbody>` 时，「最后一行」每个
+ * 组都有一行，所以要说清是最后**一个**组 —— 否则条目之间就没有分隔线了。 */
+.body:last-of-type .row:last-child td {
   border-bottom: none;
 }
 

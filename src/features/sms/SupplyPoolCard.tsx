@@ -13,28 +13,28 @@
  * 就是没有，不摆占位行。
  */
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Notice } from '@/components/ui/Notice';
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
+  TableRowGroup,
 } from '@/components/ui/Table';
-import { IconAlertTriangle, IconChevronDown, IconChevronUp, IconTimer } from '@/components/ui/icons';
+import {
+  IconAlertTriangle,
+  IconChevronDown,
+  IconChevronUp,
+  IconTimer,
+} from '@/components/ui/icons';
 import { supplyApi } from '@/services/api/supply';
 import { formatDateTimeValue } from '@/utils/format';
-import {
-  EntryStatus,
-  EntryStatusFact,
-  EntryStatusFacts,
-  EntryStatusGroup,
-} from './EntryStatus';
+import { EntryStatus, EntryStatusFact, EntryStatusFacts, EntryStatusGroup } from './EntryStatus';
 import {
   NATURE_LABEL,
   identityState,
@@ -87,7 +87,9 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
       setEntries(toPool(pools.flat()));
       setChannels(list);
       // 探活只问「已启用」的渠道：停用的渠道没有连通的义务，问它只会得到一句噪音。
-      const ids = list.filter((channel) => channelEnabled(channel, kinds)).map((channel) => channel.id);
+      const ids = list
+        .filter((channel) => channelEnabled(channel, kinds))
+        .map((channel) => channel.id);
       const probed = ids.length > 0 ? toProbes(await supplyApi.probeChannels(ids)) : [];
       setProbes(new Map(probed.map((item) => [item.id, item.natures])));
       setLoadError('');
@@ -217,179 +219,169 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {entries.map((entry) => {
-              const rowKey = `${entry.kind}:${entry.identity}`;
-              const channel = resolveChannel(entry);
-              const block = channel
-                ? entry.kind === 'phone'
-                  ? channel.phone
-                  : channel.email
-                : null;
-              const declared = block?.natures ?? [];
-              const mailbox = entry.mailbox;
-              const state = identityState(
-                mailbox,
-                declared,
-                channel ? probes.get(channel.id) : undefined
-              );
-              /**
-               * 类别说的是**这是哪一类身份**（手机号 / 邮箱），不是渠道的性质。
-               *
-               * 一张表里两类的列一样，只有这一列说得出「这一行是号码还是地址」；
-               * 渠道的性质（第三方 / 自建域）属于渠道那一页，在这里再写一遍只会
-               * 让同一个词在一行里出现两次、意思还不一样。
-               */
-              const kindLabel = t(
-                entry.kind === 'phone' ? 'sms_service.tab_phone' : 'sms_service.tab_email'
-              );
-              // 渠道：这个身份是哪条渠道发出来的。自带凭据的邮箱没有渠道 —— 它
-              // 不是渠道发出来的，是直接买进来入池的。
-              const channelLabel = mailbox ? '—' : channel?.label || '—';
-              /**
-               * 来源：渠道内部**具体哪一项**给了它。
-               *
-               * 手机号是平台的对接码（同一个平台下有好几条线），邮箱是那个域。
-               * 自带凭据的邮箱没有渠道，它的来源就是「导入」。
-               */
-              const sourceLabel = mailbox
-                ? t('sms_service.pool_origin_import')
-                : entry.sourceDetail || '—';
-              const naturesLabel = mailbox
-                ? t(NATURE_LABEL[mailbox.nature])
-                : declared.map((nature) => t(NATURE_LABEL[nature])).join(' + ');
-              const isOpen = expanded.has(rowKey);
-              const canExpand = overflowing.has(rowKey);
-              // 每个身份下面都有一条状态带：它回答「这个号注册过哪些平台」，
-              // 没注册过本身就是答案（「未注册任何平台」），不摆空行也不藏起来 ——
-              // 藏起来时，一个刚导进来还没用过的号看起来就像「面板没做这一块」。
-              const unused = entry.projects.length === 0;
-              // 「更新时间」= 这条记录最后一次动过的时刻（最近使用 / 最近一次注册里较晚的）。
-              // 两个时间都没记就是没有 —— 不拿「刚导进来」冒充一次更新。
-              const updatedAt = latestPoolActivity(entry);
-              const updatedText = updatedAt ? formatDateTimeValue(updatedAt, i18n.language) : '';
+          {entries.map((entry) => {
+            const rowKey = `${entry.kind}:${entry.identity}`;
+            const channel = resolveChannel(entry);
+            const block = channel ? (entry.kind === 'phone' ? channel.phone : channel.email) : null;
+            const declared = block?.natures ?? [];
+            const mailbox = entry.mailbox;
+            const state = identityState(
+              mailbox,
+              declared,
+              channel ? probes.get(channel.id) : undefined
+            );
+            /**
+             * 类别说的是**这是哪一类身份**（手机号 / 邮箱），不是渠道的性质。
+             *
+             * 一张表里两类的列一样，只有这一列说得出「这一行是号码还是地址」；
+             * 渠道的性质（第三方 / 自建域）属于渠道那一页，在这里再写一遍只会
+             * 让同一个词在一行里出现两次、意思还不一样。
+             */
+            const kindLabel = t(
+              entry.kind === 'phone' ? 'sms_service.tab_phone' : 'sms_service.tab_email'
+            );
+            // 渠道：这个身份是哪条渠道发出来的。自带凭据的邮箱没有渠道 —— 它
+            // 不是渠道发出来的，是直接买进来入池的。
+            const channelLabel = mailbox ? '—' : channel?.label || '—';
+            /**
+             * 来源：渠道内部**具体哪一项**给了它。
+             *
+             * 手机号是平台的对接码（同一个平台下有好几条线），邮箱是那个域。
+             * 自带凭据的邮箱没有渠道，它的来源就是「导入」。
+             */
+            const sourceLabel = mailbox
+              ? t('sms_service.pool_origin_import')
+              : entry.sourceDetail || '—';
+            const naturesLabel = mailbox
+              ? t(NATURE_LABEL[mailbox.nature])
+              : declared.map((nature) => t(NATURE_LABEL[nature])).join(' + ');
+            const isOpen = expanded.has(rowKey);
+            const canExpand = overflowing.has(rowKey);
+            // 每个身份下面都有一条状态带：它回答「这个号注册过哪些平台」，
+            // 没注册过本身就是答案（「未注册任何平台」），不摆空行也不藏起来 ——
+            // 藏起来时，一个刚导进来还没用过的号看起来就像「面板没做这一块」。
+            const unused = entry.projects.length === 0;
+            // 「更新时间」= 这条记录最后一次动过的时刻（最近使用 / 最近一次注册里较晚的）。
+            // 两个时间都没记就是没有 —— 不拿「刚导进来」冒充一次更新。
+            const updatedAt = latestPoolActivity(entry);
+            const updatedText = updatedAt ? formatDateTimeValue(updatedAt, i18n.language) : '';
 
-              return (
-                <Fragment key={rowKey}>
-                  <TableRow className={styles.stripLead}>
-                    <TableCell>
-                      <span className={styles.mono}>{entry.identity || '—'}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`${styles.tag} ${styles.tagMuted}`}>{kindLabel}</span>
-                    </TableCell>
-                    <TableCell>{channelLabel}</TableCell>
-                    <TableCell>{sourceLabel}</TableCell>
-                    <TableCell>{naturesLabel || '—'}</TableCell>
-                    <TableCell>
-                      <span className={`${styles.tag} ${styles[state.tone]}`}>
-                        {t(state.key, state.params)}
-                      </span>
-                    </TableCell>
-                    <TableCell alignRight>
-                      {canExpand ? (
-                        <button
-                          type="button"
-                          className={styles.actionPill}
-                          onClick={() => toggleExpanded(rowKey)}
-                          title={
-                            isOpen ? t('sms_service.ledger_collapse') : t('sms_service.ledger_expand')
-                          }
-                          aria-label={
-                            isOpen ? t('sms_service.ledger_collapse') : t('sms_service.ledger_expand')
-                          }
-                          aria-expanded={isOpen}
+            return (
+              <TableRowGroup key={rowKey}>
+                <TableRow className={styles.stripLead}>
+                  <TableCell>
+                    <span className={styles.mono}>{entry.identity || '—'}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className={`${styles.tag} ${styles.tagMuted}`}>{kindLabel}</span>
+                  </TableCell>
+                  <TableCell>{channelLabel}</TableCell>
+                  <TableCell>{sourceLabel}</TableCell>
+                  <TableCell>{naturesLabel || '—'}</TableCell>
+                  <TableCell>
+                    <span className={`${styles.tag} ${styles[state.tone]}`}>
+                      {t(state.key, state.params)}
+                    </span>
+                  </TableCell>
+                  <TableCell alignRight>
+                    {canExpand ? (
+                      <button
+                        type="button"
+                        className={styles.actionPill}
+                        onClick={() => toggleExpanded(rowKey)}
+                        title={
+                          isOpen ? t('sms_service.ledger_collapse') : t('sms_service.ledger_expand')
+                        }
+                        aria-label={
+                          isOpen ? t('sms_service.ledger_collapse') : t('sms_service.ledger_expand')
+                        }
+                        aria-expanded={isOpen}
+                      >
+                        {isOpen ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
+                      </button>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+                <TableRow className={styles.stripRow}>
+                  <TableCell colSpan={7}>
+                    <EntryStatus>
+                      <EntryStatusFacts>
+                        <EntryStatusFact
+                          label={t('sms_service.ledger_fact_registrations')}
+                          tone={unused ? 'muted' : 'plain'}
                         >
-                          {isOpen ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-                        </button>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className={styles.stripRow}>
-                    <TableCell colSpan={7}>
-                      <EntryStatus>
-                        <EntryStatusFacts>
-                          <EntryStatusFact
-                            label={t('sms_service.ledger_fact_registrations')}
-                            tone={unused ? 'muted' : 'plain'}
-                          >
-                            {unused
-                              ? t('sms_service.ledger_unused')
-                              : t('sms_service.ledger_registered_count', {
-                                  count: entry.projects.length,
-                                })}
+                          {unused
+                            ? t('sms_service.ledger_unused')
+                            : t('sms_service.ledger_registered_count', {
+                                count: entry.projects.length,
+                              })}
+                        </EntryStatusFact>
+                        {updatedText !== '' && (
+                          <EntryStatusFact label={t('sms_service.ledger_fact_updated')}>
+                            {updatedText}
                           </EntryStatusFact>
-                          {updatedText !== '' && (
-                            <EntryStatusFact label={t('sms_service.ledger_fact_updated')}>
-                              {updatedText}
-                            </EntryStatusFact>
-                          )}
-                        </EntryStatusFacts>
-                        {unused ? null : (
-                          <EntryStatusGroup>
-                            <div
-                              ref={(node) => {
-                                // 展开时量的是「不裁剪」的高度，量出来永远不会溢出，所以只在
-                                // 收起状态下测量 —— 否则按钮会在展开的瞬间自己消失。
-                                if (!isOpen) measure(rowKey, node);
-                              }}
-                              className={`${styles.stripProjects} ${
-                                isOpen ? '' : styles.stripClamp
-                              }`}
-                            >
-                              {entry.projects.map((project) => {
-                                const site = projectSite(project.target);
-                                // 结果只有三种语气：成了、没成、还在等/已释放。这一行
-                                // 里只有它带颜色，扫一眼就知道哪条要处理。
-                                const stateTone =
-                                  project.state === 'registered'
-                                    ? styles.stripStateGood
-                                    : project.state === 'failed'
-                                      ? styles.stripStateBad
-                                      : styles.stripState;
-                                return (
-                                  <div
-                                    className={styles.registrationRow}
-                                    key={`${project.target}@${project.account}`}
-                                  >
-                                    {/* 站点与凭证卡片「站点」行同一套读法：域名是事实，
+                        )}
+                      </EntryStatusFacts>
+                      {unused ? null : (
+                        <EntryStatusGroup>
+                          <div
+                            ref={(node) => {
+                              // 展开时量的是「不裁剪」的高度，量出来永远不会溢出，所以只在
+                              // 收起状态下测量 —— 否则按钮会在展开的瞬间自己消失。
+                              if (!isOpen) measure(rowKey, node);
+                            }}
+                            className={`${styles.stripProjects} ${isOpen ? '' : styles.stripClamp}`}
+                          >
+                            {entry.projects.map((project) => {
+                              const site = projectSite(project.target);
+                              // 结果只有三种语气：成了、没成、还在等/已释放。这一行
+                              // 里只有它带颜色，扫一眼就知道哪条要处理。
+                              const stateTone =
+                                project.state === 'registered'
+                                  ? styles.stripStateGood
+                                  : project.state === 'failed'
+                                    ? styles.stripStateBad
+                                    : styles.stripState;
+                              return (
+                                <div
+                                  className={styles.registrationRow}
+                                  key={`${project.target}@${project.account}`}
+                                >
+                                  {/* 站点与凭证卡片「站点」行同一套读法：域名是事实，
                                         国内/国际是它的限定语。没有映射就只说品牌名，
                                         不拿别的平台的域名凑。 */}
-                                    <span className={styles.stripSite}>
-                                      {site ? (
-                                        <>
-                                          <span className={styles.stripRegion}>
-                                            {t(`auth_files.region_${site.region}`)}
-                                          </span>
-                                          <span className={styles.stripDomain}>
-                                            {site.domain}
-                                          </span>
-                                        </>
-                                      ) : (
-                                        <span className={styles.stripDomain}>
-                                          {projectName(project.target)}
+                                  <span className={styles.stripSite}>
+                                    {site ? (
+                                      <>
+                                        <span className={styles.stripRegion}>
+                                          {t(`auth_files.region_${site.region}`)}
                                         </span>
-                                      )}
-                                    </span>
-                                    <span className={stateTone}>
-                                      {t(`sms_service.pool_state_${project.state}`)}
-                                    </span>
-                                    {project.account !== '' && (
-                                      <span className={styles.mono}>{project.account}</span>
+                                        <span className={styles.stripDomain}>{site.domain}</span>
+                                      </>
+                                    ) : (
+                                      <span className={styles.stripDomain}>
+                                        {projectName(project.target)}
+                                      </span>
                                     )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </EntryStatusGroup>
-                        )}
-                      </EntryStatus>
-                    </TableCell>
-                  </TableRow>
-                </Fragment>
-              );
-            })}
-          </TableBody>
+                                  </span>
+                                  <span className={stateTone}>
+                                    {t(`sms_service.pool_state_${project.state}`)}
+                                  </span>
+                                  {project.account !== '' && (
+                                    <span className={styles.mono}>{project.account}</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </EntryStatusGroup>
+                      )}
+                    </EntryStatus>
+                  </TableCell>
+                </TableRow>
+              </TableRowGroup>
+            );
+          })}
         </Table>
       )}
     </Card>

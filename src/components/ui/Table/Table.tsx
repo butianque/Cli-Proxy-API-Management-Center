@@ -51,6 +51,25 @@ export function TableBody({
   );
 }
 
+/**
+ * 一组行属于同一个条目。
+ *
+ * 一个条目有时要拆成两行：主数据一行，它下面那条状态带一行。拆开之后悬停只变暗
+ * 上面一行，下半截就看起来不属于它 —— 一条记录读成了两条。把这两行放进同一个
+ * `<tbody>`，悬停由这一组自己决定：鼠标落在哪一行，整条一起变暗。
+ */
+export function TableRowGroup({
+  children,
+  className,
+  ...rest
+}: PropsWithChildren<HTMLAttributes<HTMLTableSectionElement>>) {
+  return (
+    <tbody className={[styles.body, styles.group, className].filter(Boolean).join(' ')} {...rest}>
+      {children}
+    </tbody>
+  );
+}
+
 interface TableRowProps extends HTMLAttributes<HTMLTableRowElement> {
   selected?: boolean;
 }

@@ -293,10 +293,8 @@ tr.stripRow td {
   padding: 6px 14px 12px;
 }
 
-/* 状态带不可点，所以不跟着悬停变色：会亮的地方看起来就能点。 */
-tr.stripRow:hover td {
-  background: transparent;
-}
+/* 悬停由整条负责（`TableRowGroup`），不在这里单行处理：一个条目被拆成两行之后，
+ * 只有上面一行跟着变暗会让状态带看起来不属于它。 */
 
 /* 状态块本身就是一块面板（`EntryStatus`），所以这里只给它和上面那一行留出间距：
  * 面板自己带底色与描边，再画一条表格的行线就多了一条。 */

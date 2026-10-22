@@ -19,18 +19,18 @@
  * 「连不上」。
  */
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Notice } from '@/components/ui/Notice';
 import {
   Table,
-  TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
+  TableRowGroup,
 } from '@/components/ui/Table';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { IconAlertTriangle, IconPencil, IconPlug, IconTrash2 } from '@/components/ui/icons';
@@ -224,88 +224,86 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
               <TableHead alignRight>{t('sms_service.pool_col_remove')}</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {channels.map((channel) => {
-              const block = kind === 'phone' ? channel.phone : channel.email;
-              const connection = connectionOf(channel);
-              const categoryLabel = CATEGORY_LABEL[channel.category];
-              const editLabel = t('sms_service.pool_edit_aria', { name: channel.label });
-              const removeLabel = t('sms_service.pool_remove_aria', { name: channel.label });
-              return (
-                <Fragment key={channel.id}>
-                  <TableRow className={styles.stripLead}>
-                    <TableCell>
-                      <span className={styles.channelName}>{channel.label}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className={`${styles.tag} ${styles.tagMuted}`}>
-                        {categoryLabel ? t(categoryLabel) : '—'}
-                      </span>
-                    </TableCell>
-                    <TableCell>{natureLabels(block?.natures ?? [])}</TableCell>
-                    <TableCell>
-                      <span className={`${styles.tag} ${styles[connection.tone]}`}>
-                        {t(connection.key, connection.params)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <ToggleSwitch
-                        checked={block?.enabled ?? false}
-                        onChange={(next) => void setEnabled(channel, next)}
-                        disabled={busyId === channel.id}
-                        ariaLabel={t('sms_service.pool_toggle_aria', { name: channel.label })}
-                      />
-                    </TableCell>
-                    <TableCell alignRight>
-                      <button
-                        type="button"
-                        className={styles.actionPill}
-                        onClick={() => onEdit(channel)}
-                        title={editLabel}
-                        aria-label={editLabel}
-                      >
-                        <IconPencil size={14} />
-                      </button>
-                    </TableCell>
-                    <TableCell alignRight>
-                      <button
-                        type="button"
-                        className={styles.actionPill}
-                        onClick={() => void remove(channel)}
-                        disabled={busyId === channel.id}
-                        title={removeLabel}
-                        aria-label={removeLabel}
-                      >
-                        <IconTrash2 size={14} />
-                      </button>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow className={styles.stripRow}>
-                    <TableCell colSpan={7}>
-                      <ChannelStatusStrip
-                        kind={kind}
-                        status={statuses.get(channel.id) ?? { kind: 'loading' }}
-                        pooled={channel.pooled[kind]}
-                        egress={
-                          egressAvailable ? (
-                            <EgressBindingSelect
-                              kind="channel"
-                              name={channel.id}
-                              supplyKind={kind}
-                              currentId={blockEgressId(block)}
-                              noneLabel={t('egress_pool.none_direct')}
-                              ariaLabel={t('egress_pool.binding_aria', { name: channel.label })}
-                              onChanged={() => load()}
-                            />
-                          ) : null
-                        }
-                      />
-                    </TableCell>
-                  </TableRow>
-                </Fragment>
-              );
-            })}
-          </TableBody>
+          {channels.map((channel) => {
+            const block = kind === 'phone' ? channel.phone : channel.email;
+            const connection = connectionOf(channel);
+            const categoryLabel = CATEGORY_LABEL[channel.category];
+            const editLabel = t('sms_service.pool_edit_aria', { name: channel.label });
+            const removeLabel = t('sms_service.pool_remove_aria', { name: channel.label });
+            return (
+              <TableRowGroup key={channel.id}>
+                <TableRow className={styles.stripLead}>
+                  <TableCell>
+                    <span className={styles.channelName}>{channel.label}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className={`${styles.tag} ${styles.tagMuted}`}>
+                      {categoryLabel ? t(categoryLabel) : '—'}
+                    </span>
+                  </TableCell>
+                  <TableCell>{natureLabels(block?.natures ?? [])}</TableCell>
+                  <TableCell>
+                    <span className={`${styles.tag} ${styles[connection.tone]}`}>
+                      {t(connection.key, connection.params)}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <ToggleSwitch
+                      checked={block?.enabled ?? false}
+                      onChange={(next) => void setEnabled(channel, next)}
+                      disabled={busyId === channel.id}
+                      ariaLabel={t('sms_service.pool_toggle_aria', { name: channel.label })}
+                    />
+                  </TableCell>
+                  <TableCell alignRight>
+                    <button
+                      type="button"
+                      className={styles.actionPill}
+                      onClick={() => onEdit(channel)}
+                      title={editLabel}
+                      aria-label={editLabel}
+                    >
+                      <IconPencil size={14} />
+                    </button>
+                  </TableCell>
+                  <TableCell alignRight>
+                    <button
+                      type="button"
+                      className={styles.actionPill}
+                      onClick={() => void remove(channel)}
+                      disabled={busyId === channel.id}
+                      title={removeLabel}
+                      aria-label={removeLabel}
+                    >
+                      <IconTrash2 size={14} />
+                    </button>
+                  </TableCell>
+                </TableRow>
+                <TableRow className={styles.stripRow}>
+                  <TableCell colSpan={7}>
+                    <ChannelStatusStrip
+                      kind={kind}
+                      status={statuses.get(channel.id) ?? { kind: 'loading' }}
+                      pooled={channel.pooled[kind]}
+                      egress={
+                        egressAvailable ? (
+                          <EgressBindingSelect
+                            kind="channel"
+                            name={channel.id}
+                            supplyKind={kind}
+                            currentId={blockEgressId(block)}
+                            noneLabel={t('egress_pool.none_direct')}
+                            ariaLabel={t('egress_pool.binding_aria', { name: channel.label })}
+                            onChanged={() => load()}
+                          />
+                        ) : null
+                      }
+                    />
+                  </TableCell>
+                </TableRow>
+              </TableRowGroup>
+            );
+          })}
         </Table>
       )}
     </Card>

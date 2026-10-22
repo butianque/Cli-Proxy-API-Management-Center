@@ -134,3 +134,25 @@ describe('the ledger row uses the block, not a bare sentence', () => {
     expect(card).toContain('ledger_registered_count');
   });
 });
+
+/**
+ * 一个条目是两行（主数据 + 状态带），但它是**一个**条目：悬停要整条一起变暗，
+ * 否则下半截看起来不属于上面那一行。两行放在同一个 `<tbody>` 里才做得到 ——
+ * 分成两个 `<tbody>` 或只用一个外层 `<tbody>` 都会退回「只有一半亮」。
+ */
+describe('a two-row entry hovers as one entry', () => {
+  for (const path of ['features/sms/SupplyPoolCard.tsx', 'features/sms/SupplyPoolTable.tsx']) {
+    const source = read(path);
+
+    test(`${path} groups the lead row and its status strip`, () => {
+      expect(source).toContain('<TableRowGroup key=');
+      // 两行在同一个组里：`stripLead` 与 `stripRow` 之间没有闭合标签。
+      expect(source).toMatch(
+        /<TableRowGroup key=\{[^}]+\}>\s*<TableRow className=\{styles\.stripLead\}/
+      );
+      expect(source).toMatch(/<\/TableRow>\s*<TableRow className=\{styles\.stripRow\}>/);
+      // 组已经取代了原先的单个 tbody：再套一层就是两行各归各的。
+      expect(source).not.toContain('<TableBody>');
+    });
+  }
+});
