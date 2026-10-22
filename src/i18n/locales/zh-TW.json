@@ -219,9 +219,9 @@
     "binding_aria": "{{name}} 的出口",
     "select_save_failed": "改出口失敗：{{message}}",
     "select_unknown": "出口 {{id}}（已不在清單裡）",
-    "bound_failed": "測試失敗",
-    "bound_latency": "{{ms}}ms",
-    "bound_reachable": "可用"
+    "probe_failed_short": "測試失敗",
+    "probe_latency": "{{ms}}ms",
+    "probe_reachable": "可用"
   },
   "dashboard": {
     "hero_verdict_good": "運行平穩",

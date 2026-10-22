@@ -198,9 +198,9 @@
     "binding_aria": "{{name}}의 출구",
     "select_save_failed": "출구를 변경하지 못했습니다: {{message}}",
     "select_unknown": "출구 {{id}} (목록에 없음)",
-    "bound_failed": "테스트 실패",
-    "bound_latency": "{{ms}}ms",
-    "bound_reachable": "사용 가능"
+    "probe_failed_short": "테스트 실패",
+    "probe_latency": "{{ms}}ms",
+    "probe_reachable": "사용 가능"
   },
   "nav_groups": {
     "operate": "운영",

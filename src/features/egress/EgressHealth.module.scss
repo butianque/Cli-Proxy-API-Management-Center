@@ -1,0 +1,48 @@
+/* 一条出口的健康状况：圆点 + 一句话，可选再加一行测试时刻。 */
+
+.line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 通了：绿。这是唯一一个可以当作「现在能用」的颜色。 */
+.good {
+  color: var(--success-color);
+}
+
+/* 不通：红。有结论、结论不好 —— 下一步是去查地址。 */
+.bad {
+  color: var(--warning-color);
+}
+
+/* 停用 / 还没测过：灰。都不是结论，不该被读成结论。 */
+.muted {
+  color: var(--text-tertiary);
+}
+
+/* 测试时刻：比主句更轻，它是主句的注脚，不是第二件事。 */
+.at {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}

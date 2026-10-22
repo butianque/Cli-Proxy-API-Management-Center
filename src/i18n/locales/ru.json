@@ -198,9 +198,9 @@
     "binding_aria": "Выход для {{name}}",
     "select_save_failed": "Не удалось изменить выход: {{message}}",
     "select_unknown": "Выход {{id}} (больше не в списке)",
-    "bound_failed": "Проверка не удалась",
-    "bound_latency": "{{ms}} мс",
-    "bound_reachable": "Доступен"
+    "probe_failed_short": "Проверка не удалась",
+    "probe_latency": "{{ms}} мс",
+    "probe_reachable": "Доступен"
   },
   "nav_groups": {
     "operate": "Работа",

@@ -219,9 +219,9 @@
     "binding_aria": "Exit for {{name}}",
     "select_save_failed": "Could not change the exit: {{message}}",
     "select_unknown": "Exit {{id}} (no longer listed)",
-    "bound_failed": "Test failed",
-    "bound_latency": "{{ms}}ms",
-    "bound_reachable": "Reachable"
+    "probe_failed_short": "Test failed",
+    "probe_latency": "{{ms}}ms",
+    "probe_reachable": "Reachable"
   },
   "dashboard": {
     "hero_verdict_good": "All systems steady",

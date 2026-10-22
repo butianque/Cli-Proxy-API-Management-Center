@@ -198,9 +198,9 @@
     "binding_aria": "Lối ra cho {{name}}",
     "select_save_failed": "Không đổi được lối ra: {{message}}",
     "select_unknown": "Lối ra {{id}} (không còn trong danh sách)",
-    "bound_failed": "Kiểm tra thất bại",
-    "bound_latency": "{{ms}}ms",
-    "bound_reachable": "Dùng được"
+    "probe_failed_short": "Kiểm tra thất bại",
+    "probe_latency": "{{ms}}ms",
+    "probe_reachable": "Dùng được"
   },
   "nav_groups": {
     "operate": "Vận hành",
