@@ -2,15 +2,15 @@
  * 空闲计时用的「最近一次用户活动」时刻。
  *
  * 放在独立模块里，是为了让 `useSecretGateStore`（登出时清掉它）与
- * `SecretGateIdleGuard`（读取并写入它）共用同一份实现，而不产生循环依赖。
+ * `SessionIdleGuard`（读取并写入它）共用同一份实现，而不产生循环依赖。
  *
  * **必须用 `localStorage`**：同源共享，所有标签页看到同一个值。`sessionStorage`
  * 是每标签页独立的——两个页面互相看不见对方的活动，多开时必然算错空闲时长。
  *
- * 用户 2026-10-10 的语义：**只要还有任何一个标签页在操作，就不算空闲**。
+ * 语义：**只要还有任何一个标签页在操作，就不算空闲。**
  */
 
-export const SHARED_ACTIVITY_KEY = 'cpa.secret-gate.lastActivity';
+export const SHARED_ACTIVITY_KEY = 'cpa.session.lastActivity';
 
 /** 最近一次用户活动的时刻（同源共享）；没记录过则返回 null。 */
 export function readSharedActivity(): number | null {

@@ -167,11 +167,26 @@ export function SystemPage() {
       variant: 'danger',
       confirmText: t('common.confirm'),
       onConfirm: () => {
-        void auth.logout();
-        if (typeof localStorage === 'undefined') return;
-        const keysToRemove = [STORAGE_KEY_AUTH, 'isLoggedIn', 'apiBase', 'apiUrl', 'managementKey'];
-        keysToRemove.forEach((key) => localStorage.removeItem(key));
-        showNotification(t('notification.login_storage_cleared'), 'success');
+        void (async () => {
+          // 先等会话真的结束，再清本地。离线时 cookie 还在，那就不能报「已退出」。
+          const ended = await auth.logout();
+          if (typeof localStorage !== 'undefined') {
+            const keysToRemove = [
+              STORAGE_KEY_AUTH,
+              'isLoggedIn',
+              'apiBase',
+              'apiUrl',
+              'managementKey',
+            ];
+            keysToRemove.forEach((key) => localStorage.removeItem(key));
+          }
+          showNotification(
+            ended
+              ? t('notification.login_storage_cleared')
+              : t('notification.login_storage_cleared_local_only'),
+            ended ? 'success' : 'warning'
+          );
+        })();
       },
     });
   };

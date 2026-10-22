@@ -26,7 +26,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { clearSharedActivity, readSharedActivity } from '@/features/sms/idleActivity';
+import { clearSharedActivity, readSharedActivity } from '@/utils/idleActivity';
 
 /** 空闲超时默认 10 分钟（用户拍板）。 */
 export const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
@@ -69,14 +69,6 @@ interface SecretGateState {
   verifyAndUnlock: (passphrase: string, unlock: (p: string) => Promise<void>) => Promise<boolean>;
   /** 用户跳过 / 关闭弹窗 → 进入锁定态（密钥库保持或转为锁定）。 */
   skip: () => void;
-  /**
-   * 空闲超时 → 只锁凭据库，不动登录态。
-   *
-   * 与 `reset` 的区别是保留「库可用 / 装了主密码」这两个事实，弹窗因此会重新
-   * 出现要主密码；而「这个浏览器还签着」由服务端的会话决定，不该由空闲计时器
-   * 顺手结束掉 —— 那是把「十分钟没动」误判成「换了个浏览器」。
-   */
-  lock: () => void;
   /**
    * 更换主密码成功后采用新值：解着锁继续用（否则后续写凭据还在送旧密码）。
    * 能提供正确的当前主密码，等于已证明身份，故同时标记本会话已验证。
@@ -146,9 +138,10 @@ export const useSecretGateStore = create<SecretGateState>()(
       skip: () => set({ phase: 'locked', passphrase: '' }),
 
       touch: () => {
-        // Any activity resets the idle clock, in the unlocked and the locked
-        // state alike: the CPA session itself is what times out.
-        if (get().phase === 'idle') return;
+        // Any real activity resets the idle clock, in every phase. The clock is
+        // the session's, not the gate's: a session that was never unlocked is
+        // still a signed-in browser, and it must not be signed out ten minutes
+        // after login while the operator is working.
         set({ lastActivityAt: Date.now() });
       },
 
@@ -170,17 +163,6 @@ export const useSecretGateStore = create<SecretGateState>()(
       // Floor is 10s so the guard can be exercised end-to-end; the shipped
       // default remains the user-approved 10 minutes.
       setIdleTimeout: (ms) => set({ idleTimeoutMs: Math.max(10_000, ms) }),
-
-      // Idle timeout locks the credential store only. Placed after
-      // `setIdleTimeout` because source-contract tests slice `skip`→`touch` and
-      // `reset`→`setIdleTimeout`; a new action between those would be absorbed
-      // into the sliced body.
-      lock: () =>
-        set({
-          phase: 'idle',
-          passphrase: '',
-          lastActivityAt: Date.now(),
-        }),
 
       // Placed last on purpose: source-contract tests slice an action's body up
       // to the next action's name, so this must not sit between two actions they

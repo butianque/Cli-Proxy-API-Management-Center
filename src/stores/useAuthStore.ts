@@ -24,7 +24,7 @@ interface AuthStoreState extends AuthState {
 
   // 操作
   login: (credentials: LoginCredentials) => Promise<void>;
-  logout: () => Promise<void>;
+  logout: () => Promise<boolean>;
   checkAuth: () => Promise<boolean>;
   restoreSession: () => Promise<boolean>;
   updateServerVersion: (version: string | null, buildDate?: string | null) => void;
@@ -49,14 +49,29 @@ let restoreSessionPromise: Promise<boolean> | null = null;
  * localStorage 里可能还活着的旧令牌 —— 复用不会下发 cookie，于是「浏览器还签着」
  * 这件事就没有凭据可依，下一次刷新又要密钥。
  */
+/**
+ * 把服务端给的会话窗口装进空闲守卫。
+ *
+ * 用 `panel_idle_seconds`（浏览器会话的窗口），而不是 `idle_seconds`（凭据授权
+ * 的窗口）：守卫到点要做的是**结束会话**，所以它必须跟会话的时钟走。两者默认
+ * 相同，但可以分开配置。
+ */
+function applySessionClock(session: {
+  idle_seconds?: number;
+  panel_idle_seconds?: number;
+}): void {
+  const seconds = session.panel_idle_seconds ?? session.idle_seconds;
+  if (seconds) {
+    useSecretGateStore.getState().setIdleTimeout(seconds * 1000);
+  }
+}
+
 async function establishSession(persistent = false, fresh = false): Promise<void> {
   try {
     const session = fresh
       ? await sessionApi.start(persistent)
       : await ensureManagementSession(persistent);
-    if (session?.idle_seconds) {
-      useSecretGateStore.getState().setIdleTimeout(session.idle_seconds * 1000);
-    }
+    if (session) applySessionClock(session);
   } catch (error) {
     if ((error as { status?: number })?.status === 404) return;
     throw error;
@@ -77,9 +92,7 @@ async function resumeBrowserSession(): Promise<boolean> {
   try {
     const session = await sessionApi.describe();
     markSessionEstablished();
-    if (session?.idle_seconds) {
-      useSecretGateStore.getState().setIdleTimeout(session.idle_seconds * 1000);
-    }
+    applySessionClock(session);
     return true;
   } catch {
     return false;
@@ -89,7 +102,7 @@ async function resumeBrowserSession(): Promise<boolean> {
 // 正在进行的登出。登出必须**幂等**：`unauthorized` 监听、空闲守卫、手动按钮都可能
 // （几乎同时）调用它，而登出自己发出的 `/session` 一旦 401 又会再触发一次
 // `unauthorized` —— 不挡住就会连锁登出。
-let logoutPromise: Promise<void> | null = null;
+let logoutPromise: Promise<boolean> | null = null;
 
 export const useAuthStore = create<AuthStoreState>()(
   persist(
@@ -227,7 +240,7 @@ export const useAuthStore = create<AuthStoreState>()(
       },
 
       // 登出
-      logout: (): Promise<void> => {
+      logout: (): Promise<boolean> => {
         restoreSessionPromise = null;
         // 已在登出中：返回同一个 promise，不再发第二条结束请求（见文件头的说明）。
         if (logoutPromise) return logoutPromise;
@@ -283,9 +296,11 @@ export const useAuthStore = create<AuthStoreState>()(
         useSecretGateStore.getState().reset();
         // 锁定失败不阻断登出：前端凭据已经清掉了。
         void endRequest.then(settleClient, settleClient);
+        // 结果只回答一件事：服务端那边这个会话是不是真的结束了。调用方（「清理
+        // 登录信息」）据此说真话——离线时 cookie 还在，不能说成「已退出」。
         logoutPromise = endRequest.then(
-          () => undefined,
-          () => undefined
+          () => true,
+          () => false
         );
         return logoutPromise;
       },

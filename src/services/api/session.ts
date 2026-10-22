@@ -29,8 +29,10 @@ import {
 export interface ManagementSession {
   id: string;
   client_ip?: string;
-  /** 空闲上限（秒）：只有真实操作会重置它。 */
+  /** 凭据授权的空闲上限（秒）：只有真实操作会重置它。 */
   idle_seconds: number;
+  /** 浏览器会话的空闲上限（秒）：到点整个会话结束，面板据此登出。 */
+  panel_idle_seconds?: number;
   /** 绝对上限（秒）：到点必死，谁也续不了。 */
   absolute_seconds: number;
   expires_at: string;
@@ -120,7 +122,9 @@ let lastTouchAt = 0;
  * 重试——续期失败本身不该变成用户可见的错误。
  */
 export async function touchSession(): Promise<void> {
-  if (!readSessionToken()) return;
+  // 不要求本地有令牌：会话也可以只由 cookie 认证（比如本地存储被清过、或
+  // 刷新后靠 cookie 恢复）。这时提前返回会让服务端的时钟永远不被推进，
+  // 于是一个正在使用面板的人也会在窗口到点时被登出。
   const now = Date.now();
   if (now - lastTouchAt < TOUCH_INTERVAL_MS) return;
   lastTouchAt = now;

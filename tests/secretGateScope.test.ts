@@ -153,15 +153,13 @@ describe('unlock state is the server’s answer about this session', () => {
     expect(actionBody('skip', 'touch:')).toContain("phase: 'locked'");
   });
 
-  test('an idle lock keeps the store known, so the dialog can ask again', () => {
-    // reset() also forgets that a master password exists, which leaves the panel
-    // showing locked credentials with nothing to click. lock() drops only the
-    // in-memory passphrase and lets the dialog reappear.
-    const body = actionBody('lock', 'adoptPassphrase:');
-    expect(body).toContain("phase: 'idle'");
-    expect(body).toContain("passphrase: ''");
-    expect(body).not.toContain('passphraseSet: false');
-    expect(body).not.toContain('storeAvailable: false');
+  test('there is no “locked store, still signed in” middle state', () => {
+    // Idle expiry used to drop only the in-memory passphrase and keep the browser
+    // signed in. That middle state is what made "ten quiet minutes" harmless, and
+    // it is what the current rule removes: a signed-in browser holds a cookie that
+    // outlives the page, so idling out has to end the session, not just hide the
+    // credentials. The store therefore has no action that locks the gate alone.
+    expect(gateStore).not.toContain('lock: ()');
   });
 });
 
@@ -212,7 +210,7 @@ describe('a management session carries the credential authorization', () => {
   test('only real activity touches the session, and not on every event', () => {
     expect(sessionApi).toContain('TOUCH_INTERVAL_MS');
     const idleGuard = readFileSync(
-      new URL('../src/features/sms/SecretGateIdleGuard.tsx', import.meta.url),
+      new URL('../src/components/SessionIdleGuard.tsx', import.meta.url),
       'utf8'
     );
     expect(idleGuard).toContain('void touchSession()');
@@ -243,12 +241,29 @@ describe('a management session carries the credential authorization', () => {
     expect(client).toContain("const PANEL_HEADER = 'X-CPA-Panel'");
     expect(client).toContain('config.headers[PANEL_HEADER] =');
   });
+
+  test('the idle clock follows the session window, not the credential window', () => {
+    // The guard signs the browser out when the session dies, so the server has to
+    // hand it that deadline. Both are ten minutes by default, but they are
+    // configured apart: taking the credential window would sign out early.
+    expect(sessionApi).toContain('panel_idle_seconds');
+    expect(authStore).toContain('session.panel_idle_seconds ?? session.idle_seconds');
+  });
+
+  test('a cookie-only session still renews the server clock', () => {
+    // Requiring a locally stored token here left a session that resumed from its
+    // cookie unable to touch: the server clock never moved, so an operator who was
+    // working got signed out when the window ran out.
+    const body = sessionApi.slice(sessionApi.indexOf('export async function touchSession'));
+    expect(body).not.toContain('if (!readSessionToken()) return;');
+    expect(body).toContain('await sessionApi.touch()');
+  });
 });
 
 describe('logging out ends the session for the store as well', () => {
   const authStore = readFileSync(new URL('../src/stores/useAuthStore.ts', import.meta.url), 'utf8');
   const idleGuard = readFileSync(
-    new URL('../src/features/sms/SecretGateIdleGuard.tsx', import.meta.url),
+    new URL('../src/components/SessionIdleGuard.tsx', import.meta.url),
     'utf8'
   );
 
@@ -295,24 +310,39 @@ describe('logging out ends the session for the store as well', () => {
     expect(body).toContain('if (apiClient.getConnectionRevision() === revision)');
   });
 
-  test('only an explicit logout ends the session; idle expiry only locks the store', () => {
-    // Idle expiry used to call logout(), which also discarded "this browser is
-    // signed in" — so ten quiet minutes looked like a different browser and the
-    // operator had to retype the management key. Locking the credential store is
-    // the part that actually needs to happen; the session has its own server-side
-    // clocks.
+  test('idle expiry ends the session, not just the credential store', () => {
+    // Being signed in IS standing access: the session cookie outlives the page, so
+    // an abandoned tab keeps working. Ten quiet minutes therefore end the session
+    // — locking the credential store alone would leave the cookie valid and the
+    // management key unasked.
     expect(idleGuard).not.toContain('sessionApi.end()');
-    expect(idleGuard).not.toContain('void logout()');
-    expect(idleGuard).toContain('lock()');
+    expect(idleGuard).toContain('void logout()');
+    expect(idleGuard).not.toContain('lock()');
+  });
+
+  test('the idle clock runs for the session, in every gate phase', () => {
+    // A session that was never unlocked is still a signed-in browser. Gating the
+    // clock on `phase === 'unlocked'` (or dropping activity while `idle`) would
+    // sign the operator out ten minutes after login while they were working.
+    expect(idleGuard).not.toContain("phase !== 'unlocked'");
+    expect(actionBody('touch', 'reset:')).not.toContain("phase === 'idle'");
   });
 
   test('logout is re-entrant: a second call reuses the in-flight one', () => {
     // logout() issues an authenticated /session. If that 401s, the client
     // dispatches `unauthorized`, whose listener calls logout() again — without a
     // latch the second call fires another request.
-    expect(authStore).toContain('let logoutPromise: Promise<void> | null = null;');
+    expect(authStore).toContain('let logoutPromise: Promise<boolean> | null = null;');
     const body = authActionBody('logout', 'checkAuth:');
     expect(body).toContain('if (logoutPromise) return logoutPromise;');
+  });
+
+  test('logout reports whether the server session actually ended', () => {
+    // "Clear login data" waits for this answer: offline, the cookie is still on
+    // the server, and the panel must not claim a sign-out that did not happen.
+    const body = authActionBody('logout', 'checkAuth:');
+    expect(body).toContain('() => true');
+    expect(body).toContain('() => false');
   });
 
   test('the end request is gated on the connection, not on the key', () => {
@@ -328,20 +358,17 @@ describe('logging out ends the session for the store as well', () => {
 
 describe('idle expiry is shared across tabs and keeps the newest activity', () => {
   const idleGuard = readFileSync(
-    new URL('../src/features/sms/SecretGateIdleGuard.tsx', import.meta.url),
+    new URL('../src/components/SessionIdleGuard.tsx', import.meta.url),
     'utf8'
   );
-  const idleActivity = readFileSync(
-    new URL('../src/features/sms/idleActivity.ts', import.meta.url),
-    'utf8'
-  );
+  const idleActivity = readFileSync(new URL('../src/utils/idleActivity.ts', import.meta.url), 'utf8');
 
   test('the activity clock is origin-wide, not per tab', () => {
     // `lastActivityAt` is in-memory state, so a reload resets it to "now" — that
     // alone made "load the page, then touch nothing" impossible to time out.
     // sessionStorage is not the answer either: it is per tab, so two panels
     // cannot see each other's activity. localStorage is shared per origin.
-    expect(idleActivity).toContain("SHARED_ACTIVITY_KEY = 'cpa.secret-gate.lastActivity'");
+    expect(idleActivity).toContain("SHARED_ACTIVITY_KEY = 'cpa.session.lastActivity'");
     expect(idleActivity).toContain('window.localStorage.setItem(SHARED_ACTIVITY_KEY');
     expect(idleActivity).toContain('window.localStorage.getItem(SHARED_ACTIVITY_KEY)');
     // No code may read or write sessionStorage: it is per tab. (The rationale is
@@ -358,6 +385,18 @@ describe('idle expiry is shared across tabs and keeps the newest activity', () =
 
   test('activity is recorded when it happens', () => {
     expect(idleGuard).toContain('writeSharedActivity(now)');
+  });
+
+  test('activity after the window ends the session instead of renewing it', () => {
+    // The first touch after ten quiet minutes gets a 401, and the client answers a
+    // 401 on /session/touch by quietly opening a new session. That would make the
+    // rule unenforceable in the one case it exists for — coming back to an
+    // abandoned tab. Stale activity is therefore an expiry, not a renewal.
+    const body = idleGuard.slice(idleGuard.indexOf('const onActivity'));
+    const expiredAt = body.indexOf('now - last >= idleTimeoutMs');
+    expect(expiredAt).toBeGreaterThan(-1);
+    expect(body.indexOf('void logout()')).toBeGreaterThan(expiredAt);
+    expect(body.indexOf('void logout()')).toBeLessThan(body.indexOf('void touchSession()'));
   });
 
   test('ending a session clears the shared clock', () => {
