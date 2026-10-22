@@ -114,9 +114,16 @@ export function AuthFilePoolSection({
             kind="account"
             name={account.authId}
             currentId={account.egressId ?? 0}
-            // 没有池编号但手填了地址：说「直连」就是假话，把实际地址摆出来。
+            // 这一项是「解除绑定」，它的含义取决于有没有池编号：
+            //   绑着池条目时，解绑会连地址一起清掉（后端 unbind 就是这么做的），
+            //   那就是直连；
+            //   从未进过池、地址是手写的时候，说「直连」才是假话，把实际地址摆出来。
+            // 之前只看地址在不在，于是绑定态的「解除绑定」也被标成「手填：…」，
+            // 读起来像系统把手写地址当成了池绑定。
             noneLabel={
-              account.egress !== undefined && account.egress !== ''
+              (account.egressId ?? 0) === 0 &&
+              account.egress !== undefined &&
+              account.egress !== ''
                 ? t('egress_pool.account_manual', { address: account.egress })
                 : t('egress_pool.none_direct')
             }
