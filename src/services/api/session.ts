@@ -41,9 +41,17 @@ export interface ManagementSession {
 }
 
 export const sessionApi = {
-  /** 新建会话并保存令牌。 */
-  async start(): Promise<ManagementSession> {
-    const session = await apiClient.post<ManagementSession & { token?: string }>('/session');
+  /**
+   * 新建会话并保存令牌。
+   *
+   * `persistent` 只影响浏览器保存会话凭据的方式：true 时服务端下发的 cookie 会
+   * 带寿命（关掉浏览器再打开仍是同一个会话），false 时是浏览器会话 cookie
+   * （关掉浏览器就结束）。会话本身在服务端仍受绝对上限约束。
+   */
+  async start(persistent = false): Promise<ManagementSession> {
+    const session = await apiClient.post<ManagementSession & { token?: string }>('/session', {
+      persistent,
+    });
     if (session?.token) writeSessionToken(session.token);
     return session;
   },
@@ -79,8 +87,10 @@ export const sessionApi = {
  *
  * 复用是必要的 —— 刷新页面时令牌还在，会话还是同一个，凭据授权也还在；
  * 每次都新建会让 F5 变成「重新要主密码」，而刷新不是会话边界。
+ *
+ * `persistent` 只在新建会话时使用，含义见 `sessionApi.start`。
  */
-export async function ensureManagementSession(): Promise<ManagementSession> {
+export async function ensureManagementSession(persistent = false): Promise<ManagementSession> {
   if (readSessionToken()) {
     try {
       const session = await sessionApi.describe();
@@ -91,7 +101,7 @@ export async function ensureManagementSession(): Promise<ManagementSession> {
       clearSessionToken();
     }
   }
-  return sessionApi.start();
+  return sessionApi.start(persistent);
 }
 
 /**

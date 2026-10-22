@@ -46,6 +46,17 @@ function carriesSessionToken(method: string | undefined, url: string | undefined
 }
 
 /**
+ * 面板标记头。
+ *
+ * 服务端除了管理密钥还认一种凭据：登录时下发的 HttpOnly 会话 cookie。cookie 由
+ * 浏览器自动携带，所以它能挡住「别的站点伪造一个表单提交」的只有 SameSite ——
+ * 而 SameSite 划的是**可注册域**，同域下的兄弟主机（比如 api.example.com 向
+ * cpa.example.com 提交）依然会带上它。这个头表单设不了，服务端见不到它就拒绝
+ * cookie 认证。它同时也是一条可读的「这条请求来自面板」的标记。
+ */
+const PANEL_HEADER = 'X-CPA-Panel';
+
+/**
  * 探测当前会话是否还有效（`GET /session`）。
  *
  * 这条请求的 401 意思是「手上这个令牌不能用了」，而不是「你被踢下线了」——
@@ -191,6 +202,9 @@ class ApiClient {
         if (this.managementKey) {
           config.headers.Authorization = `Bearer ${this.managementKey}`;
         }
+
+        // 面板标记：服务端只对带这个头的请求接受 cookie 认证（见 PANEL_HEADER）。
+        config.headers[PANEL_HEADER] = '1';
 
         // 会话令牌：证明「哪个会话在问」，凭据读写只认它。
         //

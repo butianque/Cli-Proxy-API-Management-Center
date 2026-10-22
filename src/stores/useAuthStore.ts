@@ -10,6 +10,7 @@ import { STORAGE_KEY_AUTH } from '@/utils/constants';
 import { obfuscatedStorage } from '@/services/storage/secureStorage';
 import { apiClient } from '@/services/api/client';
 import { ensureManagementSession, sessionApi } from '@/services/api/session';
+import { markSessionEstablished } from '@/services/api/sessionToken';
 import { LegacyBackendError, probeLegacyBackend } from '@/services/api/legacyBackendProbe';
 import { useConfigStore } from './useConfigStore';
 import { useModelsStore } from './useModelsStore';
@@ -40,16 +41,48 @@ let restoreSessionPromise: Promise<boolean> | null = null;
  * 凭据读写只认会话，所以这一步必须发生在面板开始读凭据之前。旧版后端没有这条
  * 路由（404），此时保持老行为、不阻断登录；其余错误照常抛出去，让登录失败而
  * 不是带着半截状态进入面板。
+ *
+ * `persistent` 跟着「记住密码」走：勾了就是关掉浏览器也还认这台机器，没勾就
+ * 只活到浏览器关掉。两者都远长于「凭据库解锁」的窗口，那个窗口由服务端单独管。
+ *
+ * `fresh` 用于「操作者刚输入了密钥」这一条路：此时必须**新建**会话，而不是复用
+ * localStorage 里可能还活着的旧令牌 —— 复用不会下发 cookie，于是「浏览器还签着」
+ * 这件事就没有凭据可依，下一次刷新又要密钥。
  */
-async function establishSession(): Promise<void> {
+async function establishSession(persistent = false, fresh = false): Promise<void> {
   try {
-    const session = await ensureManagementSession();
+    const session = fresh
+      ? await sessionApi.start(persistent)
+      : await ensureManagementSession(persistent);
     if (session?.idle_seconds) {
       useSecretGateStore.getState().setIdleTimeout(session.idle_seconds * 1000);
     }
   } catch (error) {
     if ((error as { status?: number })?.status === 404) return;
     throw error;
+  }
+}
+
+/**
+ * 用浏览器自己带着的会话恢复登录态。
+ *
+ * 登录时服务端除了返回令牌，还下发一个 HttpOnly 的会话 cookie —— 它不属于任何
+ * 页面脚本，刷新、新标签页、关掉再开都由浏览器自动带上。所以「还是同一个浏览器」
+ * 这件事不需要面板去猜，也不需要把管理密钥存在 localStorage 里：问一次
+ * `GET /session`，它认这个浏览器就认。
+ *
+ * 没有密钥也能进面板，这正是要修的那件事：F5 不是重新登录，是同一个会话继续。
+ */
+async function resumeBrowserSession(): Promise<boolean> {
+  try {
+    const session = await sessionApi.describe();
+    markSessionEstablished();
+    if (session?.idle_seconds) {
+      useSecretGateStore.getState().setIdleTimeout(session.idle_seconds * 1000);
+    }
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -99,6 +132,17 @@ export const useAuthStore = create<AuthStoreState>()(
           });
           apiClient.setConfig({ apiBase: resolvedBase, managementKey: resolvedKey });
 
+          // 先问浏览器自己：会话 cookie 还在，就说明这台浏览器还签着，连密钥
+          // 都不需要（默认就不落盘）。这条放在密钥之前，是因为复用同一个会话能
+          // 保住它已解锁的凭据库；先拿密钥重新登录会开一个新会话，等于每次刷新
+          // 都把主密码重新要一遍。
+          if (resolvedBase && (await resumeBrowserSession())) {
+            set({ isAuthenticated: true, connectionStatus: 'connected' });
+            return true;
+          }
+
+          // 没有可用的会话：有记住的密钥就自动登录一次（登录会开一个新会话，
+          // 顺带把 cookie 补上）。
           if (wasLoggedIn && resolvedBase && resolvedKey) {
             try {
               await get().login({
@@ -109,7 +153,6 @@ export const useAuthStore = create<AuthStoreState>()(
               return true;
             } catch (error) {
               console.warn('Auto login failed:', error);
-              return false;
             }
           }
 
@@ -160,8 +203,9 @@ export const useAuthStore = create<AuthStoreState>()(
             throw error;
           }
 
-          // 登录成功前先开会话：面板随后的凭据读写都要带着它。
-          await establishSession();
+          // 登录成功前先开会话：面板随后的凭据读写都要带着它。新建而非复用，
+          // 这样服务端一定下发 cookie（见 establishSession 的 `fresh`）。
+          await establishSession(rememberPassword, true);
 
           // 登录成功
           set({
@@ -191,18 +235,18 @@ export const useAuthStore = create<AuthStoreState>()(
         // 凭据；别人的会话、以及后端自己的访问都不受影响。
         //
         // 两件事的顺序是关键：
-        // - `/session` 需要鉴权（实测无密钥 → 401 `missing management key`），
-        //   而 `apiClient` 的连接信息一清就会让请求落到相对路径（缺 `/v8/management`
-        //   前缀）而 404。所以这条请求必须**带着当前会话的密钥发出**。
+        // - `/session` 需要鉴权，而 `apiClient` 的连接信息一清就会让请求落到相对
+        //   路径（缺 `/v8/management` 前缀）而 404。所以这条请求必须在清连接信息
+        //   **之前**发出。凭据可以是管理密钥，也可以是登录时下发的会话 cookie ——
+        //   后者正是「刷新后没有密钥」的那条路，所以这里只要求有 apiBase。
         // - 但前端的登出**不能**等它落地：后端挂起时操作者会一直停在受保护页面上。
         // 所以：前端状态**同步**清掉（受保护路由立刻把人送回登录页），`apiClient`
         // 的连接信息等请求落地再清（它只影响之后的新请求，且此时已无人再发请求）。
         //
-        // 已经没有会话凭据时不发这条请求：本来也没有可结束的会话，且会话结束后的
+        // 没有 apiBase 时不发这条请求：本来也没有可结束的会话，且会话结束后的
         // 迟到 401 也会走到这里。
-        const { apiBase, managementKey } = get();
-        const endRequest =
-          apiBase && managementKey ? sessionApi.end() : Promise.resolve();
+        const { apiBase } = get();
+        const endRequest = apiBase ? sessionApi.end() : Promise.resolve();
         // 锁定请求发出时的连接世代。期间若有人重新登录（`setConfig` 会 +1），
         // 迟到的收尾就**不能**再清 `apiClient`，否则会把新会话踢掉。
         const revision = apiClient.getConnectionRevision();
@@ -219,6 +263,10 @@ export const useAuthStore = create<AuthStoreState>()(
         useQuotaStore.getState().clearQuotaCache();
         // 出口池同理：登出后不该还能看到上一个服务器的出口编号。
         resetEgressPool();
+        // 「记住密码」只决定密钥要不要落盘，不决定登出时要不要留着它：登出是
+        // 操作者的明确动作，本地不留密钥。想让浏览器下次还认这台机器，勾的是
+        // 「记住密码」—— 它同时让服务端下发持久 cookie，登录态由此延续，而不是
+        // 靠把密钥留在 localStorage 里。
         set({
           isAuthenticated: false,
           apiBase: '',
@@ -259,7 +307,7 @@ export const useAuthStore = create<AuthStoreState>()(
           await useConfigStore.getState().fetchConfig();
 
           // 会话可能已被服务端清掉（重启/空闲超时），这里补一次。
-          await establishSession();
+          await establishSession(get().rememberPassword);
 
           set({
             isAuthenticated: true,

@@ -152,6 +152,17 @@ describe('unlock state is the server’s answer about this session', () => {
   test('a skipped session stays locked until the server is asked again', () => {
     expect(actionBody('skip', 'touch:')).toContain("phase: 'locked'");
   });
+
+  test('an idle lock keeps the store known, so the dialog can ask again', () => {
+    // reset() also forgets that a master password exists, which leaves the panel
+    // showing locked credentials with nothing to click. lock() drops only the
+    // in-memory passphrase and lets the dialog reappear.
+    const body = actionBody('lock', 'adoptPassphrase:');
+    expect(body).toContain("phase: 'idle'");
+    expect(body).toContain("passphrase: ''");
+    expect(body).not.toContain('passphraseSet: false');
+    expect(body).not.toContain('storeAvailable: false');
+  });
 });
 
 describe('a management session carries the credential authorization', () => {
@@ -186,7 +197,7 @@ describe('a management session carries the credential authorization', () => {
 
   test('login establishes a session before the panel reads anything', () => {
     const body = sourceActionBody(authStore, 'login', 'logout:');
-    const establishAt = body.indexOf('await establishSession();');
+    const establishAt = body.indexOf('await establishSession(rememberPassword, true);');
     const authenticatedAt = body.indexOf('isAuthenticated: true');
     expect(establishAt).toBeGreaterThan(-1);
     expect(authenticatedAt).toBeGreaterThan(-1);
@@ -205,6 +216,32 @@ describe('a management session carries the credential authorization', () => {
       'utf8'
     );
     expect(idleGuard).toContain('void touchSession()');
+  });
+
+  test('a reload resumes the browser session instead of asking for the key again', () => {
+    // F5 is not a new login. The browser still holds the HttpOnly session cookie,
+    // so the panel asks the server whether this browser is signed in — the key
+    // never has to be stored locally for a reload to work.
+    expect(authStore).toContain('async function resumeBrowserSession()');
+    expect(authStore).toContain('await resumeBrowserSession()');
+    expect(authStore).toContain('markSessionEstablished()');
+    // The key path must still be reachable when there is no cookie: a browser that
+    // lost it (cleared cookies, new profile) signs in with the remembered key.
+    const body = sourceActionBody(authStore, 'restoreSession', 'login:');
+    const resumeAt = body.indexOf('await resumeBrowserSession()');
+    const keyAt = body.indexOf('wasLoggedIn && resolvedBase && resolvedKey');
+    expect(resumeAt).toBeGreaterThan(-1);
+    expect(keyAt).toBeGreaterThan(-1);
+    // Resuming first keeps the session — and the credential unlock it carries —
+    // across a reload; signing in again would create a new, locked session.
+    expect(resumeAt).toBeLessThan(keyAt);
+  });
+
+  test('the panel marks its requests so cookie authentication is accepted', () => {
+    // A browser attaches the cookie to same-site sibling hosts too, so the server
+    // only honours it when this header is present — an HTML form cannot set it.
+    expect(client).toContain("const PANEL_HEADER = 'X-CPA-Panel'");
+    expect(client).toContain('config.headers[PANEL_HEADER] =');
   });
 });
 
@@ -258,12 +295,15 @@ describe('logging out ends the session for the store as well', () => {
     expect(body).toContain('if (apiClient.getConnectionRevision() === revision)');
   });
 
-  test('both logout paths end the session through logout()', () => {
-    // Idle timeout must not end the session on its own path: the guard cancels its
-    // timer when it logs out. One request, inside logout(), covers idle timeout and
-    // manual logout alike.
+  test('only an explicit logout ends the session; idle expiry only locks the store', () => {
+    // Idle expiry used to call logout(), which also discarded "this browser is
+    // signed in" — so ten quiet minutes looked like a different browser and the
+    // operator had to retype the management key. Locking the credential store is
+    // the part that actually needs to happen; the session has its own server-side
+    // clocks.
     expect(idleGuard).not.toContain('sessionApi.end()');
-    expect(idleGuard).toContain('logout()');
+    expect(idleGuard).not.toContain('void logout()');
+    expect(idleGuard).toContain('lock()');
   });
 
   test('logout is re-entrant: a second call reuses the in-flight one', () => {
@@ -275,11 +315,14 @@ describe('logging out ends the session for the store as well', () => {
     expect(body).toContain('if (logoutPromise) return logoutPromise;');
   });
 
-  test('no request is issued once the session credentials are gone', () => {
-    // apiClient's baseURL is empty by then, so the request would fall through to a
-    // relative `/session` (no /v8/management prefix) and 404.
+  test('the end request is gated on the connection, not on the key', () => {
+    // apiClient's baseURL is empty once the connection is cleared, so the request
+    // would fall through to a relative `/session` (no /v8/management prefix) and
+    // 404. The key is not the gate any more: a browser that signed in with a
+    // session cookie has no key in memory and must still be able to end its
+    // session — otherwise the cookie would outlive "sign out".
     const body = authActionBody('logout', 'checkAuth:');
-    expect(body).toContain('apiBase && managementKey ? sessionApi.end() : Promise.resolve()');
+    expect(body).toContain('apiBase ? sessionApi.end() : Promise.resolve()');
   });
 });
 
