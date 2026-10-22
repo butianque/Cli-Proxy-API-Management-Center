@@ -119,10 +119,15 @@ function isMissingEndpoint(error: unknown): boolean {
 
 function normalizeProbe(value: unknown): EgressProbeSummary | null {
   if (!isRecord(value)) return null;
+  const country = trimString(value.country);
+  const city = trimString(value.city);
+  // 城市名与国家名相同时（`Hong Kong · Hong Kong`）只说一次：重复的那一半不提供
+  // 任何信息，只让这一格变长。缺一个的时候也不留半个分隔符。
+  const region = [country, city === country ? '' : city].filter(Boolean).join(' · ');
   return {
     ok: value.ok === true,
     ip: trimString(value.ip),
-    region: [trimString(value.country), trimString(value.city)].filter(Boolean).join(' · '),
+    region,
     network: [trimString(value.asn), trimString(value.org)].filter(Boolean).join(' '),
     latencyMs: readLatency(value.latency_ms),
     error: trimString(value.error),

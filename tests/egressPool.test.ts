@@ -9,11 +9,13 @@
 
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
+import type { TFunction } from 'i18next';
 import {
   egressOptions,
   normalizeEgressPoolEntry,
   orderEgressChoices,
 } from '@/services/api/egressPool';
+import { describeProbe } from '@/features/egress/egressState';
 import { blockEgressId } from '@/features/sms/smsMapping';
 import type { SupplyKindConfig } from '@/features/sms/types';
 
@@ -50,7 +52,8 @@ describe('egress pool entry normalization', () => {
     expect(entry?.probe).toMatchObject({
       ok: true,
       ip: '96.62.251.108',
-      region: 'Hong Kong · Hong Kong',
+      // 城市名与国家名相同时只说一次：`Hong Kong · Hong Kong` 多出来的那半截不提供信息。
+      region: 'Hong Kong',
       network: 'AS9009 M247 Europe SRL',
       latencyMs: 213,
       at: 1_760_000_000,
@@ -60,6 +63,23 @@ describe('egress pool entry normalization', () => {
     expect(entry?.accounts).toBe(3);
     expect(entry?.channels).toBe(1);
     expect(entry?.total).toBe(4);
+  });
+
+  test('names the city only when it adds something to the country', () => {
+    const two = normalizeEgressPoolEntry({
+      id: 4,
+      url: 'socks5://d',
+      last_probe: { ok: true, country: 'Japan', city: 'Tokyo' },
+    });
+    expect(two?.probe?.region).toBe('Japan · Tokyo');
+
+    // 只有城市、没有国家时也不能把城市丢掉。
+    const cityOnly = normalizeEgressPoolEntry({
+      id: 5,
+      url: 'socks5://e',
+      last_probe: { ok: true, city: 'Tokyo' },
+    });
+    expect(cityOnly?.probe?.region).toBe('Tokyo');
   });
 
   test('keeps "never tested" distinct from "tested and failed"', () => {
@@ -238,6 +258,101 @@ describe('egress_pool locale keys', () => {
         .map(([key]) => key);
       expect({ locale, blank }).toEqual({ locale, blank: [] });
     }
+  });
+});
+
+/**
+ * 一条出口的探活结论在界面上有两处（绑定的下拉框、代理池表格的一列）。两处各写一遍
+ * 判断，迟早一处说「213ms」、另一处说「还没测过」。所以判断只在 describeProbe 里
+ * 做一次，这里守的就是它的三种语气。
+ */
+describe('an exit health reads the same everywhere', () => {
+  const t = ((key: string, options?: { ms?: number }) =>
+    typeof options?.ms === 'number' ? `${options.ms}ms` : key) as unknown as TFunction;
+
+  test('a probe that never ran is not a failure', () => {
+    expect(describeProbe(null, t)).toEqual({
+      tone: 'muted',
+      text: 'egress_pool.untested',
+      title: '',
+      at: 0,
+    });
+  });
+
+  test('a probe that failed says so, and keeps the reason for the tooltip', () => {
+    const state = describeProbe(
+      {
+        ok: false,
+        ip: '',
+        region: '',
+        network: '',
+        latencyMs: null,
+        error: 'dial tcp: connection refused',
+        at: 1_760_000_000,
+      },
+      t
+    );
+    expect(state.tone).toBe('bad');
+    expect(state.text).toBe('egress_pool.probe_failed_short');
+    expect(state.title).toBe('dial tcp: connection refused');
+    expect(state.at).toBe(1_760_000_000);
+  });
+
+  test('a probe that passed reports how fast and from where', () => {
+    const state = describeProbe(
+      {
+        ok: true,
+        ip: '96.62.251.108',
+        region: 'Hong Kong',
+        network: 'AS9009 M247 Europe SRL',
+        latencyMs: 213.4,
+        error: '',
+        at: 1_760_000_000,
+      },
+      t
+    );
+    expect(state.tone).toBe('good');
+    expect(state.text).toBe('213ms · Hong Kong');
+    expect(state.title).toBe('96.62.251.108 · AS9009 M247 Europe SRL');
+  });
+
+  test('a bare pass still says something, instead of leaving the cell empty', () => {
+    const state = describeProbe(
+      {
+        ok: true,
+        ip: '',
+        region: '',
+        network: '',
+        latencyMs: null,
+        error: '',
+        at: 1_760_000_000,
+      },
+      t
+    );
+    expect(state.tone).toBe('good');
+    expect(state.text).toBe('egress_pool.probe_reachable');
+  });
+});
+
+/**
+ * 表格的读法：一格一件事。探活结论交给共享的 EgressHealth，测试是行内动作而不是
+ * 编辑表单的一部分 —— 这两条一旦走回头路，表格与下拉框就会各说各的。
+ */
+describe('the pool table keeps one question per column', () => {
+  const card = readFileSync('src/features/config/components/blocks/EgressPoolCard.tsx', 'utf8');
+
+  test('the status column reuses the shared exit health', () => {
+    expect(card).toContain('<EgressHealth');
+    expect(card).toContain('showProbeAt');
+    // 这张表不再自己读探活字段：再判断一次就是第二个说法。
+    expect(card).not.toContain('latencyMs');
+    expect(card).not.toContain('probe.region');
+  });
+
+  test('testing is a row action, not something the edit form does', () => {
+    expect(card).toContain('egressPoolApi.probe(entry.id)');
+    expect(card).not.toContain('draftProbe');
+    expect(card).not.toContain('form_test_after_save');
   });
 });
 
