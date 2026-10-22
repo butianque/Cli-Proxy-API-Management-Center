@@ -266,3 +266,23 @@ export function egressOptions(entries: EgressPoolEntry[]): EgressOption[] {
     enabled: entry.enabled,
   }));
 }
+
+/**
+ * 下拉框的选项顺序：解绑那一项永远第一，当前绑的那条紧随其后，其余按池内编号排。
+ *
+ * 顺序本身就是这一格的一半功能。之前完全按池内编号排，于是「现在绑的是哪条」落在
+ * 十几行里的某一行，只能靠那个勾去找；池里条目越多，越找不准。解绑是一个固定位置
+ * 的动作，当前值是一个固定位置的状态，候选列表排在它们后面。
+ *
+ * 选中值不在候选里（绑着的那条出口被删了）时保持原样：调用方会把这条「已不存在」
+ * 的选项补进候选，它同样按选中值排到第二位。
+ */
+export function orderEgressChoices<T extends { value: string }>(
+  none: T,
+  choices: ReadonlyArray<T>,
+  selectedValue: string
+): T[] {
+  const selected = choices.find((choice) => choice.value === selectedValue);
+  const rest = choices.filter((choice) => choice.value !== selectedValue);
+  return selected === undefined ? [none, ...rest] : [none, selected, ...rest];
+}

@@ -56,7 +56,7 @@ export type AuthFilePoolSectionProps = {
    *
    * 缺省时不渲染出口那一行：没有回读的地方，改完行上的值还是旧的，那比不给改更糟。
    */
-  onEgressChanged?: () => void;
+  onEgressChanged?: () => void | Promise<void>;
 };
 
 export function AuthFilePoolSection({
@@ -121,9 +121,7 @@ export function AuthFilePoolSection({
             // 之前只看地址在不在，于是绑定态的「解除绑定」也被标成「手填：…」，
             // 读起来像系统把手写地址当成了池绑定。
             noneLabel={
-              (account.egressId ?? 0) === 0 &&
-              account.egress !== undefined &&
-              account.egress !== ''
+              (account.egressId ?? 0) === 0 && account.egress !== undefined && account.egress !== ''
                 ? t('egress_pool.account_manual', { address: account.egress })
                 : t('egress_pool.none_direct')
             }

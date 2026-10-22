@@ -803,7 +803,7 @@ export function AuthFilesPage() {
                 onManualRefresh={handleManualRefresh}
                 onCooldownReset={handleCooldownReset}
                 onPolicyChange={(policy) => void handleAccountPolicyChange(file.name, policy)}
-                onEgressChanged={() => void loadFiles({ background: true })}
+                onEgressChanged={() => loadFiles({ background: true })}
                 onOpenPrefixProxyEditor={openPrefixProxyEditor}
                 onDelete={handleDelete}
                 onToggleStatus={handleStatusToggle}

@@ -9,7 +9,11 @@
 
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
-import { egressOptions, normalizeEgressPoolEntry } from '@/services/api/egressPool';
+import {
+  egressOptions,
+  normalizeEgressPoolEntry,
+  orderEgressChoices,
+} from '@/services/api/egressPool';
 import { blockEgressId } from '@/features/sms/smsMapping';
 import type { SupplyKindConfig } from '@/features/sms/types';
 
@@ -135,6 +139,55 @@ describe('egress select options', () => {
     const option = egressOptions([failed])[0];
     expect(option.label).toBe('#3');
     expect(option.description).toBe('socks5://user:***@9.9.9.9:1080');
+  });
+});
+
+/**
+ * 下拉框打开后看到的前两行，就是这一格要回答的两件事：怎么解绑、现在绑的是哪条。
+ *
+ * 这两行不能靠池内编号碰运气：绑在第 7 条上时，它就会落到第 8 行，得在一列勾里找。
+ */
+describe('egress binding dropdown order', () => {
+  const direct = { value: '', label: '直连' };
+  const pool = [
+    { value: '1', label: '#1 日本' },
+    { value: '2', label: '#2 香港' },
+    { value: '3', label: '#3 美国' },
+  ];
+
+  test('pins the unbind row first and the current binding right under it', () => {
+    expect(orderEgressChoices(direct, pool, '2').map((choice) => choice.value)).toEqual([
+      '',
+      '2',
+      '1',
+      '3',
+    ]);
+  });
+
+  test('leaves the pool order alone when nothing is bound', () => {
+    expect(orderEgressChoices(direct, pool, '').map((choice) => choice.value)).toEqual([
+      '',
+      '1',
+      '2',
+      '3',
+    ]);
+  });
+
+  test('keeps the unbind row first even when it is the current value', () => {
+    const choices = orderEgressChoices(direct, pool, '');
+    expect(choices[0].label).toBe('直连');
+  });
+
+  test('promotes a deleted exit that is still the current binding', () => {
+    const deleted = { value: '9', label: '#9 已不存在' };
+    expect(
+      orderEgressChoices(direct, [...pool, deleted], '9').map((choice) => choice.value)
+    ).toEqual(['', '9', '1', '2', '3']);
+  });
+
+  test('never repeats the current row, even if the caller lists it twice', () => {
+    const choices = orderEgressChoices(direct, [...pool, { value: '2', label: '#2 香港' }], '2');
+    expect(choices.map((choice) => choice.value)).toEqual(['', '2', '1', '3']);
   });
 });
 
