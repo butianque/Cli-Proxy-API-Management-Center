@@ -56,6 +56,15 @@
     "unsaved_changes_title": "未保存的更改",
     "unsaved_changes_message": "你有未保存的更改，离开后将丢失这些更改。确定要离开吗？"
   },
+  "pagination": {
+    "label": "分页",
+    "range": "第 {{from}}–{{to}} 条，共 {{total}} 条",
+    "prev": "上一页",
+    "next": "下一页",
+    "page": "第 {{page}} 页",
+    "size_label": "每页条数",
+    "size_option": "{{count}} 条"
+  },
   "title": {
     "login": "CLI Proxy API Management Center",
     "abbr": "CPAMC"
@@ -408,9 +417,6 @@
     "delete_filtered_result_success": "成功删除 {{count}} 个筛选结果中的认证文件",
     "delete_filtered_result_partial": "筛选结果删除完成，成功 {{success}} 个，失败 {{failed}} 个",
     "delete_filtered_result_none": "当前筛选结果中没有可删除的认证文件",
-    "pagination_prev": "上一页",
-    "pagination_next": "下一页",
-    "pagination_info": "第 {{current}} / {{total}} 页 · 共 {{count}} 个文件",
     "search_label": "按名称、账号、类型、提供方或错误信息搜索凭证",
     "search_placeholder": "搜索名称、账号、类型、提供方或错误信息（403、429、invalid），支持 * 通配",
     "problem_filter_label": "状态筛选",

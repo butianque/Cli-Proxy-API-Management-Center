@@ -56,6 +56,15 @@
     "unsaved_changes_title": "Thay đổi chưa lưu",
     "unsaved_changes_message": "Bạn có thay đổi chưa lưu. Rời đi bây giờ sẽ mất các thay đổi đó. Bạn có muốn rời đi không?"
   },
+  "pagination": {
+    "label": "Phân trang",
+    "range": "{{from}}–{{to}} trên {{total}}",
+    "prev": "Trước",
+    "next": "Sau",
+    "page": "Trang {{page}}",
+    "size_label": "Mỗi trang",
+    "size_option": "{{count}}"
+  },
   "title": {
     "login": "Trung tâm Quản lý CLI Proxy API",
     "abbr": "CPAMC"

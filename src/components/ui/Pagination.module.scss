@@ -1,0 +1,128 @@
+/* ============================================================
+ * 分页条（长表底部一行）
+ *
+ * 一行三块：左边「第几条到第几条，共多少条」，中间页码，右边每页条数。
+ * 顺序照阅读习惯：先知道自己在哪一段，再翻页，最后才是「一页看多少」——
+ * 容量是设置，翻页是动作，别让设置挡在动作前面。
+ * ============================================================ */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 12px 2px 2px;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+  margin-top: 12px;
+}
+
+.range {
+  font-family: $font-mono;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.pages {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.page {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: $font-mono;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background $transition-fast,
+    color $transition-fast,
+    border-color $transition-fast;
+}
+
+.page:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+  color: var(--text-primary);
+}
+
+.page:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--text-primary) 35%, transparent);
+  outline-offset: 1px;
+}
+
+/* 当前页：实底，一眼看出自己在哪 */
+.pageActive,
+.pageActive:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--border-color) 80%, transparent);
+  background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.page:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.step {
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background $transition-fast,
+    color $transition-fast;
+}
+
+.step:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+  color: var(--text-primary);
+}
+
+.step:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 省略号只占一个数字的位置，不做成按钮：它后面没有可点的东西 */
+.gap {
+  min-width: 20px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  user-select: none;
+}
+
+.size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.sizeControl {
+  min-width: 96px;
+}
+
+@media (max-width: $breakpoint-mobile) {
+  .pagination {
+    justify-content: center;
+  }
+}

@@ -11,6 +11,9 @@
  *
  * 规矩：后端给什么就显示什么。后端没记渠道就是「不知道」，不按域名猜；没记注册
  * 就是没有，不摆占位行。
+ *
+ * 表分页显示，而且**探活只探当前这一页**：台账上千条时，一屏之外的行走廊里没人看，
+ * 为它们各开一条连接只是白花时间；翻到哪一页就测哪一页，其余的行照实写「未检查」。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -18,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Notice } from '@/components/ui/Notice';
+import { Pagination } from '@/components/ui/Pagination';
 import {
   Table,
   TableCell,
@@ -32,6 +36,7 @@ import {
   IconChevronUp,
   IconTimer,
 } from '@/components/ui/icons';
+import { PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { emailApi } from '@/services/api/email';
 import { supplyApi } from '@/services/api/supply';
 import { useSecretGateStore } from '@/stores/useSecretGateStore';
@@ -96,37 +101,8 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
         Promise.all(kinds.map((item) => supplyApi.listChannels(item))),
       ]);
       const list = channelLists.flatMap((result) => toSupplyChannels(result.channels));
-      const loadedEntries = toPool(pools.flat());
-      setEntries(loadedEntries);
+      setEntries(toPool(pools.flat()));
       setChannels(list);
-      // 探活只问「已启用」的渠道：停用的渠道没有连通的义务，问它只会得到一句噪音。
-      const ids = list
-        .filter((channel) => channelEnabled(channel, kinds))
-        .map((channel) => channel.id);
-      // 自带凭据的邮箱没有渠道可问，只能连它自己的信箱。同一个信箱只连一次，
-      // 所以按地址去重 —— catch-all 域下的许多地址共用同一个信箱。
-      // 一次请求的条数由基座封顶：池子很大时没轮到的行仍是「未知」（确实没测过），
-      // 而不是一次性开几百个连接。
-      const addresses = Array.from(
-        new Set(
-          loadedEntries
-            .filter(
-              (entry) =>
-                entry.kind === 'email' && entry.mailbox && entry.mailbox.hasCredential !== false
-            )
-            .map((entry) => entry.identity.trim().toLowerCase())
-            .filter((address) => address !== '')
-        )
-      );
-      const [probed, mailboxStates] = await Promise.all([
-        ids.length > 0 ? supplyApi.probeChannels(ids) : Promise.resolve([]),
-        // 连不上一个信箱不该让整张表报错：拿不到结论就是「没测到」，行上照实显示。
-        addresses.length > 0
-          ? emailApi.probeAddresses(addresses).catch(() => [])
-          : Promise.resolve([]),
-      ]);
-      setProbes(new Map(toProbes(probed).map((item) => [item.id, item.natures])));
-      setMailboxProbes(toMailboxProbes(mailboxStates));
       setLoadError('');
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error));
@@ -195,6 +171,73 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
     },
     [channelById, channels]
   );
+
+  const paged = usePagination(entries);
+
+  /**
+   * 探活只问**当前这一页**。
+   *
+   * 台账上千条时，一屏之外的行走廊里没人看；为它们各开一条连接，换来的只是一屏
+   * 看不到的结论。翻到哪一页就测哪一页，其余行照实写「未检查」—— 那确实是没测过。
+   *
+   * 已测到的结果按渠道 / 地址累积，翻回上一页时不会又退回「未检查」；同一页重进
+   * 会重新测一次，结论仍是新的。
+   */
+  useEffect(() => {
+    if (!loaded) return;
+    const rows = paged.items;
+    // 只问「已启用」的渠道：停用的渠道没有连通的义务，问它只会得到一句噪音。
+    const ids = Array.from(
+      new Set(
+        rows
+          .map((entry) => resolveChannel(entry))
+          .filter(
+            (channel): channel is SupplyChannel =>
+              channel !== null && channelEnabled(channel, kinds)
+          )
+          .map((channel) => channel.id)
+      )
+    );
+    // 自带凭据的邮箱没有渠道可问，只能连它自己的信箱。同一个信箱只连一次，
+    // 所以按地址去重 —— catch-all 域下的许多地址共用同一个信箱。
+    const addresses = Array.from(
+      new Set(
+        rows
+          .filter(
+            (entry) =>
+              entry.kind === 'email' && entry.mailbox && entry.mailbox.hasCredential !== false
+          )
+          .map((entry) => entry.identity.trim().toLowerCase())
+          .filter((address) => address !== '')
+      )
+    );
+    if (ids.length === 0 && addresses.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all([
+      ids.length > 0 ? supplyApi.probeChannels(ids) : Promise.resolve([]),
+      // 连不上一个信箱不该让整张表报错：拿不到结论就是「没测到」，行上照实显示。
+      addresses.length > 0
+        ? emailApi.probeAddresses(addresses).catch(() => [])
+        : Promise.resolve([]),
+    ]).then(([probed, mailboxStates]) => {
+      if (cancelled) return;
+      setProbes((current) => {
+        const next = new Map(current);
+        for (const item of toProbes(probed)) next.set(item.id, item.natures);
+        return next;
+      });
+      setMailboxProbes((current) => {
+        const next = new Map(current);
+        for (const [address, probe] of toMailboxProbes(mailboxStates)) next.set(address, probe);
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loaded, paged.items, resolveChannel, kinds]);
 
   /**
    * 平台显示名：与凭据列表共用一份标签，查不到就用原始 id，不另编一个。
@@ -266,7 +309,7 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
               </TableHead>
             </TableRow>
           </TableHeader>
-          {entries.map((entry) => {
+          {paged.items.map((entry) => {
             const rowKey = `${entry.kind}:${entry.identity}`;
             const channel = resolveChannel(entry);
             const block = channel ? (entry.kind === 'phone' ? channel.phone : channel.email) : null;
@@ -453,6 +496,18 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
           })}
         </Table>
       )}
+
+      <Pagination
+        page={paged.page}
+        totalPages={paged.totalPages}
+        total={paged.total}
+        from={paged.from}
+        to={paged.to}
+        onPageChange={paged.setPage}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        pageSize={paged.pageSize}
+        onPageSizeChange={paged.setPageSize}
+      />
     </Card>
   );
 }

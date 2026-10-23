@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
 import { Notice } from '@/components/ui/Notice';
+import { Pagination } from '@/components/ui/Pagination';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import {
   IconAlertTriangle,
@@ -30,6 +31,7 @@ import {
   IconTrash2,
 } from '@/components/ui/icons';
 import { EgressHealth } from '@/features/egress/EgressHealth';
+import { PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { useEgressPool } from '@/hooks/useEgressPool';
 import { egressPoolApi, type EgressPoolEntry } from '@/services/api/egressPool';
 import { useNotificationStore } from '@/stores';
@@ -58,6 +60,9 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
   const [testingId, setTestingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState('');
   const titleId = useId();
+
+  // 出口一多，一屏铺不下：分页显示，翻页只换行，不改任何一条出口。
+  const paged = usePagination(entries);
 
   /**
    * 一条出口挂了多少账号与渠道。没人在用时这一行不出现：空着就是「没人用」，
@@ -286,7 +291,7 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry) => {
+              {paged.items.map((entry) => {
                 const usage = describeUsage(entry);
                 const busy = pendingId === entry.id;
                 const testing = testingId === entry.id;
@@ -386,6 +391,18 @@ export function EgressPoolCard({ disabled = false }: EgressPoolCardProps) {
           </table>
         </div>
       )}
+
+      <Pagination
+        page={paged.page}
+        totalPages={paged.totalPages}
+        total={paged.total}
+        from={paged.from}
+        to={paged.to}
+        onPageChange={paged.setPage}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        pageSize={paged.pageSize}
+        onPageSizeChange={paged.setPageSize}
+      />
 
       <Modal
         open={draft !== null}

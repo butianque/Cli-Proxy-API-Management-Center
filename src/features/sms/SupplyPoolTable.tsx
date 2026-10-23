@@ -33,9 +33,11 @@ import {
   TableRowGroup,
 } from '@/components/ui/Table';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
+import { Pagination } from '@/components/ui/Pagination';
 import { IconAlertTriangle, IconPencil, IconPlug, IconTrash2 } from '@/components/ui/icons';
 import { supplyApi, type SupplyChannelInput } from '@/services/api/supply';
 import { EgressBindingSelect } from '@/features/egress/EgressBindingSelect';
+import { PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { useEgressPool } from '@/hooks/useEgressPool';
 import { ChannelStatusStrip } from './ChannelStatusStrip';
 import { useChannelStatus } from './useChannelStatus';
@@ -83,14 +85,17 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
 
   /** 探活：只读，不需要主密码。探不动就当作没探到（显示「未检查」）。 */
   const probe = useCallback(async (list: SupplyChannel[]) => {
-    if (list.length === 0) {
-      setProbes([]);
-      return;
-    }
+    if (list.length === 0) return;
     try {
-      setProbes(toProbes(await supplyApi.probeChannels(list.map((channel) => channel.id))));
+      const probed = toProbes(await supplyApi.probeChannels(list.map((channel) => channel.id)));
+      // 结论按渠道累积：翻回上一页时不会又退回「未检查」，同一页重进会重新测一次。
+      setProbes((current) => {
+        const merged = new Map(current.map((item) => [item.id, item]));
+        for (const item of probed) merged.set(item.id, item);
+        return Array.from(merged.values());
+      });
     } catch {
-      setProbes([]);
+      // 拿不到结论就是「没测到」，行上照实显示「未检查」。
     }
   }, []);
 
@@ -101,17 +106,24 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
       setChannels(list);
       onNatures?.(toNatureOptions(result.natures));
       setLoadError('');
-      await probe(list);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error));
     } finally {
       setLoaded(true);
     }
-  }, [kind, onNatures, probe]);
+  }, [kind, onNatures]);
 
   useEffect(() => {
     void load();
   }, [load, reloadKey]);
+
+  const paged = usePagination(channels);
+
+  // 探活只问**当前这一页**：一屏之外的渠道没人看，为它们各开一条连接是白花。
+  useEffect(() => {
+    if (!loaded) return;
+    void probe(paged.items);
+  }, [loaded, paged.items, probe]);
 
   /**
    * 启用 / 停用这一条渠道：真写启用位，然后重新拉一次（状态由后端说了算）。
@@ -172,8 +184,8 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
     [probes]
   );
 
-  // 每条渠道的状态带：一次读全，按渠道分派（见 `useChannelStatus`）。
-  const statuses = useChannelStatus(kind, channels, reloadKey);
+  // 每条渠道的状态带：一次读全，按渠道分派（见 `useChannelStatus`）。读的也只是当前页。
+  const statuses = useChannelStatus(kind, paged.items, reloadKey);
 
   const natureLabels = (list: SupplyNature[]) =>
     list.map((nature) => t(NATURE_LABEL[nature])).join(' + ') || '—';
@@ -224,7 +236,7 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
               <TableHead alignRight>{t('sms_service.pool_col_remove')}</TableHead>
             </TableRow>
           </TableHeader>
-          {channels.map((channel) => {
+          {paged.items.map((channel) => {
             const block = kind === 'phone' ? channel.phone : channel.email;
             const connection = connectionOf(channel);
             const categoryLabel = CATEGORY_LABEL[channel.category];
@@ -306,6 +318,18 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
           })}
         </Table>
       )}
+
+      <Pagination
+        page={paged.page}
+        totalPages={paged.totalPages}
+        total={paged.total}
+        from={paged.from}
+        to={paged.to}
+        onPageChange={paged.setPage}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        pageSize={paged.pageSize}
+        onPageSizeChange={paged.setPageSize}
+      />
     </Card>
   );
 }

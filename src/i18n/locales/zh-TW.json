@@ -56,6 +56,15 @@
     "unsaved_changes_title": "未儲存的變更",
     "unsaved_changes_message": "你有未儲存的變更，離開後將遺失這些變更。確定要離開嗎？"
   },
+  "pagination": {
+    "label": "分頁",
+    "range": "第 {{from}}–{{to}} 條，共 {{total}} 條",
+    "prev": "上一頁",
+    "next": "下一頁",
+    "page": "第 {{page}} 頁",
+    "size_label": "每頁條數",
+    "size_option": "{{count}} 條"
+  },
   "title": {
     "login": "CLI Proxy API Management Center",
     "abbr": "CPAMC"
@@ -408,9 +417,6 @@
     "delete_filtered_result_success": "成功刪除 {{count}} 個篩選結果中的驗證檔案",
     "delete_filtered_result_partial": "篩選結果刪除完成，成功 {{success}} 個，失敗 {{failed}} 個",
     "delete_filtered_result_none": "目前篩選結果中沒有可刪除的驗證檔案",
-    "pagination_prev": "上一頁",
-    "pagination_next": "下一頁",
-    "pagination_info": "第 {{current}} / {{total}} 頁 · 共 {{count}} 個檔案",
     "search_label": "依名稱、帳號、類型、供應方或錯誤訊息搜尋憑證",
     "search_placeholder": "搜尋名稱、帳號、類型、供應方或錯誤訊息（403、429、invalid），支援 * 萬用字元",
     "problem_filter_label": "狀態篩選",

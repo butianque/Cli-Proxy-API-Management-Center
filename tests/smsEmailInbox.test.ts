@@ -206,7 +206,8 @@ describe('each channel row carries its own mail and balance', () => {
     expect(table).toContain('<ChannelStatusStrip');
     expect(table).toContain('<TableCell colSpan={7}>');
     expect(table).toContain('styles.stripRow');
-    expect(table).toContain('useChannelStatus(kind, channels, reloadKey)');
+    // Read for the rows on screen: a page of channels, not the whole pool.
+    expect(table).toContain('useChannelStatus(kind, paged.items, reloadKey)');
   });
 
   test('there is no separate inbox view to wonder about', () => {

@@ -64,25 +64,6 @@
   justify-content: center;
 }
 
-/* ---------- 分页 ---------- */
-
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.pageInfo {
-  font-family: $font-mono;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-
 /* ---------- OAuth 配置双卡 ---------- */
 
 .configGrid {

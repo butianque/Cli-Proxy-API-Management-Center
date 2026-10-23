@@ -56,6 +56,15 @@
     "unsaved_changes_title": "Unsaved changes",
     "unsaved_changes_message": "You have unsaved changes. Leaving now will discard them. Do you want to leave?"
   },
+  "pagination": {
+    "label": "Pagination",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "prev": "Previous",
+    "next": "Next",
+    "page": "Page {{page}}",
+    "size_label": "Per page",
+    "size_option": "{{count}}"
+  },
   "title": {
     "login": "CLI Proxy API Management Center",
     "abbr": "CPAMC"
@@ -410,9 +419,6 @@
     "delete_filtered_result_success": "Deleted {{count}} auth files from the filtered results successfully",
     "delete_filtered_result_partial": "Filtered result deletion finished: {{success}} succeeded, {{failed}} failed",
     "delete_filtered_result_none": "No deletable auth files in the current filtered results",
-    "pagination_prev": "Previous",
-    "pagination_next": "Next",
-    "pagination_info": "Page {{current}} / {{total}} · {{count}} files",
     "search_label": "Search credentials by name, account, type, provider, or error message",
     "search_placeholder": "Search name, account, type, provider, or error (403, 429, invalid). Use * as a wildcard",
     "problem_filter_label": "Status Filter",
