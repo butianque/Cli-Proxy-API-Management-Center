@@ -2031,7 +2031,7 @@
     "pool_state_failed": "Ошибка",
     "ledger_col_account": "Аккаунт",
     "ledger_col_category": "Категория",
-    "ledger_col_channel": "Канал",
+    "ledger_col_channel": "Домен / платформа",
     "ledger_col_source": "Источник",
     "ledger_col_natures": "Подключение",
     "ledger_col_state": "Состояние",

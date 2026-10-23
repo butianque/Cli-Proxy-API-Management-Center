@@ -139,6 +139,12 @@ export interface SupplyLedgerMailboxWire {
 export interface SupplyLedgerWire {
   kind: SupplyKindWire;
   address: string;
+  /**
+   * 这个地址**在哪收信**的域。
+   *
+   * 老记录没有这一项，面板从 `address` 里取（最后一个 `@` 之后）—— 两者说的是同一件事。
+   */
+  domain?: string;
   /** 这个身份是哪条渠道发出来的；老记录可能没有。 */
   channel_id?: string;
   source?: string;

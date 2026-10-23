@@ -529,9 +529,13 @@ export function toPoolEntry(raw: SupplyLedgerWire): PoolEntry {
     if (registration) projects.push(registration);
   }
   const kind: SupplyKind = raw.kind === 'phone' ? 'phone' : 'email';
+  // 域只对邮箱成立：基座报了 `domain` 就以它为准（地址可能只是别名），没报就从地址里取。
+  // 手机号没有「收信的域」，留空，不拿别的字段凑。
+  const declaredDomain = (raw.domain ?? '').trim().toLowerCase();
   return {
     kind,
     identity: raw.address ?? '',
+    domain: kind === 'email' ? declaredDomain || addressDomain(raw.address ?? '') : '',
     channelId: (raw.channel_id ?? '').trim(),
     source: raw.source ?? '',
     sourceDetail: sourceDetail(kind, raw.meta),
@@ -556,6 +560,18 @@ function sourceDetail(kind: SupplyKind, meta: Record<string, unknown> | undefine
   const key = kind === 'phone' ? 'channel' : 'domain';
   const value = meta?.[key];
   return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * 一个邮箱地址**在哪收信**：最后一个 `@` 之后的那一段。
+ *
+ * 买来的 `yundxr60804@outlook.com` 和自建 catch-all 的 `abc123@ormnes.com` 在这里
+ * 是同一件事 —— 一个地址，一个收信的域。取不出来就是空字符串：不拿渠道的域顶替，
+ * 那是另一条记录的事实。
+ */
+function addressDomain(address: string): string {
+  const at = address.lastIndexOf('@');
+  return at >= 0 ? address.slice(at + 1).trim().toLowerCase() : '';
 }
 
 /**

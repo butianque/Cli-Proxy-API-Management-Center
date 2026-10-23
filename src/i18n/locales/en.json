@@ -2037,7 +2037,7 @@
     "pool_state_failed": "Failed",
     "ledger_col_account": "Account",
     "ledger_col_category": "Category",
-    "ledger_col_channel": "Channel",
+    "ledger_col_channel": "Domain / Platform",
     "ledger_col_source": "Source",
     "ledger_col_natures": "Connection",
     "ledger_col_state": "State",

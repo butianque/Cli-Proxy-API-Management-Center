@@ -294,6 +294,13 @@ export interface PoolEntry {
   kind: SupplyKind;
   /** 身份本身：号码或地址。 */
   identity: string;
+  /**
+   * 邮箱**在哪收信**的域（`outlook.com`，不带 `@`）；`''` = 取不出来，或是手机号。
+   *
+   * 买来的地址和自建 catch-all 的地址在这一格是同一件事：域就是它收信的地方。
+   * 它**不是**来源 —— 哪条渠道把它送进来的才是来源。
+   */
+  domain: string;
   /** 记录指向的渠道 id；`''` = 后端没记（老记录）。 */
   channelId: string;
   /** 它来自哪个平台（后端记录的服务名，如 `haozhuma`）；`''` = 未记录。 */

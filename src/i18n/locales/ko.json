@@ -2037,7 +2037,7 @@
     "pool_state_failed": "실패",
     "ledger_col_account": "계정",
     "ledger_col_category": "분류",
-    "ledger_col_channel": "채널",
+    "ledger_col_channel": "도메인 / 플랫폼",
     "ledger_col_source": "출처",
     "ledger_col_natures": "연결 방식",
     "ledger_col_state": "상태",

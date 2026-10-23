@@ -240,18 +240,34 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
             const kindLabel = t(
               entry.kind === 'phone' ? 'sms_service.tab_phone' : 'sms_service.tab_email'
             );
-            // 渠道：这个身份是哪条渠道发出来的。自带凭据的邮箱没有渠道 —— 它
-            // 不是渠道发出来的，是直接买进来入池的。
-            const channelLabel = mailbox ? '—' : channel?.label || '—';
             /**
-             * 来源：渠道内部**具体哪一项**给了它。
+             * 域 / 平台：这个身份**在哪收信**，或者由哪个平台给号。
              *
-             * 手机号是平台的对接码（同一个平台下有好几条线），邮箱是那个域。
-             * 自带凭据的邮箱没有渠道，它的来源就是「导入」。
+             * 邮箱看的是地址里最后一个 `@` 之后的那一段 —— 买来的 `@outlook.com` 和自建
+             * catch-all 的 `@ormnes.com` 是同一件事：一个地址，域就是它收信的地方。所以
+             * 邮箱这一格说得出来，不是「不知道」。
+             *
+             * 手机号没有「收信的域」，它来自哪个平台就是这一格的事实。
              */
-            const sourceLabel = mailbox
-              ? t('sms_service.pool_origin_import')
-              : entry.sourceDetail || '—';
+            const domainLabel =
+              entry.kind === 'email'
+                ? entry.domain
+                  ? `@${entry.domain}`
+                  : '—'
+                : channel?.label || '—';
+            /**
+             * 来源：这个身份是**谁给的**。域已经在上一格说过了，这一格不再说一遍。
+             *
+             * 自带凭据的邮箱是直接买进来入池的，它的来源就是「导入」；渠道发出来的邮箱
+             * 写那条渠道。手机号写渠道内部**具体哪一条线**（对接码）—— 同一个平台下有
+             * 好几条线，只有它说得清这个号从哪条来。
+             */
+            const sourceLabel =
+              entry.kind === 'email'
+                ? mailbox
+                  ? t('sms_service.pool_origin_import')
+                  : channel?.label || '—'
+                : entry.sourceDetail || '—';
             const naturesLabel = mailbox
               ? t(NATURE_LABEL[mailbox.nature])
               : declared.map((nature) => t(NATURE_LABEL[nature])).join(' + ');
@@ -275,7 +291,7 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
                   <TableCell>
                     <span className={`${styles.tag} ${styles.tagMuted}`}>{kindLabel}</span>
                   </TableCell>
-                  <TableCell>{channelLabel}</TableCell>
+                  <TableCell>{domainLabel}</TableCell>
                   <TableCell>{sourceLabel}</TableCell>
                   <TableCell>{naturesLabel || '—'}</TableCell>
                   <TableCell>

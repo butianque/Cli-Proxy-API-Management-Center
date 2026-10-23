@@ -1994,7 +1994,7 @@
     "pool_state_failed": "Thất bại",
     "ledger_col_account": "Tài khoản",
     "ledger_col_category": "Loại",
-    "ledger_col_channel": "Kênh",
+    "ledger_col_channel": "Tên miền / Nền tảng",
     "ledger_col_source": "Nguồn",
     "ledger_col_natures": "Cách kết nối",
     "ledger_col_state": "Trạng thái",

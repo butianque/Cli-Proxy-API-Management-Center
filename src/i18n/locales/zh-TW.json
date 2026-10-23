@@ -2061,7 +2061,7 @@
     "pool_state_failed": "失敗",
     "ledger_col_account": "帳號",
     "ledger_col_category": "類別",
-    "ledger_col_channel": "管道",
+    "ledger_col_channel": "網域 / 平台",
     "ledger_col_source": "來源",
     "ledger_col_natures": "連接方式",
     "ledger_col_state": "狀態",

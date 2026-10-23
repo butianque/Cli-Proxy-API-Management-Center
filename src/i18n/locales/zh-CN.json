@@ -2035,7 +2035,7 @@
     "pool_state_failed": "失败",
     "ledger_col_account": "账号",
     "ledger_col_category": "类别",
-    "ledger_col_channel": "渠道",
+    "ledger_col_channel": "域 / 平台",
     "ledger_col_source": "来源",
     "ledger_col_natures": "连接方式",
     "ledger_col_state": "状态",
