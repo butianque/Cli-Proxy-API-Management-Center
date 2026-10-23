@@ -10,6 +10,7 @@
  */
 
 import type { SmsChannelWire, SmsLedgerWire, SmsStatusResponse } from '@/services/api/sms';
+import type { EmailAddressProbeWire } from '@/services/api/email';
 import { resolveCredentialSite } from '@/features/authFiles/siteIdentity';
 import type { CredentialSite } from '@/features/authFiles/siteIdentity';
 import { normalizeOAuthProviderKey } from '@/utils/providerKeys';
@@ -25,6 +26,7 @@ import type {
 } from '@/services/api/supply';
 import type {
   ChannelHealth,
+  MailboxProbe,
   PhoneLedgerEntry,
   PlatformConnection,
   PoolEntry,
@@ -457,16 +459,48 @@ export function toSupplyChannels(list: SupplyChannelWire[] | undefined): SupplyC
  */
 export function toProbes(list: SupplyProbeWire[] | undefined): SupplyProbeResult[] {
   if (!Array.isArray(list)) return [];
-  const known: SupplyProbeState[] = ['online', 'offline', 'unready', 'unsupported'];
   const result: SupplyProbeResult[] = [];
   for (const item of list) {
     if (typeof item?.id !== 'string' || item.id === '') continue;
     const natures: Partial<Record<SupplyNature, SupplyProbeState>> = {};
     for (const [nature, probe] of Object.entries(item.natures ?? {})) {
-      const state = known.find((candidate) => candidate === probe?.state);
+      const state = knownProbeState(probe?.state);
       if (state) natures[nature as SupplyNature] = state;
     }
     result.push({ id: item.id, natures });
+  }
+  return result;
+}
+
+/** 只认基座声明的四种状态；其余一律不猜。 */
+function knownProbeState(value: unknown): SupplyProbeState | null {
+  switch (value) {
+    case 'online':
+    case 'offline':
+    case 'unready':
+    case 'unsupported':
+      return value;
+  }
+  return null;
+}
+
+/**
+ * 地址探活响应 → 按地址查的「现在打不打得开」。
+ *
+ * 对不上地址、或者状态认不出来的行直接丢掉：一条不知道属于谁的结论，宁可不显示，
+ * 也不能安到别的行上。
+ */
+export function toMailboxProbes(
+  probes: EmailAddressProbeWire[] | undefined
+): Map<string, MailboxProbe> {
+  const result = new Map<string, MailboxProbe>();
+  if (!Array.isArray(probes)) return result;
+  for (const probe of probes) {
+    const address = (probe.address ?? '').trim().toLowerCase();
+    if (!address) continue;
+    const state = knownProbeState(probe.state);
+    if (!state) continue;
+    result.set(address, { state, detail: (probe.detail ?? '').trim() });
   }
   return result;
 }
@@ -600,20 +634,33 @@ function toPoolMailbox(raw: SupplyLedgerMailboxWire | undefined): PoolMailbox | 
  * 两种身份的问法不同：
  * - 渠道发出来的：问那条渠道的探活结果（基座真发过一次请求）。任一种连接方式
  *   通就算在线 —— 手机号只要 API 通就能取码，网页登录断了不影响取号。
- * - 自带凭据的邮箱：它没有渠道可问，也从没探过活。凭据**确定不在**就是离线
- *   （它连认证都过不去）；凭据在、或者主密码锁着判断不了，都是未知。
+ * - 自带凭据的邮箱：它没有渠道可问，只能连它自己的信箱（`mailboxProbe`）。连上了
+ *   就是在线，连不上就是离线；凭据读不到时基座什么都没试，那仍是未知 —— 把「没测成」
+ *   说成「连不上」，人会去换一个其实好好的号。
  */
 export function identityState(
   mailbox: PoolMailbox | null,
   declared: SupplyNature[],
-  probe: Partial<Record<SupplyNature, SupplyProbeState>> | undefined
+  probe: Partial<Record<SupplyNature, SupplyProbeState>> | undefined,
+  mailboxProbe?: MailboxProbe
 ): ConnectionState {
   const unknown: ConnectionState = { key: 'sms_service.pool_state_unknown', tone: 'tagMuted' };
   if (mailbox) {
+    if (mailboxProbe?.state === 'online') {
+      return { key: 'sms_service.pool_state_online', tone: 'tagGood', detail: mailboxProbe.detail };
+    }
+    if (mailboxProbe?.state === 'offline') {
+      return {
+        key: 'sms_service.pool_state_offline',
+        tone: 'tagWarning',
+        detail: mailboxProbe.detail,
+      };
+    }
+    // 没测过（或测不成）：只有「凭据确定不在」这一种情况能断定它连不上。
     if (mailbox.hasCredential === false) {
       return { key: 'sms_service.pool_state_offline', tone: 'tagWarning' };
     }
-    return unknown;
+    return mailboxProbe?.detail ? { ...unknown, detail: mailboxProbe.detail } : unknown;
   }
   if (declared.length === 0) return unknown;
   if (declared.some((nature) => probe?.[nature] === 'online')) {
@@ -700,6 +747,8 @@ export interface ConnectionState {
   params?: Record<string, string>;
   /** 着色用的样式名（`tagGood` / `tagWarning` / `tagMuted`）。 */
   tone: 'tagGood' | 'tagWarning' | 'tagMuted';
+  /** 一句补充说明（悬停可见）；`undefined` = 没有可说的，不摆空提示。 */
+  detail?: string;
 }
 
 export function connectionState(

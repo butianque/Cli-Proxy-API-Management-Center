@@ -288,6 +288,18 @@ export interface PoolMailbox {
   hasCredential: boolean | null;
 }
 
+/**
+ * 一个自带凭据的邮箱地址**现在打不打得开**（基座真连了一次得到）。
+ *
+ * 这种地址没有渠道可问，只能连它自己的信箱 —— 连上了就是能收信，连不上就是不能。
+ * 凭据读不到时基座什么都不试，那是「没测成」，不是「连不上」，所以状态与原因分开记。
+ */
+export interface MailboxProbe {
+  state: SupplyProbeState;
+  /** 一句说明（失败原因 / 连上了几个文件夹）；`''` = 没有可说的。 */
+  detail: string;
+}
+
 /** 池里的一条身份记录（哪个身份、从哪来、注册了哪些账号）。 */
 export interface PoolEntry {
   /** 它属于哪一类身份（手机号 / 邮箱）。同一张台账里两类的列一样，靠它取对应种类块。 */

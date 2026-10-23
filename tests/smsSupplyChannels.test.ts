@@ -6,6 +6,7 @@ import {
   projectLabel,
   projectSite,
   resolvePlatformId,
+  toMailboxProbes,
   toNatureOptions,
   toPool,
   toSupplyChannels,
@@ -198,10 +199,26 @@ describe('the pool records what was handed out, without inventing', () => {
     expect(identityState(null, [], { imap: 'online' }).key).toBe('sms_service.pool_state_unknown');
   });
 
-  test('a mailbox identity never claims to be online just because it has a credential', () => {
+  test('a mailbox identity reports what a connection said, not what its credential implies', () => {
+    const mailbox = { nature: 'imap', endpoint: '', hasCredential: true } as const;
     // Having the credential only means it could connect; nothing has connected
     // yet. Claiming "online" here would be fabricated.
-    expect(identityState({ nature: 'imap', endpoint: '', hasCredential: true }, [], undefined).key).toBe(
+    expect(identityState(mailbox, [], undefined).key).toBe('sms_service.pool_state_unknown');
+    // A probe that reached the mailbox is the one thing that may say online.
+    expect(identityState(mailbox, [], undefined, { state: 'online', detail: '' }).key).toBe(
+      'sms_service.pool_state_online'
+    );
+    // A mailbox that answered and refused the login cannot receive mail: offline,
+    // and the reason travels with the state so the operator knows what to fix.
+    const offline = identityState(mailbox, [], undefined, {
+      state: 'offline',
+      detail: 'email: the mailbox rejected the login',
+    });
+    expect(offline.key).toBe('sms_service.pool_state_offline');
+    expect(offline.detail).toContain('rejected');
+    // A credential that could not be read was never tried, so it is still
+    // unknown: saying offline would send someone to replace a working account.
+    expect(identityState(mailbox, [], undefined, { state: 'unready', detail: 'locked' }).key).toBe(
       'sms_service.pool_state_unknown'
     );
     // A locked key store cannot tell whether the credential is there, so it is
@@ -213,6 +230,29 @@ describe('the pool records what was handed out, without inventing', () => {
     expect(identityState({ nature: 'imap', endpoint: '', hasCredential: false }, [], undefined).key).toBe(
       'sms_service.pool_state_offline'
     );
+  });
+
+  test('an address probe is looked up by address, and an unreadable answer is dropped', () => {
+    const probes = toMailboxProbes([
+      { address: 'Yundxr60804@Outlook.com', state: 'online', detail: 'connected, 3 mailboxes' },
+      { address: 'abc@ormnes.com', state: 'offline', detail: 'no configured mailbox receives this address' },
+      // A state the backend does not declare is not guessed into a verdict.
+      { address: 'weird@ormnes.com', state: 'maybe' },
+      // An answer with no address belongs to no row, so it is not applied to one.
+      { state: 'online' },
+    ]);
+    expect(probes.get('yundxr60804@outlook.com')?.state).toBe('online');
+    expect(probes.get('abc@ormnes.com')?.detail).toContain('no configured mailbox');
+    expect(probes.has('weird@ormnes.com')).toBe(false);
+    expect(probes.size).toBe(2);
+  });
+
+  test('the pool card probes an imported mailbox itself, not a channel it does not have', () => {
+    // An imported address has no channel, so asking one would answer about a
+    // different mailbox. The card has to ask the address's own mailbox.
+    const card = read('features/sms/SupplyPoolCard.tsx');
+    expect(card).toContain('emailApi.probeAddresses');
+    expect(card).toContain('mailboxProbes.get');
   });
 
   test('every registration on an identity is kept, one per project and account', () => {

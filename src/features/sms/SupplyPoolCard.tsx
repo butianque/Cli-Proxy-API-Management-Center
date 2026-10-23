@@ -13,7 +13,7 @@
  * 就是没有，不摆占位行。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -32,7 +32,9 @@ import {
   IconChevronUp,
   IconTimer,
 } from '@/components/ui/icons';
+import { emailApi } from '@/services/api/email';
 import { supplyApi } from '@/services/api/supply';
+import { useSecretGateStore } from '@/stores/useSecretGateStore';
 import { formatDateTimeValue } from '@/utils/format';
 import { EntryStatus, EntryStatusFact, EntryStatusFacts, EntryStatusGroup } from './EntryStatus';
 import {
@@ -41,11 +43,19 @@ import {
   latestPoolActivity,
   projectLabel,
   projectSite,
+  toMailboxProbes,
   toPool,
   toProbes,
   toSupplyChannels,
 } from './smsMapping';
-import type { PoolEntry, SupplyChannel, SupplyKind, SupplyNature, SupplyProbeState } from './types';
+import type {
+  MailboxProbe,
+  PoolEntry,
+  SupplyChannel,
+  SupplyKind,
+  SupplyNature,
+  SupplyProbeState,
+} from './types';
 import styles from './SmsServicePage.module.scss';
 
 export interface SupplyPoolCardProps {
@@ -68,6 +78,8 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
   const [probes, setProbes] = useState<
     Map<string, Partial<Record<SupplyNature, SupplyProbeState>>>
   >(new Map());
+  // 自带凭据的邮箱的连通状态，按地址查（小写）。没有条目 = 没测过。
+  const [mailboxProbes, setMailboxProbes] = useState<Map<string, MailboxProbe>>(new Map());
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -84,22 +96,57 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
         Promise.all(kinds.map((item) => supplyApi.listChannels(item))),
       ]);
       const list = channelLists.flatMap((result) => toSupplyChannels(result.channels));
-      setEntries(toPool(pools.flat()));
+      const loadedEntries = toPool(pools.flat());
+      setEntries(loadedEntries);
       setChannels(list);
       // 探活只问「已启用」的渠道：停用的渠道没有连通的义务，问它只会得到一句噪音。
       const ids = list
         .filter((channel) => channelEnabled(channel, kinds))
         .map((channel) => channel.id);
-      const probed = ids.length > 0 ? toProbes(await supplyApi.probeChannels(ids)) : [];
-      setProbes(new Map(probed.map((item) => [item.id, item.natures])));
+      // 自带凭据的邮箱没有渠道可问，只能连它自己的信箱。同一个信箱只连一次，
+      // 所以按地址去重 —— catch-all 域下的许多地址共用同一个信箱。
+      // 一次请求的条数由基座封顶：池子很大时没轮到的行仍是「未知」（确实没测过），
+      // 而不是一次性开几百个连接。
+      const addresses = Array.from(
+        new Set(
+          loadedEntries
+            .filter(
+              (entry) =>
+                entry.kind === 'email' && entry.mailbox && entry.mailbox.hasCredential !== false
+            )
+            .map((entry) => entry.identity.trim().toLowerCase())
+            .filter((address) => address !== '')
+        )
+      );
+      const [probed, mailboxStates] = await Promise.all([
+        ids.length > 0 ? supplyApi.probeChannels(ids) : Promise.resolve([]),
+        // 连不上一个信箱不该让整张表报错：拿不到结论就是「没测到」，行上照实显示。
+        addresses.length > 0
+          ? emailApi.probeAddresses(addresses).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+      setProbes(new Map(toProbes(probed).map((item) => [item.id, item.natures])));
+      setMailboxProbes(toMailboxProbes(mailboxStates));
       setLoadError('');
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error));
       setProbes(new Map());
+      setMailboxProbes(new Map());
     } finally {
       setLoaded(true);
     }
   }, [kinds]);
+
+  // 主密码解开后凭据才读得到，所以「锁定 → 解锁」是一次真的状态变化：状态列要跟着
+  // 重测一遍，否则「解开了」这件事在台账上什么也没发生。只有这一种转变要重测 ——
+  // 页面刚打开时的 idle → unlocked 不是变化，首次加载已经按当时的状态测过了。
+  const phase = useSecretGateStore((state) => state.phase);
+  const previousPhase = useRef(phase);
+  useEffect(() => {
+    const wasLocked = previousPhase.current === 'locked';
+    previousPhase.current = phase;
+    if (wasLocked && phase === 'unlocked') void load();
+  }, [phase, load]);
 
   useEffect(() => {
     void load();
@@ -228,7 +275,10 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
             const state = identityState(
               mailbox,
               declared,
-              channel ? probes.get(channel.id) : undefined
+              channel ? probes.get(channel.id) : undefined,
+              // 自带凭据的地址问的是它自己的信箱；渠道发出来的地址没有这一条，
+              // 它问的是渠道（上一行）。
+              mailboxProbes.get(entry.identity.trim().toLowerCase())
             );
             /**
              * 类别说的是**这是哪一类身份**（手机号 / 邮箱），不是渠道的性质。
@@ -295,7 +345,10 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
                   <TableCell>{sourceLabel}</TableCell>
                   <TableCell>{naturesLabel || '—'}</TableCell>
                   <TableCell>
-                    <span className={`${styles.tag} ${styles[state.tone]}`}>
+                    <span
+                      className={`${styles.tag} ${styles[state.tone]}`}
+                      title={state.detail || undefined}
+                    >
                       {t(state.key, state.params)}
                     </span>
                   </TableCell>

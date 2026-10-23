@@ -114,6 +114,15 @@ export type EmailImportResult =
     }
   | { ok: false; reason: 'wrong-passphrase' | 'locked' | 'error'; message: string };
 
+/** 基座 `/supply/email/probe` 的一行：一个地址现在打不打得开。 */
+export interface EmailAddressProbeWire {
+  address?: string;
+  /** `online` / `offline` / `unready`；未知值按「没测成」处理。 */
+  state?: string;
+  /** 一句说明；成功时是连上了几个文件夹，失败时是原因。 */
+  detail?: string;
+}
+
 /** 基座 `/supply/email/import` 的原始回包。 */
 export interface EmailImportResponse {
   status?: string;
@@ -165,6 +174,26 @@ export const emailApi = {
     if (options?.limit) params.set('limit', String(options.limit));
     const qs = params.toString();
     return apiClient.get<EmailInboxResponse>(`${SUPPLY_EMAIL_BASE}/inbox${qs ? `?${qs}` : ''}`);
+  },
+
+  /**
+   * 问「能收这个地址的信箱现在打得开吗」。
+   *
+   * 自带凭据的地址没有渠道可问，只能连它自己的信箱 —— 这是唯一能回答「现在能不能用」
+   * 的办法。只读：只登录、只列文件夹，不读任何一封信，也不回传凭据。
+   *
+   * 一次问一批：一个地址一次连接，基座会排队（不是硬拒），所以别把整池几千个地址
+   * 一次性塞进来 —— 传进来的是**这一屏要显示的那些**。
+   */
+  async probeAddresses(addresses: string[]): Promise<EmailAddressProbeWire[]> {
+    const wanted = addresses.map((address) => address.trim()).filter((address) => address !== '');
+    if (wanted.length === 0) return [];
+    const response = await apiClient.post<{ probes?: EmailAddressProbeWire[] }>(
+      `${SUPPLY_EMAIL_BASE}/probe`,
+      { addresses: wanted },
+      { timeout: 60_000 }
+    );
+    return Array.isArray(response?.probes) ? response.probes : [];
   },
 
   /**
