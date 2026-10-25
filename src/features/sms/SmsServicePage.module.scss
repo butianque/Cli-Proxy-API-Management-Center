@@ -362,6 +362,12 @@ tr.stripRow td {
   color: var(--text-tertiary);
 }
 
+/* 这条注册产出了凭证时，结果上多一句「悬停可看账号」：不改变颜色与字号，只换光标，
+ * 免得每个「已注册」下面都挂一条下划线，反而把结果本身淹掉。 */
+.stripStateHint {
+  cursor: help;
+}
+
 .stripStateGood {
   color: var(--success-color);
 }

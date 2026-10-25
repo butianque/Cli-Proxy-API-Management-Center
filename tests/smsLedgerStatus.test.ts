@@ -133,6 +133,14 @@ describe('the ledger row uses the block, not a bare sentence', () => {
     expect(card).toContain('ledger_fact_registrations');
     expect(card).toContain('ledger_registered_count');
   });
+
+  test('the account a registration produced is a hover title, not a column', () => {
+    // 一串 UUID 铺在行里，比「成没成」还长还亮，读的人第一眼看到的是 ID。它只在
+    // 「这条注册产出了哪份凭证」时才用得上，所以挂在结果本身的悬浮提示上。
+    expect(card).toContain('title={accountTitle');
+    // 也不作为任何元素的文本子节点出现（`key` 里那份是 React 的标识，不上屏）。
+    expect(card).not.toContain('>{project.account}<');
+  });
 });
 
 /**

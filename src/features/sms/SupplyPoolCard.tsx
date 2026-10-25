@@ -6,8 +6,10 @@
  * 没有记录就没有追溯。
  *
  * 版面沿用渠道池：一条身份一行，行下面一条状态带，带里列出它注册过的项目
- * （`Loomy：已使用 · loomy-16723433586`）。状态带默认只露两行，超出的部分由行尾
- * 按钮展开 —— 按钮只在**真的溢出**时出现，否则它按下去什么都不会变。
+ * （`zcode.z.ai：已注册`）。注册出来的账号 ID 挂在「已注册」的悬浮提示上，默认不占
+ * 行宽 —— 一串 UUID 比结果本身还长，摆在行里就把「成没成」挤成了次要信息。状态带
+ * 默认只露两行，超出的部分由行尾按钮展开 —— 按钮只在**真的溢出**时出现，否则它
+ * 按下去什么都不会变。
  *
  * 规矩：后端给什么就显示什么。后端没记渠道就是「不知道」，不按域名猜；没记注册
  * 就是没有，不摆占位行。
@@ -454,6 +456,11 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
                                   : project.state === 'failed'
                                     ? styles.stripStateBad
                                     : styles.stripState;
+                              // 注册出来的账号 ID 是一整串 UUID：铺在行里，它比「成没成」
+                              // 还长还亮，读的人第一眼看到的是 ID 而不是结果。它只在
+                              // 「这条注册产出了哪份凭证」的时候才需要，所以挂到悬浮提示上，
+                              // 默认这一行只留一句状态。
+                              const accountTitle = project.account.trim();
                               return (
                                 <div
                                   className={styles.registrationRow}
@@ -476,12 +483,12 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
                                       </span>
                                     )}
                                   </span>
-                                  <span className={stateTone}>
+                                  <span
+                                    className={`${stateTone}${accountTitle === '' ? '' : ` ${styles.stripStateHint}`}`}
+                                    title={accountTitle === '' ? undefined : accountTitle}
+                                  >
                                     {t(`sms_service.pool_state_${project.state}`)}
                                   </span>
-                                  {project.account !== '' && (
-                                    <span className={styles.mono}>{project.account}</span>
-                                  )}
                                 </div>
                               );
                             })}
