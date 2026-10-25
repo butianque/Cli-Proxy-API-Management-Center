@@ -38,10 +38,12 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconTimer,
+  IconTrash2,
 } from '@/components/ui/icons';
 import { PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { emailApi } from '@/services/api/email';
 import { supplyApi } from '@/services/api/supply';
+import { useNotificationStore } from '@/stores/useNotificationStore';
 import { useSecretGateStore } from '@/stores/useSecretGateStore';
 import { formatDateTimeValue } from '@/utils/format';
 import { EntryStatus, EntryStatusFact, EntryStatusFacts, EntryStatusGroup } from './EntryStatus';
@@ -82,6 +84,8 @@ const ALL_KINDS: readonly SupplyKind[] = ['phone', 'email'];
 export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const showConfirmation = useNotificationStore((state) => state.showConfirmation);
+  const showNotification = useNotificationStore((state) => state.showNotification);
   const [entries, setEntries] = useState<PoolEntry[]>([]);
   const [channels, setChannels] = useState<SupplyChannel[]>([]);
   const [probes, setProbes] = useState<
@@ -93,6 +97,8 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
   const [loadError, setLoadError] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [overflowing, setOverflowing] = useState<Set<string>>(new Set());
+  // 正在移除的那一行（`kind:identity`，与 rowKey 同一口径）：只有它自己的按钮变灰。
+  const [busyKey, setBusyKey] = useState('');
   // 窗口变窄会让原本一行的状态带折成两行：宽度变了就得重量一次，否则按钮会一直缺席。
   const [, setMeasureTick] = useState(0);
 
@@ -257,6 +263,39 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
     });
   }, []);
 
+  /**
+   * 移除一个身份：先问一次，再让后端删，删成了才重新读一遍。
+   *
+   * 不在本地把这行抹掉 —— 后端才是事实。先删再报错，等于让操作者以为它已经没了；
+   * 失败时这一行留在原处，错因照实报出来。
+   */
+  const remove = useCallback(
+    (entry: PoolEntry) => {
+      const rowKey = `${entry.kind}:${entry.identity}`;
+      showConfirmation({
+        title: t('sms_service.ledger_remove_confirm_title'),
+        message: t('sms_service.ledger_remove_confirm', { address: entry.identity }),
+        variant: 'danger',
+        confirmText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        onConfirm: async () => {
+          setBusyKey(rowKey);
+          try {
+            const result = await supplyApi.removePoolAccount(entry.kind, entry.identity);
+            if (!result.ok) {
+              showNotification(result.message, 'error');
+              return;
+            }
+            await load();
+          } finally {
+            setBusyKey('');
+          }
+        },
+      });
+    },
+    [load, showConfirmation, showNotification, t]
+  );
+
   /** 只有真的溢出两行才记下「这里需要按钮」；不溢出的行不该出现按了没反应的按钮。 */
   const measure = useCallback((id: string, node: HTMLDivElement | null) => {
     if (!node) return;
@@ -311,6 +350,7 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
               <TableHead alignRight>
                 <span className={styles.srOnly}>{t('sms_service.ledger_expand')}</span>
               </TableHead>
+              <TableHead alignRight>{t('sms_service.ledger_col_remove')}</TableHead>
             </TableRow>
           </TableHeader>
           {paged.items.map((entry) => {
@@ -370,6 +410,7 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
               : declared.map((nature) => t(NATURE_LABEL[nature])).join(' + ');
             const isOpen = expanded.has(rowKey);
             const canExpand = overflowing.has(rowKey);
+            const removeLabel = t('sms_service.ledger_remove_aria', { address: entry.identity });
             // 每个身份下面都有一条状态带：它回答「这个号注册过哪些平台」，
             // 没注册过本身就是答案（「未注册任何平台」），不摆空行也不藏起来 ——
             // 藏起来时，一个刚导进来还没用过的号看起来就像「面板没做这一块」。
@@ -417,9 +458,21 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
                       </button>
                     ) : null}
                   </TableCell>
+                  <TableCell alignRight>
+                    <button
+                      type="button"
+                      className={styles.actionPill}
+                      onClick={() => remove(entry)}
+                      disabled={busyKey === rowKey}
+                      title={removeLabel}
+                      aria-label={removeLabel}
+                    >
+                      <IconTrash2 size={14} />
+                    </button>
+                  </TableCell>
                 </TableRow>
                 <TableRow className={styles.stripRow}>
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={8}>
                     <EntryStatus>
                       <EntryStatusFacts>
                         <EntryStatusFact

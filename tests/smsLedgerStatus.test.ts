@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { apiClient } from '../src/services/api/client';
+import { supplyApi } from '../src/services/api/supply';
 import {
   EntryStatus,
   EntryStatusFact,
@@ -204,4 +206,108 @@ describe('a two-row entry hovers as one entry', () => {
       expect(source).not.toContain('<TableBody>');
     });
   }
+});
+
+/**
+ * 台账行上的移除：删的是这一行对应的那个身份。
+ *
+ * 表头多一列、状态带多跨一列，两处必须一起变 —— 少一处，状态带会缩到表格外面，
+ * 或者最右边留下一个没有表头的空列。
+ */
+describe('a ledger row can be removed', () => {
+  const card = read('features/sms/SupplyPoolCard.tsx');
+  // 移除那一整段回调：它的边界就是「先问、再删、删成了重读」这三件事。
+  const handler = card.slice(
+    card.indexOf('const remove = useCallback'),
+    card.indexOf('/** 只有真的溢出两行才记下')
+  );
+
+  test('the header names the remove column, to the right of the expand column', () => {
+    const header = card.slice(card.indexOf('<TableHeader>'), card.indexOf('</TableHeader>'));
+    expect(header).toContain('ledger_col_remove');
+    // 动作列都在右侧：展开在前，移除在后，状态列不被它们挤走。
+    expect(header.indexOf('ledger_expand')).toBeLessThan(header.indexOf('ledger_col_remove'));
+  });
+
+  test('the status strip spans every column, the new one included', () => {
+    expect(card).toContain('colSpan={8}');
+    expect(card).not.toContain('colSpan={7}');
+  });
+
+  test('the button is the same pill the channel table already uses', () => {
+    expect(card).toContain('styles.actionPill');
+    expect(card).toContain('<IconTrash2 size={14} />');
+    expect(card).toContain('ledger_remove_aria');
+  });
+
+  test('it asks before deleting and re-reads the pool afterwards', () => {
+    expect(card).toContain('showConfirmation({');
+    expect(card).toContain("variant: 'danger'");
+    expect(card).toContain('supplyApi.removePoolAccount');
+    // 删成了重新读一遍，而不是在本地把行抹掉：后端才是事实。
+    expect(handler).toContain('await load();');
+    expect(handler).not.toContain('setEntries');
+  });
+
+  test('a failed removal is reported and the row stays', () => {
+    expect(handler).toContain('showNotification(result.message,');
+    // 失败分支没有本地删除：行留在原处，等操作者再决定。
+    expect(handler.slice(handler.indexOf('if (!result.ok)'))).not.toContain('setEntries');
+  });
+
+  test('every locale carries the remove copy', () => {
+    const keys = [
+      'ledger_col_remove',
+      'ledger_remove_aria',
+      'ledger_remove_confirm_title',
+      'ledger_remove_confirm',
+    ];
+    for (const locale of ['en', 'zh-CN', 'zh-TW', 'ru', 'vi', 'ko']) {
+      const file = JSON.parse(read(`i18n/locales/${locale}.json`)) as {
+        sms_service?: Record<string, string>;
+      };
+      for (const key of keys) {
+        expect(file.sms_service?.[key]).toBeTruthy();
+      }
+    }
+  });
+});
+
+/**
+ * 移除请求把身份写在 URL 里，所以两段都必须整段编码：`+` 在查询串里是空格，
+ * 不编码就等于让服务端去删一个不存在的地址。
+ */
+describe('the remove call names the identity in the URL', () => {
+  test('kind and address are encoded on the pool accounts route', async () => {
+    const urls: string[] = [];
+    const spy = spyOn(apiClient, 'delete').mockImplementation(async (url: string) => {
+      urls.push(url);
+      return { status: 'ok' } as never;
+    });
+    try {
+      const result = await supplyApi.removePoolAccount('email', 'box+tag@example.com');
+      expect(result).toEqual({ ok: true });
+      expect(urls).toHaveLength(1);
+      expect(urls[0]).toContain('/supply/pool/accounts?kind=');
+      expect(urls[0]).toContain('&address=');
+      expect(urls[0]).toContain('address=box%2Btag%40example.com');
+      expect(urls[0]).not.toContain('box+tag@example.com');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('an unknown identity reports the backend reason instead of pretending it worked', async () => {
+    const spy = spyOn(apiClient, 'delete').mockImplementation(async () => {
+      throw { data: { status: 'error', error: 'no such identity', code: 'unknown_identity' } };
+    });
+    try {
+      expect(await supplyApi.removePoolAccount('phone', '15500000000')).toEqual({
+        ok: false,
+        message: 'no such identity',
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

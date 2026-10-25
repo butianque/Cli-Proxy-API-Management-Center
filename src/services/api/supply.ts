@@ -221,4 +221,23 @@ export const supplyApi = {
     );
     return Array.isArray(result?.records) ? result.records : [];
   },
+
+  /**
+   * 把一个身份从供应池里移除。
+   *
+   * 只删这条记录（连同它注册过的记录），**不销毁**密钥库里的凭据 —— 那份凭据还在，
+   * 只是不再作为供应池里的一个身份出现。
+   */
+  async removePoolAccount(
+    kind: SupplyKindWire,
+    address: string
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    const query = `?kind=${encodeURIComponent(kind)}&address=${encodeURIComponent(address)}`;
+    try {
+      await apiClient.delete(`${SUPPLY_POOL_BASE}/accounts${query}`);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: errorMessage(error, 'failed to remove the identity') };
+    }
+  },
 };
