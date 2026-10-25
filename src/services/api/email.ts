@@ -132,6 +132,38 @@ export interface EmailImportResponse {
   results?: EmailImportLineWire[];
 }
 
+/**
+ * 授权导入里一个邮箱的进展（基座 `/supply/email/authorize` 的 `flows[]` 一行）。
+ *
+ * 只有正在等登录的那一个带 `user_code` / `verify_url` / `expires_in`；其余行只是状态。
+ */
+export interface EmailAuthorizeFlowWire {
+  id?: string;
+  account?: string;
+  /**
+   * `waiting` 等登录 / `verifying` 核对账号 / `saving` 保存凭据 /
+   * `awaiting_unlock` 登录已完成、只差保存 / `done` 已保存 /
+   * `mismatch` 登录的不是这个号 / `denied` 被拒 / `expired` 码过期 /
+   * `failed` 失败 / `cancelled` 已停止。未知值按「没完成」显示。
+   */
+  status?: string;
+  /** 一句说明；状态本身够清楚时缺省。 */
+  detail?: string;
+  /** 8 位设备码。 */
+  user_code?: string;
+  /** 输入这个码的页面。 */
+  verify_url?: string;
+  /** 这个码还剩多少秒可用。 */
+  expires_in?: number;
+  /** 基座两次轮询之间至少隔多少秒。 */
+  interval?: number;
+}
+
+/** 授权导入的一次调用结果：一批进展，或者一个说得清的原因。 */
+export type EmailAuthorizeResult =
+  | { ok: true; flows: EmailAuthorizeFlowWire[] }
+  | { ok: false; reason: 'wrong-passphrase' | 'locked' | 'busy' | 'error'; message: string };
+
 /** 把 axios 错误归一成授权码写入结果（区分主密码错 / 库锁 / 其它）。 */
 function toCredentialWriteResult(error: unknown, fallback: string): EmailCredentialWriteResult {
   const data = (error as { data?: unknown })?.data as
@@ -148,6 +180,23 @@ function toCredentialWriteResult(error: unknown, fallback: string): EmailCredent
 function errorMessage(error: unknown, fallback: string): string {
   const data = (error as { data?: unknown })?.data as { error?: string } | undefined;
   return typeof data?.error === 'string' && data.error ? data.error : fallback;
+}
+
+/**
+ * 把授权导入的错误归一成结果。
+ *
+ * 三种要分开的答案：主密码错、库锁着、已经有一批在等 —— 前两个要口令，第三个不要，
+ * 面板对它们的反应完全不同。
+ */
+function toAuthorizeResult(error: unknown, fallback: string): EmailAuthorizeResult {
+  const data = (error as { data?: unknown })?.data as
+    | { error?: string; passphrase_wrong?: boolean; busy?: boolean }
+    | undefined;
+  const message = typeof data?.error === 'string' && data.error ? data.error : fallback;
+  if (data?.passphrase_wrong) return { ok: false, reason: 'wrong-passphrase', message };
+  if (data?.busy) return { ok: false, reason: 'busy', message };
+  if ((error as { status?: number })?.status === 409) return { ok: false, reason: 'locked', message };
+  return { ok: false, reason: 'error', message };
 }
 
 /** 后端给的原因码（`email_unavailable` = 一个可读的邮箱都没有）。 */
@@ -265,6 +314,66 @@ export const emailApi = {
         return { ok: false, reason: 'locked', message };
       }
       return { ok: false, reason: 'error', message };
+    }
+  },
+
+  /**
+   * 开始一批授权导入：只发账号，不发凭据。
+   *
+   * 基座为第一个账号申请一个 8 位码就回包，登录在后台等 —— 一次登录最长十几分钟，
+   * 不能把请求挂着。之后用 {@link getAuthorization} 读进展。
+   *
+   * `passphrase` 可以留空：会话已经解锁时基座直接放行，整批只认这一次口令。
+   */
+  async startAuthorization(input: { accounts: string }): Promise<EmailAuthorizeResult> {
+    try {
+      const response = await apiClient.post<{ flows?: EmailAuthorizeFlowWire[] }>(
+        `${SUPPLY_EMAIL_BASE}/authorize`,
+        input,
+        { timeout: 60_000 }
+      );
+      return { ok: true, flows: Array.isArray(response?.flows) ? response.flows : [] };
+    } catch (error) {
+      return toAuthorizeResult(error, 'failed to start the sign-in');
+    }
+  },
+
+  /**
+   * 读正在进行的授权导入。
+   *
+   * 也用来在页面重新打开后接上还没走完的那一批：登录是人工的，一次可能要等十几
+   * 分钟，中途刷新页面不该让那批丢掉。
+   */
+  async getAuthorization(): Promise<EmailAuthorizeFlowWire[]> {
+    const response = await apiClient.get<{ flows?: EmailAuthorizeFlowWire[] }>(
+      `${SUPPLY_EMAIL_BASE}/authorize`
+    );
+    return Array.isArray(response?.flows) ? response.flows : [];
+  },
+
+  /** 停止这一批。已经存好的那些不受影响。 */
+  async cancelAuthorization(id: string): Promise<EmailAuthorizeFlowWire[]> {
+    const response = await apiClient.post<{ flows?: EmailAuthorizeFlowWire[] }>(
+      `${SUPPLY_EMAIL_BASE}/authorize/${encodeURIComponent(id)}/cancel`,
+      {}
+    );
+    return Array.isArray(response?.flows) ? response.flows : [];
+  },
+
+  /**
+   * 登录已经完成、但当时库锁着的那一个：补上口令把凭据存下去。
+   *
+   * 不用重新登录微软 —— 凭据已经在基座手里，缺的只是写库的授权。
+   */
+  async commitAuthorization(id: string, passphrase: string): Promise<EmailAuthorizeResult> {
+    try {
+      const response = await apiClient.post<{ flows?: EmailAuthorizeFlowWire[] }>(
+        `${SUPPLY_EMAIL_BASE}/authorize/${encodeURIComponent(id)}/commit`,
+        { passphrase }
+      );
+      return { ok: true, flows: Array.isArray(response?.flows) ? response.flows : [] };
+    } catch (error) {
+      return toAuthorizeResult(error, 'failed to store the mailbox credential');
     }
   },
 

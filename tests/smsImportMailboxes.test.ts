@@ -99,8 +99,36 @@ describe('every locale carries the new copy', () => {
     'import_close',
     'import_err_empty',
     'import_err_generic',
-    'import_type_label',
-    'import_type_outlook',
+    'import_mode_label',
+    'import_mode_paste',
+    'import_mode_paste_note',
+    'import_mode_signin',
+    'import_mode_signin_note',
+    'import_signin_lead',
+    'import_signin_field_list',
+    'import_signin_placeholder',
+    'import_signin_start',
+    'import_signin_stop',
+    'import_signin_progress',
+    'import_signin_code_hint',
+    'import_signin_copy',
+    'import_signin_copied',
+    'import_signin_open',
+    'import_signin_expires',
+    'import_signin_unlock_note',
+    'import_signin_unlock_placeholder',
+    'import_signin_commit',
+    'import_signin_summary',
+    'import_signin_err_stop',
+    'import_signin_status_waiting',
+    'import_signin_status_verifying',
+    'import_signin_status_saving',
+    'import_signin_status_done',
+    'import_signin_status_mismatch',
+    'import_signin_status_denied',
+    'import_signin_status_expired',
+    'import_signin_status_failed',
+    'import_signin_status_cancelled',
     'import_method_label',
     'import_method_graph',
     'import_method_graph_note',
@@ -152,5 +180,74 @@ describe('the receiving method travels with the batch', () => {
     expect(editor).not.toContain('field_mail_client_id');
     expect(editor).not.toContain('field_mail_refresh_token');
     expect(editor).toContain("nature: 'imap'");
+  });
+});
+
+/**
+ * 授权导入：卖家只给了账号，刷新令牌只能由账号本人登录一次换来。
+ *
+ * 面板在这条路上的职责只有「把码摆出来、把状态说清楚」，凭据从头到尾不经过它 ——
+ * 令牌从微软直接进基座的密钥库。
+ */
+describe('the sign-in import asks for accounts only', () => {
+  test('the three routes are the backend ones', () => {
+    expect(api).toContain('`${SUPPLY_EMAIL_BASE}/authorize`');
+    expect(api).toContain('/authorize/${encodeURIComponent(id)}/cancel');
+    expect(api).toContain('/authorize/${encodeURIComponent(id)}/commit');
+  });
+
+  test('the list travels as text, so nothing here parses it', () => {
+    expect(modal).toContain('accounts: lines.join');
+    expect(modal).not.toContain("split('----')");
+  });
+
+  test('a batch already waiting is adopted, not reported as an error', () => {
+    // 同一时刻只能有一批：第二条路径的正确答案是接上它，因为操作者要的是「继续」。
+    expect(modal).toContain("result.reason === 'busy'");
+    expect(api).toContain('busy?: boolean');
+  });
+
+  test('the credential never reaches the panel', () => {
+    // 回包里只有状态与那个 8 位码；令牌由基座直接写进密钥库。
+    expect(api).toContain('flows?: EmailAuthorizeFlowWire[]');
+    expect(modal).not.toContain('refresh_token');
+    expect(modal).not.toContain('localStorage');
+  });
+});
+
+describe('the waiting is driven by the backend, not by a timer of its own', () => {
+  test('progress is polled while a sign-in is pending', () => {
+    expect(modal).toContain('SIGNIN_POLL_MS');
+    expect(modal).toContain('emailApi');
+    expect(modal).toContain('getAuthorization');
+  });
+
+  test('waiting keeps the operator session alive', () => {
+    // 一次登录最长十几分钟，而服务端的空闲窗口是分钟级：不续期，人还在输码就被登出。
+    expect(modal).toContain('touchSession');
+  });
+
+  test('a batch left running is picked up when the dialog is reopened', () => {
+    expect(modal).toContain('existing.some((flow) => !isTerminal(flow))');
+  });
+
+  test('the code is rendered from the answer, never copied into state', () => {
+    expect(modal).toContain('current.user_code');
+    expect(modal).not.toContain('setUserCode');
+    expect(modal).toContain('copyToClipboard');
+  });
+});
+
+describe('a locked store does not throw the sign-in away', () => {
+  test('the panel offers one password field to finish it', () => {
+    // 登录已经完成、只差写库：重新登录微软是最贵的补救方式，也是最没必要的一种。
+    expect(modal).toContain("current.status === 'awaiting_unlock'");
+    expect(modal).toContain('commitAuthorization');
+  });
+
+  test('a parked sign-in shows no stop button', () => {
+    // 这一批已经不再自己往前走，点「停止」看不出任何变化 —— 底栏给的是关闭。
+    expect(modal).toContain("current?.status === 'awaiting_unlock'");
+    expect(modal).toContain('signinFinished || parked');
   });
 });

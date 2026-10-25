@@ -110,13 +110,6 @@
   font-weight: 600;
 }
 
-/* 邮箱类型只有一种，所以它是陈述而不是选项：一行字，不画控件。 */
-.typeValue {
-  color: var(--text-primary);
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
 .choiceNote {
   color: var(--text-tertiary);
   font-size: 11.5px;
@@ -199,4 +192,97 @@
 .failureDetail {
   color: var(--text-tertiary);
   word-break: break-word;
+}
+
+/* ---------- 授权导入：正在等登录的那一个 ---------- */
+
+/*
+ * 一张卡片只讲一件事：这个号、这个码、去哪里输、还剩多久、现在是什么状态。
+ * 卡片外面是整批的进展，卡片里面只有当前这一个。
+ */
+.codeBox {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  padding: $spacing-md;
+  border: 1px dashed var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-secondary);
+}
+
+.codeHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+.codeAccount {
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.codeStep {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.codeHint {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.codeRow {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+/* 这个码要被人抄进另一个窗口，所以它得比周围任何字都大，且能整段选中。 */
+.codeValue {
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  user-select: all;
+}
+
+.codeActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.codeExpiry {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.waitingRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.unlockRow {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+
+  /* 口令框和按钮并排：这里只有一件事要做，多一行都是噪音。 */
+  :global(.form-group) {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+  }
 }
