@@ -477,6 +477,9 @@ describe('account pool i18n keys', () => {
       expect(pool.quota_label_plain.length).toBeGreaterThan(0);
       // 「未开通」不带占位符，但每个语种都必须有。
       expect(pool.quota_not_subscribed.length).toBeGreaterThan(0);
+      // 「还没读到额度」是另一条状态，同样每个语种都必须有，且不能与上面重复。
+      expect(pool.quota_pending.length).toBeGreaterThan(0);
+      expect(pool.quota_pending).not.toBe(pool.quota_not_subscribed);
       // 开通日期是纯标签 + 值，不带占位符，但每个语种都必须有。
       expect(pool.opened_at_label.length).toBeGreaterThan(0);
     });
@@ -685,6 +688,26 @@ describe('account pool quota rendering', () => {
     expect(markup).not.toContain('没有可用额度');
     // token 不能漏到界面上。
     expect(markup).not.toContain('not-subscribed');
+  });
+
+  /**
+   * 「问过了、还没读到」不是「上游说没有」。新号在计划生效前探测，上游答的就是
+   * 空数组；把它说成「未开通」等于替账号断言了它没有套餐，而它其实有。
+   */
+  const pendingAccount = (): AccountView =>
+    account({
+      provider: 'zcode-zai',
+      quotaState: 'entitled',
+      quota: [{ group: 'Start Plan (free)', remainingFraction: 0, description: 'pending' }],
+    });
+
+  test('does not call an unread channel an unsubscribed one', async () => {
+    const markup = await renderPool(pendingAccount(), 'zh-CN');
+
+    expect(markup).toContain('暂未读到额度');
+    expect(markup).not.toContain('未开通');
+    // token 不能漏到界面上。
+    expect(markup).not.toContain('pending');
   });
 
   test('does not count a state row as a model', async () => {

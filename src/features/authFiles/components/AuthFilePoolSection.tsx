@@ -208,9 +208,13 @@ const groupQuotaBuckets = (buckets: readonly AccountQuotaBucket[]): QuotaGroup[]
  * 后端用稳定 token 说明「这个渠道没有额度可报」的原因，措辞归前端所有 ——
  * 插件没有语言环境，句子只能在这里组装，六种语言才都成立。上游错误的原文不是
  * token，照原样显示，那是诊断信息，不该被翻译掩盖。
+ *
+ * `pending` 与 `not-subscribed` 必须分开：一个是「问过了、还没读到」，一个是
+ * 「上游明确说没有」。把前者说成后者，等于替账号断言了它没有套餐。
  */
 const QUOTA_STATE_LABEL: Record<string, string> = {
   'not-subscribed': 'account_pool.quota_not_subscribed',
+  pending: 'account_pool.quota_pending',
 };
 
 const describeQuotaBucket = (description: string | undefined, t: TFunction): string | undefined => {

@@ -136,6 +136,7 @@
     "quota_error": "플랜 할당량을 읽을 수 없습니다.",
     "quota_empty": "이 계정에는 사용 가능한 할당량이 없습니다.",
     "quota_not_subscribed": "미구독",
+    "quota_pending": "아직 할당량을 읽지 못했습니다",
     "quota_group_models": "{{count}}개 모델",
     "quota_remaining": "남은 {{remaining}} / {{total}}",
     "quota_updated": "{{time}} 업데이트됨",

@@ -157,6 +157,7 @@
     "quota_error": "方案額度讀取失敗。",
     "quota_empty": "此帳號沒有可用額度。",
     "quota_not_subscribed": "未開通",
+    "quota_pending": "暫未讀到額度",
     "quota_group_models": "{{count}} 個模型",
     "quota_remaining": "剩餘 {{remaining}} / {{total}}",
     "quota_updated": "更新於 {{time}}",

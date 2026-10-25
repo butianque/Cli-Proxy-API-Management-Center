@@ -136,6 +136,7 @@
     "quota_error": "Не удалось прочитать квоту тарифа.",
     "quota_empty": "На этом аккаунте нет доступной квоты.",
     "quota_not_subscribed": "Не подключено",
+    "quota_pending": "Квота ещё не получена",
     "quota_group_models": "{{count}} моделей",
     "quota_remaining": "Осталось {{remaining}} / {{total}}",
     "quota_updated": "Обновлено {{time}}",
