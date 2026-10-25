@@ -2058,7 +2058,7 @@
     "import_signin_status_verifying": "正在核對登入的帳號…",
     "import_signin_status_saving": "正在保存憑證…",
     "import_signin_status_done": "已保存",
-    "import_signin_status_mismatch": "登入的不是這個信箱",
+    "import_signin_alias_title": "以下帳號按實際登入的地址儲存",
     "import_signin_status_denied": "登入被拒絕",
     "import_signin_status_expired": "驗證碼已過期",
     "import_signin_status_failed": "授權未完成",

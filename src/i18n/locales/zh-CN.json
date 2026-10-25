@@ -2032,7 +2032,7 @@
     "import_signin_status_verifying": "正在核对登录的账号…",
     "import_signin_status_saving": "正在保存凭据…",
     "import_signin_status_done": "已保存",
-    "import_signin_status_mismatch": "登录的不是这个邮箱",
+    "import_signin_alias_title": "以下账号按实际登录的地址保存",
     "import_signin_status_denied": "登录被拒绝",
     "import_signin_status_expired": "验证码已过期",
     "import_signin_status_failed": "授权没完成",

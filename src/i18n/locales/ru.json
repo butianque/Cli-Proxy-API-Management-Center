@@ -2028,7 +2028,7 @@
     "import_signin_status_verifying": "Проверяем, под каким аккаунтом выполнен вход…",
     "import_signin_status_saving": "Сохраняем данные доступа…",
     "import_signin_status_done": "Сохранено",
-    "import_signin_status_mismatch": "Вход выполнен под другим аккаунтом",
+    "import_signin_alias_title": "Эти аккаунты сохранены под адресом, под которым выполнен вход",
     "import_signin_status_denied": "Во входе отказано",
     "import_signin_status_expired": "Код истёк",
     "import_signin_status_failed": "Вход не завершён",

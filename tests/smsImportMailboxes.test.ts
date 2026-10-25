@@ -124,7 +124,7 @@ describe('every locale carries the new copy', () => {
     'import_signin_status_verifying',
     'import_signin_status_saving',
     'import_signin_status_done',
-    'import_signin_status_mismatch',
+    'import_signin_alias_title',
     'import_signin_status_denied',
     'import_signin_status_expired',
     'import_signin_status_failed',
@@ -249,5 +249,13 @@ describe('a locked store does not throw the sign-in away', () => {
     // 这一批已经不再自己往前走，点「停止」看不出任何变化 —— 底栏给的是关闭。
     expect(modal).toContain("current?.status === 'awaiting_unlock'");
     expect(modal).toContain('signinFinished || parked');
+  });
+
+  test('a sign-in that landed on another address says so', () => {
+    // 填的是别名时凭据会存到微软报的主地址上：这不是失败，但操作者得看得出
+    // 池子里那个号是从哪来的。
+    expect(modal).toContain('stored_as');
+    expect(modal).toContain('import_signin_alias_title');
+    expect(modal).not.toContain('import_signin_status_mismatch');
   });
 });

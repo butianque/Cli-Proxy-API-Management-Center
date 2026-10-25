@@ -2034,7 +2034,7 @@
     "import_signin_status_verifying": "Checking which account signed in…",
     "import_signin_status_saving": "Saving the credential…",
     "import_signin_status_done": "Saved",
-    "import_signin_status_mismatch": "A different account signed in",
+    "import_signin_alias_title": "Saved under a different address",
     "import_signin_status_denied": "The sign-in was refused",
     "import_signin_status_expired": "The code expired",
     "import_signin_status_failed": "The sign-in did not finish",

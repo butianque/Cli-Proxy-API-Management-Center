@@ -2037,7 +2037,7 @@
     "import_signin_status_verifying": "로그인한 계정을 확인하는 중…",
     "import_signin_status_saving": "자격 증명을 저장하는 중…",
     "import_signin_status_done": "저장됨",
-    "import_signin_status_mismatch": "다른 계정으로 로그인했습니다",
+    "import_signin_alias_title": "다음 계정은 실제 로그인한 주소로 저장되었습니다",
     "import_signin_status_denied": "로그인이 거부되었습니다",
     "import_signin_status_expired": "코드가 만료되었습니다",
     "import_signin_status_failed": "로그인이 끝나지 않았습니다",

@@ -1994,7 +1994,7 @@
     "import_signin_status_verifying": "Đang kiểm tra tài khoản đã đăng nhập…",
     "import_signin_status_saving": "Đang lưu thông tin đăng nhập…",
     "import_signin_status_done": "Đã lưu",
-    "import_signin_status_mismatch": "Đăng nhập nhầm tài khoản",
+    "import_signin_alias_title": "Các tài khoản này được lưu theo địa chỉ đã đăng nhập",
     "import_signin_status_denied": "Đăng nhập bị từ chối",
     "import_signin_status_expired": "Mã đã hết hạn",
     "import_signin_status_failed": "Đăng nhập chưa xong",

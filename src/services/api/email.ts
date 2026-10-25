@@ -143,10 +143,12 @@ export interface EmailAuthorizeFlowWire {
   /**
    * `waiting` 等登录 / `verifying` 核对账号 / `saving` 保存凭据 /
    * `awaiting_unlock` 登录已完成、只差保存 / `done` 已保存 /
-   * `mismatch` 登录的不是这个号 / `denied` 被拒 / `expired` 码过期 /
+   * `denied` 被拒 / `expired` 码过期 /
    * `failed` 失败 / `cancelled` 已停止。未知值按「没完成」显示。
    */
   status?: string;
+  /** 凭据实际存到的地址（微软报的主地址）；填的是别名时与 account 不同。 */
+  stored_as?: string;
   /** 一句说明；状态本身够清楚时缺省。 */
   detail?: string;
   /** 8 位设备码。 */

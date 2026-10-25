@@ -72,7 +72,6 @@ const COPIED_HINT_MS = 2000;
  */
 const TERMINAL_STATUSES = [
   'done',
-  'mismatch',
   'denied',
   'expired',
   'failed',
@@ -85,7 +84,6 @@ const STATUS_KEYS: Record<string, string> = {
   verifying: 'sms_service.import_signin_status_verifying',
   saving: 'sms_service.import_signin_status_saving',
   done: 'sms_service.import_signin_status_done',
-  mismatch: 'sms_service.import_signin_status_mismatch',
   denied: 'sms_service.import_signin_status_denied',
   expired: 'sms_service.import_signin_status_expired',
   failed: 'sms_service.import_signin_status_failed',
@@ -206,6 +204,11 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
   const parked = current?.status === 'awaiting_unlock';
   const savedCount = flows.filter((flow) => flow.status === 'done').length;
   const missedFlows = flows.filter((flow) => isTerminal(flow) && flow.status !== 'done');
+  // 填的地址与微软报的主地址不同（填的是别名）。这不是失败，但操作者要能看出
+  // 这个号最终落在哪个地址上，否则池子里会多出一个他没写过的号。
+  const aliasFlows = flows.filter(
+    (flow) => flow.status === 'done' && flow.stored_as && flow.stored_as !== flow.account
+  );
   const position = current ? flows.indexOf(current) + 1 : flows.length;
   const signinFinished = flows.length > 0 && !running;
 
@@ -674,6 +677,19 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
                     })}
                   </span>
                 )}
+              </>
+            )}
+            {aliasFlows.length > 0 && (
+              <>
+                <div className={styles.failureTitle}>{t('sms_service.import_signin_alias_title')}</div>
+                <ul className={styles.failureList}>
+                  {aliasFlows.slice(0, FAILURE_LIST_LIMIT).map((flow) => (
+                    <li key={flow.id ?? flow.account} className={styles.failureItem}>
+                      <span className={styles.failureAccount}>{flow.account}</span>
+                      <span className={styles.failureDetail}>{flow.stored_as}</span>
+                    </li>
+                  ))}
+                </ul>
               </>
             )}
           </div>
