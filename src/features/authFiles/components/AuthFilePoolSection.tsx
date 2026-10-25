@@ -4,6 +4,7 @@ import {
   remainingMinutes,
   resolveResetInstant,
   sharedResetAt,
+  sharedWindow,
 } from '@/features/authFiles/accountPool';
 import { resolveCredentialSite } from '@/features/authFiles/siteIdentity';
 import { EgressBindingSelect } from '@/features/egress/EgressBindingSelect';
@@ -210,7 +211,6 @@ const groupQuotaBuckets = (buckets: readonly AccountQuotaBucket[]): QuotaGroup[]
  */
 const QUOTA_STATE_LABEL: Record<string, string> = {
   'not-subscribed': 'account_pool.quota_not_subscribed',
-  'no-credential': 'account_pool.quota_no_credential',
 };
 
 const describeQuotaBucket = (description: string | undefined, t: TFunction): string | undefined => {
@@ -281,10 +281,12 @@ function QuotaSummary({ account, now }: { account: AccountView; now: number }) {
   return (
     <ul className={styles.quotaGroups}>
       {groupQuotaBuckets(account.quota).map((group) => {
-        // 到期时刻是**套餐（渠道）一级**的事实，挂在组头说一次即可。没有组头就没有
+        // 到期时刻是**套餐（计划）一级**的事实，挂在组头说一次即可。没有组头就没有
         // 这个位置（无名组），此时退回逐行；组内各桶值不一致时 `sharedResetAt`
         // 返回 null，同样逐行各报各的。
         const groupResetAt = group.name ? sharedResetAt(group.buckets) : null;
+        // 计划是「每天换一次」还是「一次到期」，决定组头那行该说重置还是到期。
+        const groupWindow = group.name ? sharedWindow(group.buckets) : null;
         // 只有状态、没有读数的一组（例如「未开通」）不报模型数：那不是「1 个模型」。
         const hasReadings = group.buckets.some(
           (bucket) =>
@@ -307,11 +309,16 @@ function QuotaSummary({ account, now }: { account: AccountView; now: number }) {
               </div>
             )}
             {groupResetAt && (
-              // 组头说的是**套餐期限**（到期，不是重置），所以不传 window：
-              // 这里的时刻落在过去就真的到期了，不该按天往前滚。
+              // 组头报的是**整份计划**的时刻：按日计划是「下一次重置」，一次性计划才是
+              // 「到期」。窗口一路传下去，过去的日切才能往前滚成下一次。
               <ExpiryLine
-                labelKey="account_pool.quota_expires_at"
+                labelKey={
+                  groupWindow === 'daily'
+                    ? 'account_pool.quota_resets_at'
+                    : 'account_pool.quota_expires_at'
+                }
                 resetAt={groupResetAt}
+                window={groupWindow}
                 now={now}
                 className={styles.groupExpiry}
               />

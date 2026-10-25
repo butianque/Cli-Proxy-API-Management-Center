@@ -106,6 +106,22 @@ export function sharedResetAt(buckets: readonly AccountQuotaBucket[]): string | 
 }
 
 /**
+ * 组内共用的窗口（`daily` / `weekly` / …），不一致或缺省返回 null。
+ *
+ * 组头的时刻属于**整份计划**，所以它到底是「到期」还是「重置」也只能由组内的
+ * 窗口决定：按日额度每 24 小时换一次，把它的日切说成「到期」就是在说过期。
+ * 桶上没写窗口时不算一条证据，与 `sharedResetAt` 同一口径。
+ */
+export function sharedWindow(buckets: readonly AccountQuotaBucket[]): string | null {
+  const values = new Set<string>();
+  buckets.forEach((bucket) => {
+    const value = bucket.window?.trim();
+    if (value) values.add(value);
+  });
+  return values.size === 1 ? [...values][0] : null;
+}
+
+/**
  * 卡片上该显示的那个时刻（毫秒），解析不出返回 null。
  *
  * 按日窗口（`window === 'daily'`）多做一件事：**把已经过去的时刻按整天往前滚**。

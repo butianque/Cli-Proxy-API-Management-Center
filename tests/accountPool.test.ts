@@ -13,6 +13,7 @@ import {
   resolveResetInstant,
   routingPolicyOptions,
   sharedResetAt,
+  sharedWindow,
 } from '../src/features/authFiles/accountPool';
 import { normalizeAccountView } from '../src/services/api/accounts';
 import type { AccountQuotaBucket, AccountView } from '../src/types/accounts';
@@ -211,8 +212,32 @@ describe('sharedResetAt', () => {
   });
 });
 
-describe('resolveResetInstant', () => {
-  const NOW = Date.parse('2026-10-17T16:00:00Z');
+describe('sharedWindow', () => {
+  const bucket = (window?: string): AccountQuotaBucket => ({
+    group: 'ZCode Start Plan',
+    model: 'GLM-5.3',
+    remainingFraction: 1,
+    window,
+  });
+
+  test('reports the single window every model in the plan shares', () => {
+    expect(sharedWindow([bucket('daily'), bucket('daily')])).toBe('daily');
+  });
+
+  test('ignores models that report no window', () => {
+    expect(sharedWindow([bucket('daily'), bucket()])).toBe('daily');
+  });
+
+  test('returns null when the models disagree, so the header stays neutral', () => {
+    expect(sharedWindow([bucket('daily'), bucket('weekly')])).toBeNull();
+  });
+
+  test('returns null when no model reports a window', () => {
+    expect(sharedWindow([bucket(), bucket('  ')])).toBeNull();
+  });
+});
+
+describe('resolveResetInstant', () => {  const NOW = Date.parse('2026-10-17T16:00:00Z');
 
   test('passes a future instant through untouched', () => {
     const at = Date.parse('2026-10-18T00:00:00Z');
@@ -418,6 +443,8 @@ const RETIRED_POOL_KEYS = [
   // 一句刷完也不会兑现的承诺（刷完仍是「未上报」）。两个状态合并成一句陈述。
   'quota_unknown',
   'quota_unknown_hint',
+  // 「未配置」：插件不再替没有密钥的渠道编造分组，这个状态永远不会出现。
+  'quota_no_credential',
 ];
 
 const readPoolLocale = (locale: string): Record<string, string> => {
@@ -448,9 +475,8 @@ describe('account pool i18n keys', () => {
       expect(pool.quota_resets_at).toContain('{{time}}');
       expect(pool.quota_remaining_time).toContain('{{minutes}}');
       expect(pool.quota_label_plain.length).toBeGreaterThan(0);
-      // 「未开通」与「未配置」是两条状态，不带占位符，但每个语种都必须有。
+      // 「未开通」不带占位符，但每个语种都必须有。
       expect(pool.quota_not_subscribed.length).toBeGreaterThan(0);
-      expect(pool.quota_no_credential.length).toBeGreaterThan(0);
       // 开通日期是纯标签 + 值，不带占位符，但每个语种都必须有。
       expect(pool.opened_at_label.length).toBeGreaterThan(0);
     });
@@ -501,13 +527,13 @@ describe('account pool card body', () => {
     expect(poolSource).toContain('bucket.total !== undefined ||');
   });
 
-  test('states the plan expiry once per channel group, per row only when the rows disagree', () => {
-    // 套餐一级的事实挂组头：组内一致时只说一次，不一致才逐行（`sharedResetAt` 返回 null）。
+  test('states the plan expiry once per plan group, per row only when the rows disagree', () => {
+    // 计划一级的事实挂组头：组内一致时只说一次，不一致才逐行（`sharedResetAt` 返回 null）。
     expect(poolSource).toContain('sharedResetAt(group.buckets)');
     expect(poolSource).toContain('styles.groupExpiry');
     expect(poolSource).toContain('styles.bucketExpiry');
     expect(poolSource).toContain('groupResetAt ? null : bucket.resetAt');
-    expect(poolSource).toContain('labelKey="account_pool.quota_expires_at"');
+    expect(poolSource).toContain("'account_pool.quota_expires_at'");
   });
 
   test('only hoists an expiry to a header that exists', () => {
@@ -515,9 +541,13 @@ describe('account pool card body', () => {
     expect(poolSource).toContain('group.name ? sharedResetAt(group.buckets) : null');
   });
 
-  test('calls a daily window a reset rather than an expiry', () => {
+  test('calls a daily plan a reset rather than an expiry, header included', () => {
+    // 一个计划一组之后，组头的时刻就是整份计划的时刻：按日计划每 24 小时换一次，
+    // 把它的日切说成「到期」等于宣布过期。
     expect(poolSource).toContain("'account_pool.quota_resets_at'");
     expect(poolSource).toContain("bucket.window?.trim() === 'daily'");
+    expect(poolSource).toContain('group.name ? sharedWindow(group.buckets) : null');
+    expect(poolSource).toContain("groupWindow === 'daily'");
   });
 
   test('pairs every expiry with a countdown that ticks on its own', () => {
@@ -534,8 +564,8 @@ describe('account pool card body', () => {
   test('hands the window down so a daily boundary can roll forward', () => {
     // 「是不是按日」决定过去时刻要不要往前滚，窗口必须一路传到 ExpiryLine。
     expect(poolSource).toContain('window={bucket.window}');
-    // 组头报的是套餐期限（到期，不是重置）：过去就是到期了，不给 window、不滚。
-    expect(poolSource).not.toContain('window={groupWindow}');
+    // 组头报的是整份计划的时刻，窗口同样要传下去。
+    expect(poolSource).toContain('window={groupWindow}');
   });
 
   test('names the block after what the account actually reports', () => {
@@ -559,8 +589,8 @@ describe('account pool card body', () => {
     // 「两个套餐都没有额度」是两条状态，不是一句笼统的「没有额度」：插件为每个套餐保留
     // 分组，并用稳定 token 说明原因；句子由前端按语言组装（插件没有语言环境）。
     expect(poolSource).toContain("'not-subscribed': 'account_pool.quota_not_subscribed'");
-    // 「上游说没这个套餐」与「这份凭证里没有它的密钥」证据不同，不能共用一句话。
-    expect(poolSource).toContain("'no-credential': 'account_pool.quota_no_credential'");
+    // 没有密钥的渠道不再编造分组，所以前端也不该留着那条永远走不到的映射。
+    expect(poolSource).not.toContain('no-credential');
     expect(poolSource).toContain('describeQuotaBucket(bucket.description, t)');
     // 只有状态、没有读数的一组没有模型可数，不能报成「1 个模型」。
     expect(poolSource).toContain('const hasReadings = group.buckets.some(');
@@ -620,14 +650,14 @@ describe('credential site identity', () => {
 });
 
 describe('account pool quota rendering', () => {
-  // 后端实测载荷：探测过的套餐答「没这个套餐」，没探测过的套餐标「没配密钥」。
+  // 后端实测载荷：凭证只有免费渠道，上游答「没有这个套餐」。没有密钥的渠道不再上报，
+  // 所以卡片上只会有这一组。
   const noQuotaAccount = (): AccountView =>
     account({
       provider: 'zcode-zai',
       quotaState: 'entitled',
       quota: [
         { group: 'Start Plan (free)', remainingFraction: 0, description: 'not-subscribed' },
-        { group: 'Coding Plan (paid)', remainingFraction: 0, description: 'no-credential' },
       ],
     });
 
@@ -645,20 +675,16 @@ describe('account pool quota rendering', () => {
     return markup;
   };
 
-  test('names both plans when neither one has quota', async () => {
+  test('names the plan it checked when there is no quota', async () => {
     const markup = await renderPool(noQuotaAccount(), 'zh-CN');
 
-    // 两个套餐各自出现：省略掉一个，读者就不知道查过哪几个。
+    // 省略组名，读者就不知道查过哪个套餐。
     expect(markup).toContain('Start Plan (free)');
-    expect(markup).toContain('Coding Plan (paid)');
-    // 每条状态各说各的：探测过的说「未开通」，没探测过的说「未配置」。
     expect(markup).toContain('未开通');
-    expect(markup).toContain('未配置');
     // 不再退化成一句笼统的「没有可用额度」。
     expect(markup).not.toContain('没有可用额度');
     // token 不能漏到界面上。
     expect(markup).not.toContain('not-subscribed');
-    expect(markup).not.toContain('no-credential');
   });
 
   test('does not count a state row as a model', async () => {
@@ -666,5 +692,79 @@ describe('account pool quota rendering', () => {
 
     // 「未开通」不是「1 个模型」：这一组没有模型可数。
     expect(markup).not.toContain('个模型');
+  });
+
+  /**
+   * 后端实测载荷：一个通道同时持有一份活动计划和一份常规计划。两组各两行，
+   * 每组的期限相同，组头的说法必须按各自窗口区分。
+   */
+  const twoPlansAccount = (): AccountView =>
+    account({
+      provider: 'zcode-zai',
+      quotaState: 'entitled',
+      quota: [
+        {
+          group: 'ZCode 1024 Dev Day',
+          model: 'GLM-5.3',
+          window: 'one_time',
+          remainingFraction: 1,
+          remaining: 200000000,
+          total: 200000000,
+          resetAt: '2099-10-26T01:00:00Z',
+        },
+        {
+          group: 'ZCode 1024 Dev Day',
+          model: 'GLM-5.3-Flash',
+          window: 'one_time',
+          remainingFraction: 0.99,
+          remaining: 299998300,
+          total: 300000000,
+          resetAt: '2099-10-26T01:00:00Z',
+        },
+        {
+          group: 'ZCode Start Plan',
+          model: 'GLM-5.3',
+          window: 'daily',
+          remainingFraction: 0.99,
+          remaining: 2998305,
+          total: 3000000,
+          resetAt: '2099-10-25T15:59:00Z',
+        },
+        {
+          group: 'ZCode Start Plan',
+          model: 'GLM-5.3-Flash',
+          window: 'daily',
+          remainingFraction: 0.96,
+          remaining: 4830889,
+          total: 5000000,
+          resetAt: '2099-10-25T15:59:00Z',
+        },
+      ],
+    });
+
+  test('draws one block per plan, each with its own heading and amounts', async () => {
+    const markup = await renderPool(twoPlansAccount(), 'zh-CN');
+
+    // 两个计划各自成组：压成一组会让常规计划的三百万看起来属于活动计划。
+    expect(markup).toContain('ZCode 1024 Dev Day');
+    expect(markup).toContain('ZCode Start Plan');
+    // 每个计划各两行，组内模型数按组算，不是四行一起算。
+    expect(markup.split('2 个模型').length - 1).toBe(2);
+    expect(markup).not.toContain('4 个模型');
+  });
+
+  test('calls the campaign expiry an expiry and the standing plan a reset', async () => {
+    const markup = await renderPool(twoPlansAccount(), 'zh-CN');
+
+    // 一次性活动到期就是到期；按日常规计划换的是周期，不是额度有效期。
+    expect(markup.split('到期时间').length - 1).toBe(1);
+    expect(markup.split('下一次重置时间').length - 1).toBe(1);
+  });
+
+  test('states each plan period once, at its own heading', async () => {
+    const markup = await renderPool(twoPlansAccount(), 'zh-CN');
+
+    // 组内各桶时刻相同 ⇒ 只在组头说一次，四行不再各报一遍。
+    expect(markup.split('剩余时间').length - 1).toBe(2);
   });
 });

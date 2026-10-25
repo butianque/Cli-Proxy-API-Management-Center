@@ -157,7 +157,6 @@
     "quota_error": "套餐额度读取失败。",
     "quota_empty": "该账号没有可用额度。",
     "quota_not_subscribed": "未开通",
-    "quota_no_credential": "未配置",
     "quota_group_models": "{{count}} 个模型",
     "quota_remaining": "剩余 {{remaining}} / {{total}}",
     "quota_updated": "更新于 {{time}}",
