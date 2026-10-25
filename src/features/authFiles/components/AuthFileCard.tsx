@@ -31,7 +31,7 @@ import {
   type AuthFileQuotaFilter,
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
-import { deriveAuthFileIdentity } from '@/features/authFiles/identity';
+import { authFileCardElementId, deriveAuthFileIdentity } from '@/features/authFiles/identity';
 import { resolveAuthFileQuotaType } from '@/features/authFiles/logic';
 import type { AuthFileStatusBarData } from '@/features/authFiles/hooks/useAuthFilesStatusBarCache';
 import { AuthFileQuotaSection } from '@/features/authFiles/components/AuthFileQuotaSection';
@@ -46,6 +46,8 @@ export type AuthFileCardProps = {
   account?: AccountView;
   compact: boolean;
   selected: boolean;
+  /** 从台账跳过来时高亮这一张；`false` = 正常卡片。 */
+  focused?: boolean;
   resolvedTheme: ResolvedTheme;
   disableControls: boolean;
   deleting: string | null;
@@ -82,6 +84,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
     account,
     compact,
     selected,
+    focused,
     resolvedTheme,
     disableControls,
     deleting,
@@ -138,6 +141,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
     styles.card,
     compact ? styles.cardCompact : '',
     selected ? styles.cardSelected : '',
+    focused ? styles.cardFocused : '',
     file.disabled === true ? styles.cardDisabled : '',
     mountEntranceDelayMs != null ? styles.cardEnter : '',
   ]
@@ -167,7 +171,11 @@ export function AuthFileCard(props: AuthFileCardProps) {
   );
 
   return (
-    <article className={cardClasses} style={cardStyle}>
+    <article
+      id={authFileCardElementId(file.name)}
+      className={cardClasses}
+      style={cardStyle}
+    >
       <header className={styles.head}>
         {!isRuntimeOnly && (
           <SelectionCheckbox

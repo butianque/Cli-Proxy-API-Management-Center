@@ -2083,6 +2083,7 @@
     "pool_state_unknown": "未知",
     "ledger_expand": "展开全部",
     "ledger_collapse": "收起",
+    "ledger_open_credential": "打开凭证 {{account}}",
     "platform_haozhuma": "豪猪接码",
     "platform_haozhuma_summary": "用 API 接入取号，用网页登录管理渠道",
     "platform_custom": "自定义",

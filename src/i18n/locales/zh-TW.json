@@ -2109,6 +2109,7 @@
     "pool_state_unknown": "未知",
     "ledger_expand": "展開全部",
     "ledger_collapse": "收合",
+    "ledger_open_credential": "開啟憑證 {{account}}",
     "platform_haozhuma": "豪豬接碼",
     "platform_haozhuma_summary": "用 API 接入取號，用網頁登入管理管道",
     "platform_custom": "自訂",

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { deriveAuthFileIdentity, stripJsonExtension } from '../src/features/authFiles/identity';
+import { authFileCardElementId, deriveAuthFileIdentity, stripJsonExtension } from '../src/features/authFiles/identity';
 import type { AuthFileItem } from '../src/types';
 
 const authFile = (overrides: Partial<AuthFileItem> = {}): AuthFileItem => ({
@@ -31,6 +31,22 @@ describe('stripJsonExtension', () => {
 
   test('trims surrounding whitespace', () => {
     expect(stripJsonExtension('  kimi-1712345678901.json  ')).toBe('kimi-1712345678901');
+  });
+});
+
+describe('authFileCardElementId', () => {
+  test('keys the card by its full file name, so a stripped name cannot collide', () => {
+    // 剥后缀只用于显示；拿它做 id 会让 `a.json` 与 `a` 撞成同一张卡。
+    expect(authFileCardElementId('zcode-2a48afcd-564d-4b26.json')).toBe(
+      'auth-file-zcode-2a48afcd-564d-4b26.json'
+    );
+    expect(authFileCardElementId('zcode-2a48afcd-564d-4b26')).toBe(
+      'auth-file-zcode-2a48afcd-564d-4b26'
+    );
+  });
+
+  test('trims whitespace so a padded name still matches the rendered card', () => {
+    expect(authFileCardElementId('  a.json ')).toBe('auth-file-a.json');
   });
 });
 

@@ -41,6 +41,33 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 40%, transparent);
 }
 
+/* 从台账「已注册」跳过来时的那一张：只闪一下，不常驻 —— 高亮是「你要找的是这张」
+ * 的一次性指路，不是一种状态。 */
+.cardFocused {
+  animation: card-focused 2.4s var(--ease-out-strong, ease-out) both;
+}
+
+@keyframes card-focused {
+  0%,
+  60% {
+    border-color: color-mix(in srgb, var(--primary-color) 70%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent);
+  }
+
+  100% {
+    border-color: var(--border-color);
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cardFocused {
+    animation: none;
+    border-color: color-mix(in srgb, var(--primary-color) 70%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent);
+  }
+}
+
 /* 首次数据到达时的一次性级联入场；过滤/翻页/轮询不重播 */
 .cardEnter {
   animation: card-in 180ms var(--ease-out-strong, ease-out) both;

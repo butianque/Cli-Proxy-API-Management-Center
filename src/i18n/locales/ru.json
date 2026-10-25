@@ -2079,6 +2079,7 @@
     "pool_state_unknown": "Неизвестно",
     "ledger_expand": "Показать все",
     "ledger_collapse": "Свернуть",
+    "ledger_open_credential": "Открыть учётные данные {{account}}",
     "platform_haozhuma": "Haozhuma SMS",
     "platform_haozhuma_summary": "Получение номеров через API, управление каналами через вход на сайт",
     "platform_custom": "Своя платформа",

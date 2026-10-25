@@ -2085,6 +2085,7 @@
     "pool_state_unknown": "Unknown",
     "ledger_expand": "Show all",
     "ledger_collapse": "Show less",
+    "ledger_open_credential": "Open the credential {{account}}",
     "platform_haozhuma": "Haozhuma SMS",
     "platform_haozhuma_summary": "Take numbers over the API, manage channels through the web sign-in",
     "platform_custom": "Custom",

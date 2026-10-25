@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useInterval } from '@/hooks/useInterval';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useRevealOnScroll } from '@/hooks/motion';
@@ -24,6 +24,7 @@ import {
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
 import { AuthFileCard } from '@/features/authFiles/components/AuthFileCard';
+import { authFileCardElementId, stripJsonExtension } from '@/features/authFiles/identity';
 import { AuthFileDetailsSheet } from '@/features/authFiles/components/AuthFileDetailsSheet';
 import { getAuthFileRefreshKey } from '@/features/authFiles/manualRefresh';
 import { AuthFileRefreshResults } from '@/features/authFiles/components/AuthFileRefreshResults';
@@ -104,6 +105,13 @@ export function AuthFilesPage() {
   const [viewMode, setViewMode] = useState<'diagram' | 'list'>('list');
   const [sortMode, setSortMode] = useState<AuthFilesSortMode>('default');
   const [uiStateHydrated, setUiStateHydrated] = useState(false);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusTargetFromUrl = (searchParams.get('focus') ?? '').trim();
+  /** 还没定位到的凭证名（`?focus=` 搬进 state 后的中转）。 */
+  const [pendingFocus, setPendingFocus] = useState('');
+  /** 已经定位到的凭证文件名：用于高亮并滚动过去。 */
+  const [focusedName, setFocusedName] = useState('');
 
   const {
     modelsModalOpen,
@@ -494,6 +502,47 @@ export function AuthFilesPage() {
   const currentPage = Math.min(page, totalPages);
   const start = (currentPage - 1) * pageSize;
   const pageItems = useMemo(() => sorted.slice(start, start + pageSize), [pageSize, sorted, start]);
+
+  // 台账里点「已注册」会带着 `?focus=<凭证名>` 过来，那一下的意图只有一个：把这张
+  // 凭证翻出来。所以先把可能把它藏起来的筛选清掉，再翻到它所在的页 —— 否则用户在
+  // 凭证页看到的是自己上次留下的筛选结果，找不到刚点的那一条。清掉后的视图就是
+  // 他现在看到的东西，所以照常存进本地视图状态，不做「点一下偷偷改回去」。
+  // URL 上的 focus 用完即删：刷新时不该再替人清一遍筛选。
+  useEffect(() => {
+    if (focusTargetFromUrl === '') return;
+    setPendingFocus(focusTargetFromUrl);
+    setFilter('all');
+    setStatusFilterMode('all');
+    setSearch('');
+    setSearchParams({}, { replace: true });
+  }, [focusTargetFromUrl, setSearchParams]);
+
+  // 定位要等两件事都成立：筛选已清空、凭证已加载。对不上就什么都不做 —— 不摆空壳，
+  // 也不假装跳成功（账号可能是别的连接的，或者凭证已经被删了）。
+  useEffect(() => {
+    if (pendingFocus === '' || files.length === 0) return;
+    const wanted = pendingFocus.toLowerCase();
+    const ordered = sortAuthFiles(files, sortMode);
+    const index = ordered.findIndex(
+      (file) => stripJsonExtension(String(file.name ?? '')).toLowerCase() === wanted
+    );
+    setPendingFocus('');
+    if (index < 0) return;
+    setFocusedName(ordered[index].name);
+    setPage(Math.floor(index / pageSize) + 1);
+  }, [pendingFocus, files, sortMode, pageSize]);
+
+  // 卡片渲染出来才滚得动，所以滚动单独一步。高亮只闪一下：它是「你要找的是这张」的
+  // 指路，不是一种状态，停留久了会跟「选中」混在一起。
+  useEffect(() => {
+    if (focusedName === '') return;
+    document.getElementById(authFileCardElementId(focusedName))?.scrollIntoView({
+      block: 'center',
+      behavior: 'smooth',
+    });
+    const timer = window.setTimeout(() => setFocusedName(''), 2400);
+    return () => window.clearTimeout(timer);
+  }, [focusedName]);
   const selectablePageItems = useMemo(
     () => pageItems.filter((file) => !isRuntimeOnlyAuthFile(file)),
     [pageItems]
@@ -784,6 +833,7 @@ export function AuthFilesPage() {
                 account={accountIndex.get(getQuotaCacheKey(file))}
                 compact={compactMode}
                 selected={selectedFiles.has(file.name)}
+                focused={focusedName === file.name}
                 resolvedTheme={resolvedTheme}
                 disableControls={disableControls}
                 deleting={deleting}

@@ -141,6 +141,47 @@ describe('the ledger row uses the block, not a bare sentence', () => {
     // 也不作为任何元素的文本子节点出现（`key` 里那份是 React 的标识，不上屏）。
     expect(card).not.toContain('>{project.account}<');
   });
+
+  test('a registration that produced an account leads to that credential', () => {
+    // 有账号就意味着台账能指到那张凭证，而想看「注册出来的是哪个号」的人下一步
+    // 一定是去看它，所以状态本身就是入口。
+    expect(card).toContain('/auth-files?focus=');
+    expect(card).toContain('encodeURIComponent(accountTitle)');
+    expect(card).toContain('ledger_open_credential');
+    // 没有账号的注册不给假入口：那个分支必须还是纯文本。
+    expect(card).toContain("{accountTitle === '' ? (");
+  });
+});
+
+/**
+ * 台账点到凭证页那一下必须真的落到那一张卡上。后端不参与：`project.account` 就是
+ * 凭证文件名去掉 `.json`，所以凭证页按文件名匹配就够，不需要再加一个字段。
+ */
+describe('the ledger lands on the credential it points at', () => {
+  const page = readFileSync(
+    new URL('../src/features/authFiles/AuthFilesPage.tsx', import.meta.url),
+    'utf8'
+  );
+
+  test('reads the target from the URL and clears the filters that could hide it', () => {
+    expect(page).toContain("searchParams.get('focus')");
+    // 不清筛选的话，用户在凭证页留下的过滤会把刚点的那条藏起来。
+    expect(page).toContain("setFilter('all')");
+    expect(page).toContain("setStatusFilterMode('all')");
+    expect(page).toContain("setSearch('')");
+  });
+
+  test('turns the target into the page that actually holds it', () => {
+    expect(page).toContain('stripJsonExtension');
+    expect(page).toContain('setPage(Math.floor(index / pageSize) + 1)');
+    // 找不到就不动：不摆空壳，也不假装跳成功。
+    expect(page).toContain('if (index < 0) return;');
+  });
+
+  test('focus is one-shot, so a refresh does not reset the view again', () => {
+    expect(page).toContain('setSearchParams({}, { replace: true })');
+    expect(page).toContain("setFocusedName('')");
+  });
 });
 
 /**

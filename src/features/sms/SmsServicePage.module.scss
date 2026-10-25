@@ -362,10 +362,27 @@ tr.stripRow td {
   color: var(--text-tertiary);
 }
 
-/* 这条注册产出了凭证时，结果上多一句「悬停可看账号」：不改变颜色与字号，只换光标，
- * 免得每个「已注册」下面都挂一条下划线，反而把结果本身淹掉。 */
-.stripStateHint {
-  cursor: help;
+/* 这条注册产出了凭证时，结果本身就变成去那张凭证的入口。默认不改颜色、不加下划线
+ * —— 一行里已经有站点和状态两段信息，再挂一条链接线会把「成没成」压成次要的。
+ * 只给指针和悬停时的浅底，让人知道这里能点。 */
+.stripStateAction {
+  font: inherit;
+  padding: 0 2px;
+  margin: 0 -2px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    background: color-mix(in srgb, currentcolor 12%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
 }
 
 .stripStateGood {

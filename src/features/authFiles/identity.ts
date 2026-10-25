@@ -42,6 +42,14 @@ export const stripJsonExtension = (name: string): string => {
 };
 
 /**
+ * 卡片在页面里的 DOM id，供 `?focus=<凭证名>` 定位。
+ *
+ * 用完整文件名而不是剥过后缀的名字：同一张凭证只可能有一份文件，而剥后缀会让
+ * `a.json` 与 `a` 撞成同一个 id。前缀避免与页面里其它 id 相撞。
+ */
+export const authFileCardElementId = (name: string): string => `auth-file-${name.trim()}`;
+
+/**
  * 身份回落链：email → projectId → 文件名（去 .json）。
  * 刻意与 provider 无关：runtime-only 虚拟凭证（name === email === 频道 ID）
  * 由副行去重守卫结构性处理，比按 provider 白名单更稳。

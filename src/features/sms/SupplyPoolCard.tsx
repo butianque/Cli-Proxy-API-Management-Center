@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Notice } from '@/components/ui/Notice';
@@ -80,6 +81,7 @@ const ALL_KINDS: readonly SupplyKind[] = ['phone', 'email'];
 
 export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [entries, setEntries] = useState<PoolEntry[]>([]);
   const [channels, setChannels] = useState<SupplyChannel[]>([]);
   const [probes, setProbes] = useState<
@@ -461,6 +463,10 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
                               // 「这条注册产出了哪份凭证」的时候才需要，所以挂到悬浮提示上，
                               // 默认这一行只留一句状态。
                               const accountTitle = project.account.trim();
+                              // 有账号就意味着台账能指到那张凭证。想核对「注册出来的是哪个
+                              // 号」的人，下一步一定是去看它，所以状态本身做成入口；没有
+                              // 账号的注册不给假入口。
+                              const stateLabel = t(`sms_service.pool_state_${project.state}`);
                               return (
                                 <div
                                   className={styles.registrationRow}
@@ -483,12 +489,25 @@ export function SupplyPoolCard({ kind, reloadKey = 0 }: SupplyPoolCardProps) {
                                       </span>
                                     )}
                                   </span>
-                                  <span
-                                    className={`${stateTone}${accountTitle === '' ? '' : ` ${styles.stripStateHint}`}`}
-                                    title={accountTitle === '' ? undefined : accountTitle}
-                                  >
-                                    {t(`sms_service.pool_state_${project.state}`)}
-                                  </span>
+                                  {accountTitle === '' ? (
+                                    <span className={stateTone}>{stateLabel}</span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className={`${stateTone} ${styles.stripStateAction}`}
+                                      title={accountTitle}
+                                      aria-label={t('sms_service.ledger_open_credential', {
+                                        account: accountTitle,
+                                      })}
+                                      onClick={() =>
+                                        navigate(
+                                          `/auth-files?focus=${encodeURIComponent(accountTitle)}`
+                                        )
+                                      }
+                                    >
+                                      {stateLabel}
+                                    </button>
+                                  )}
                                 </div>
                               );
                             })}
