@@ -9,11 +9,17 @@ import {
 } from '../src/features/sms/smsMapping';
 import {
   formatReceivedAt,
+  orderMailboxAddresses,
+  pickDefaultMailbox,
   toInboxReading,
   toInboxStatus,
+  toMailboxReading,
   toMailboxes,
+  toMessageDocument,
   toMessages,
+  toPoolAddresses,
   toReceivedAt,
+  type EmailMailboxSlot,
 } from '../src/features/sms/emailMapping';
 
 /**
@@ -218,11 +224,23 @@ describe('each channel row carries its own mail and balance', () => {
     expect(page).toContain("type PageView = 'pool' | 'config'");
     expect(page).toContain('<InboxModal');
     expect(page).toContain('open={inboxOpen}');
-    // One call reads the whole pool; asking address by address would open the
-    // same mailbox once per identity.
+    expect(read('features/sms/InboxModal.tsx')).not.toContain('probeAddresses');
+  });
+
+  test('the mailbox list is free, the mail is read on demand', () => {
+    // The pool list does not open a mailbox, so all twenty addresses can be
+    // listed at once. Reading mail is one login per mailbox, so it happens for a
+    // small first batch and then for whichever mailbox was clicked.
     const modal = read('features/sms/InboxModal.tsx');
-    expect(modal).toContain("scope: 'pool'");
-    expect(modal).not.toContain('probeAddresses');
+    expect(modal).toContain("supplyApi.listPool('email')");
+    expect(modal).toContain('getInbox({ address, limit: MAIL_LIMIT })');
+    // A bounded first batch: entering must not wait for twenty logins.
+    expect(modal).toContain('const FIRST_BATCH = 4;');
+    expect(modal).toContain('pool.slice(0, FIRST_BATCH)');
+    // Clicking a mailbox preloads the next few, so the next click is instant.
+    expect(modal).toContain('const PREFETCH = 3;');
+    // A read is a login: the same mailbox must not be opened twice at once.
+    expect(modal).toContain('inflightRef');
   });
 
   test('the inbox dialog never speaks in backend field names', () => {
@@ -230,9 +248,11 @@ describe('each channel row carries its own mail and balance', () => {
     expect(modal).not.toContain('received_at');
     expect(modal).not.toContain('channel_id');
     expect(modal).not.toContain('window_hours');
-    // A mailbox that could not be read is its own block: rendering it as "no
-    // mail" sends the operator to a mailbox that was never opened.
-    expect(modal).toContain('unread');
+    // A mailbox that was never opened, and one that could not be opened, each
+    // say so — neither is rendered as "no mail", which sends the operator to a
+    // mailbox that was never read.
+    expect(modal).toContain('sms_service.inbox_unread');
+    expect(modal).toContain('sms_service.inbox_failed');
   });
 
   test('a pooled mailbox is read by the pool scope, a channel row by the default', () => {
@@ -276,6 +296,143 @@ describe('each channel row carries its own mail and balance', () => {
     expect(editor).not.toContain('source_field_secret');
     expect(editor).not.toContain('source_ph_secret');
     expect(editor).toContain("account: (mailConnection?.account ?? '').trim()");
+  });
+});
+
+describe('the three panes: mailboxes, mail, content', () => {
+  const loaded = (latestAt: string | null, count = latestAt === null ? 0 : 1): EmailMailboxSlot => ({
+    loading: false,
+    reading: {
+      messages: Array.from({ length: count }, (_, index) => ({
+        channelId: '',
+        mailbox: 'INBOX',
+        from: '',
+        to: [],
+        subject: `mail ${index}`,
+        receivedAt: latestAt,
+        code: '',
+        preview: '',
+        links: [],
+      })),
+      latestAt,
+      error: '',
+    },
+  });
+  const failed: EmailMailboxSlot = {
+    loading: false,
+    reading: { messages: [], latestAt: null, error: 'no credential' },
+  };
+  const notRead: EmailMailboxSlot = { loading: false, reading: null };
+
+  test('the newest mail floats to the top', () => {
+    const order = orderMailboxAddresses(['a', 'b', 'c'], {
+      a: loaded('2026-10-26T09:00:00Z'),
+      b: loaded('2026-10-26T11:00:00Z'),
+      c: loaded('2026-10-26T08:00:00Z'),
+    });
+    expect(order).toEqual(['b', 'a', 'c']);
+  });
+
+  test('a mailbox that was never read is not sorted as if it had no mail', () => {
+    // "Read, and empty" and "never opened" are different answers. Sorting the
+    // second one in with the first would claim the pool has no newer mail.
+    const order = orderMailboxAddresses(['empty', 'unknown', 'fresh'], {
+      empty: loaded(null),
+      unknown: notRead,
+      fresh: loaded('2026-10-26T09:00:00Z'),
+    });
+    expect(order).toEqual(['fresh', 'empty', 'unknown']);
+  });
+
+  test('a mailbox that could not be read sinks with the unknown ones', () => {
+    const order = orderMailboxAddresses(['broken', 'fresh', 'unknown'], {
+      broken: failed,
+      fresh: loaded('2026-10-26T09:00:00Z'),
+      unknown: notRead,
+    });
+    expect(order).toEqual(['fresh', 'broken', 'unknown']);
+  });
+
+  test('the default is the newest mailbox, not the first one listed', () => {
+    const slots = {
+      a: loaded('2026-10-26T09:00:00Z', 2),
+      b: loaded('2026-10-26T12:00:00Z', 1),
+    };
+    expect(pickDefaultMailbox(['a', 'b'], slots)).toBe('b');
+  });
+
+  test('a mailbox with mail outranks an empty one', () => {
+    const slots = { empty: loaded(null), fresh: loaded('2026-10-26T09:00:00Z') };
+    expect(pickDefaultMailbox(['empty', 'fresh'], slots)).toBe('fresh');
+  });
+
+  test('nothing read yet means no default is picked', () => {
+    // There is no real answer yet, so the dialog must not select an arbitrary
+    // mailbox and show it as if it were the newest.
+    expect(pickDefaultMailbox(['a', 'b'], { a: notRead, b: failed })).toBe('');
+  });
+
+  test('one mailbox reading keeps its own newest time and its own reason', () => {
+    const reading = toMailboxReading({
+      messages: [
+        { mailbox: 'INBOX', subject: 'new', received_at: '2026-10-26T10:00:00Z' },
+        { mailbox: 'INBOX', subject: 'old', received_at: '2026-10-25T10:00:00Z' },
+      ],
+      mailboxes: [
+        { mailbox: 'box@example.com', count: 2, latest: { received_at: '2026-10-26T10:00:00Z' } },
+      ],
+    });
+    expect(reading.messages).toHaveLength(2);
+    expect(reading.latestAt).toBe('2026-10-26T10:00:00.000Z');
+    expect(reading.error).toBe('');
+  });
+
+  test('a mailbox that could not be read says why instead of showing no mail', () => {
+    const reading = toMailboxReading({
+      messages: [],
+      mailboxes: [{ mailbox: 'box@example.com', error: 'the mailbox has no credential' }],
+    });
+    expect(reading.messages).toEqual([]);
+    expect(reading.latestAt).toBeNull();
+    expect(reading.error).toBe('the mailbox has no credential');
+  });
+
+  test('the content pane carries every field the base gives, and nothing invented', () => {
+    const [mail] = toMessages([
+      {
+        mailbox: 'INBOX',
+        from: 'noreply@example.com',
+        to: ['box@example.com'],
+        subject: 'Your code',
+        received_at: '2026-10-26T10:00:00Z',
+        code: '123456',
+        preview: 'Your code is 123456',
+        links: ['https://example.com/verify'],
+      },
+    ]);
+    expect(toMessageDocument('box@example.com', mail)).toEqual({
+      receivedBy: 'box@example.com',
+      folder: 'INBOX',
+      from: 'noreply@example.com',
+      to: ['box@example.com'],
+      subject: 'Your code',
+      receivedAt: '2026-10-26T10:00:00.000Z',
+      code: '123456',
+      preview: 'Your code is 123456',
+      links: ['https://example.com/verify'],
+    });
+  });
+
+  test('only a mailbox with its own reading setup is listed', () => {
+    // An address a channel handed out is read through the channel's connection;
+    // listing it here would promise mail the dialog cannot open.
+    expect(
+      toPoolAddresses([
+        { kind: 'email', address: 'a@example.com', mailbox: { nature: 'imap' } },
+        { kind: 'email', address: 'b@example.com' },
+        { kind: 'email', address: 'A@example.com', mailbox: { nature: 'imap' } },
+      ])
+    ).toEqual(['a@example.com']);
   });
 });
 
@@ -392,7 +549,34 @@ describe('every locale can say the channel-row words', () => {
     'source_err_category',
     'category_phone_note',
     'config_email_nature_note',
+    'inbox_mailboxes',
+    'inbox_messages',
+    'inbox_progress',
+    'inbox_unread',
+    'inbox_reading',
+    'inbox_failed',
+    'inbox_mailbox_empty',
+    'inbox_select_mailbox',
+    'inbox_select_message',
+    'inbox_content_title',
+    'inbox_copy_json',
+    'inbox_no_subject',
+    'inbox_count_label',
+    'inbox_count_more',
   ];
+
+  test('the read progress says how much of the pool has been read, in every locale', () => {
+    // "Read 6 / 20" is the one sentence that keeps a partly-sorted list honest.
+    // A locale that drops a placeholder would print a number with no meaning.
+    for (const locale of locales) {
+      const bundle = JSON.parse(
+        readFileSync(new URL(`../src/i18n/locales/${locale}.json`, import.meta.url), 'utf8')
+      ) as { sms_service?: Record<string, unknown> };
+      const progress = String(bundle.sms_service?.inbox_progress ?? '');
+      expect(progress).toContain('{{done}}');
+      expect(progress).toContain('{{total}}');
+    }
+  });
 
   test('all six locales define the same channel-row keys', () => {
     for (const locale of locales) {

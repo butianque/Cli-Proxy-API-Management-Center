@@ -56,6 +56,8 @@ export interface EmailMessageWire {
   code?: string;
   /** 正文摘录。 */
   preview?: string;
+  /** 信里出现的链接（基座最多给 20 条）。 */
+  links?: string[];
 }
 
 /** 一条渠道的信箱这次读到了什么（基座 `/supply/email/inbox` 的 `mailboxes` 一行）。 */

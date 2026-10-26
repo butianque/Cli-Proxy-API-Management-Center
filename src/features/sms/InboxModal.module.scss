@@ -1,147 +1,282 @@
 /* ============================================================
- * 收件箱弹窗。
+ * 收件箱弹窗 —— 三栏：邮箱 / 信 / 内容。
  *
- * 版面只做一件事：按时间倒序列出「哪个邮箱、谁寄的、什么时候、什么码」。
- * 码是这里最常被拿走的东西，所以它在右边单独成一格；正文摘录压到两行，
- * 不让它把一封一封的信挤成一片。
+ * 版面只做一件事：一眼看到「哪个邮箱有新信」，再点两层就能读到那封信的内容。
+ * 三栏各自滚动、整块不滚 —— 一列长页会把另外两栏顶出视野。
  * ============================================================ */
 
-.body {
+.modal {
+  height: min(84vh, 760px);
+
+  /* 基座给 body 的是「padding + 65vh + overflow:auto」，那是给单列表用的；
+     三栏要的是「撑满剩下的高度、自己内部滚」。 */
+  :global(.modal-body) {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+  }
+}
+
+.panes {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ---------- 三栏的共同骨架 ---------- */
+
+.mailboxes,
+.messages,
+.content {
   display: flex;
   flex-direction: column;
-  gap: $spacing-sm;
+  min-height: 0;
 }
 
-.note {
-  color: var(--text-tertiary);
-  font-size: 11.5px;
-  line-height: 1.5;
+.mailboxes {
+  flex: 0 0 236px;
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-secondary);
 }
 
-.loading {
-  display: flex;
-  align-items: center;
-  gap: $spacing-sm;
-  padding: $spacing-md 0;
+.messages {
+  flex: 0 0 300px;
+  border-right: 1px solid var(--border-color);
 }
 
-.errorRow {
-  display: flex;
-  align-items: flex-start;
-  gap: $spacing-sm;
-  padding: 8px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: $radius-md;
-  color: var(--danger-color, #d9534f);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.errorText {
+.content {
   flex: 1;
   min-width: 0;
-  word-break: break-word;
 }
 
-/* ---------- 消息列表 ---------- */
-
-.list {
+/* 每栏自己的抬头：它说的是「这一栏是什么」，不与正文抢层级。 */
+.paneHead {
   display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border-color);
-
-  &:first-child {
-    padding-top: 0;
-  }
-
-  &:last-child {
-    padding-bottom: 0;
-    border-bottom: 0;
-  }
-}
-
-.itemHead {
-  display: flex;
-  align-items: baseline;
+  flex-shrink: 0;
+  align-items: center;
   justify-content: space-between;
   gap: $spacing-sm;
+  min-height: 40px;
+  padding: 4px $spacing-md;
+  border-bottom: 1px solid var(--border-color);
 }
 
-/* 收件邮箱：一条信归到哪个地址上，比这封信写了什么更先要看清。 */
-.itemMailbox {
+.paneTitle {
   color: var(--text-secondary);
-  font-family: $font-mono;
-  font-size: 11.5px;
-  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.itemTime {
+/* 选中的邮箱本身就是这一栏的标题，用等宽字体：地址是拿来看准的，不是拿来读的。 */
+.paneTitleMono {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress {
   flex-shrink: 0;
   color: var(--text-tertiary);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
 }
 
-.itemMain {
+/* ---------- 左栏：邮箱 ---------- */
+
+.mailboxList {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: $spacing-xs 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.mailbox {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 7px $spacing-md;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background $transition-fast, border-color $transition-fast;
+
+  &:hover {
+    background: var(--bg-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+  }
+}
+
+.mailboxActive {
+  border-left-color: var(--primary-color);
+  background: var(--bg-primary);
+}
+
+.mailboxAddress {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mailboxMeta {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: $spacing-sm;
 }
 
-.itemText {
+.mailboxTime {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 三种「不知道」：还没读、正在读、读失败。它们都不显示成「0 封」。 */
+.mailboxState {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.mailboxFailed {
+  color: var(--danger-color, #d9534f);
+  font-size: 11px;
+}
+
+/* 封数只是角标：基座按 limit 截断，到顶就写 20+，不假装知道真实总数。 */
+.countBadge {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-full;
+  color: var(--text-secondary);
+  font-family: $font-mono;
+  font-size: 10.5px;
+  line-height: 15px;
+}
+
+/* ---------- 中栏：这个邮箱的信 ---------- */
+
+.messageList {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.message {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  width: 100%;
+  padding: 9px $spacing-md;
+  border: 0;
+  border-bottom: 1px solid var(--border-color);
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background $transition-fast;
+
+  &:hover {
+    background: var(--bg-secondary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+  }
+}
+
+.messageActive {
+  background: var(--bg-secondary);
+  box-shadow: inset 2px 0 0 var(--primary-color);
+}
+
+.messageTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+.messageSubject {
   min-width: 0;
-}
-
-.itemSubject {
+  overflow: hidden;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.itemFrom {
+.messageTime {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.messageFrom {
+  overflow: hidden;
   color: var(--text-secondary);
-  font-size: 11.5px;
-  overflow-wrap: anywhere;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* 摘录只是「这封信大概是什么」，两行封顶：再长也读不完，还会把码挤出屏幕。 */
-.itemPreview {
+/* 摘录一行封顶：中间那栏是目录，不是正文。 */
+.messagePreview {
   display: -webkit-box;
-  margin: 0;
   overflow: hidden;
   color: var(--text-tertiary);
-  font-size: 11.5px;
+  font-size: 11px;
   line-height: 1.5;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
+}
+
+/* ---------- 右栏：这封信的内容 ---------- */
+
+.contentBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: $spacing-sm;
+  min-height: 0;
+  padding: $spacing-md;
 }
 
 /* 码要被人抄走：点一下整段进剪贴板，点完当场换字给回执。 */
 .codeChip {
+  align-self: flex-start;
   flex-shrink: 0;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border: 1px solid var(--border-color);
   border-radius: $radius-sm;
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-family: $font-mono;
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.04em;
   cursor: pointer;
   transition: border-color $transition-fast, color $transition-fast;
@@ -157,47 +292,94 @@
   }
 }
 
-/* ---------- 这次没读到的信箱 ---------- */
-
-.unreadBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: $spacing-sm;
-  border-top: 1px solid var(--border-color);
-}
-
-.unreadTitle {
-  color: var(--warning-color, #b8860b);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.failureList {
-  display: flex;
-  flex-direction: column;
-  gap: $spacing-xs;
-  max-height: 140px;
+/* 内容就是 JSON 本身：不换字体、不重排、不折叠，复制出去仍然是一份完整的信。 */
+.json {
+  flex: 1;
+  min-height: 0;
   margin: 0;
-  padding: 0;
+  padding: $spacing-md;
   overflow: auto;
-  list-style: none;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-sm;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-.failureItem {
+/* ---------- 空态与错误 ---------- */
+
+.center {
   display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: $spacing-sm;
+  padding: $spacing-lg;
+}
+
+.placeholder {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: $spacing-lg;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.note {
+  color: var(--text-tertiary);
   font-size: 11.5px;
   line-height: 1.5;
 }
 
-.failureAccount {
-  flex-shrink: 0;
-  color: var(--text-primary);
-  font-family: $font-mono;
+.paneError {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  padding: $spacing-md;
 }
 
-.failureDetail {
-  color: var(--text-tertiary);
+.errorRow {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  color: var(--danger-color, #d9534f);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.errorText {
+  flex: 1;
+  min-width: 0;
   word-break: break-word;
+}
+
+/* 窄屏：三栏并排会把每一栏都压成一条缝，改成竖排、各自限高。 */
+@media (max-width: $breakpoint-mobile) {
+  .panes {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .mailboxes,
+  .messages {
+    flex: 0 0 auto;
+    max-height: 34vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .content {
+    flex: 0 0 auto;
+    min-height: 34vh;
+  }
 }

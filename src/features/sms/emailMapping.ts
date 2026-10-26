@@ -11,8 +11,9 @@ import type {
   EmailMessageWire,
   EmailStatusResponse,
 } from '@/services/api/email';
+import type { SupplyLedgerWire } from '@/services/api/supply';
 import { formatInstantShort } from '@/utils/quota/relativeTime';
-import type { EmailInboxReading, EmailInboxSummary, EmailMailbox, EmailMessage } from './types';
+import type { EmailInboxReading, EmailMailbox, EmailMessage } from './types';
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -62,6 +63,7 @@ export function toMessages(list: EmailMessageWire[] | undefined): EmailMessage[]
     receivedAt: toReceivedAt(item.received_at),
     code: text(item.code),
     preview: text(item.preview),
+    links: Array.isArray(item.links) ? item.links.map(text).filter((value) => value !== '') : [],
   }));
 }
 
@@ -99,32 +101,145 @@ export function toInboxReading(result: EmailInboxResponse | undefined): EmailInb
   };
 }
 
-/** 一次聚合收件箱读取：所有信箱最近的来信，以及这次没读到的信箱。 */
-export interface EmailInboxView {
-  /** 至少有一个可读的邮箱；`false` = 还没有可读的邮箱，按空态处理而不是错误。 */
-  enabled: boolean;
-  windowHours: number;
-  /** 后端已按最新在前排好；页面不再重排。 */
+/**
+ * 一个邮箱这次读到了什么。
+ *
+ * 三栏里「中间那栏」就是它：这个邮箱的信，以及它最新一封的时间（侧边栏按这个时间
+ * 排序）。读不到时 `error` 非空、`messages` 为空 —— 两者必须分得开，否则「没打开过」
+ * 会被画成「没有信」。
+ */
+export interface EmailMailboxReading {
   messages: EmailMessage[];
-  /** 这次没读到的信箱（`error` 非空）。空数组 = 全都读到了。 */
-  unread: EmailInboxSummary[];
+  /** 最新一封信的时间；`null` = 没有信，或后端没拿到日期。 */
+  latestAt: string | null;
+  /** 读不到的原因；`''` = 读到了。 */
+  error: string;
+}
+
+/** 单个邮箱的归一。一次只查一个地址，所以 `mailboxes` 里那一行就是它的答案。 */
+export function toMailboxReading(result: EmailInboxResponse | undefined): EmailMailboxReading {
+  const messages = toMessages(result?.messages);
+  const box = Array.isArray(result?.mailboxes) ? result.mailboxes[0] : undefined;
+  const latest = box?.latest ? (toMessages([box.latest])[0] ?? null) : null;
+  return {
+    messages,
+    latestAt: latest?.receivedAt ?? messages[0]?.receivedAt ?? null,
+    error: text(box?.error),
+  };
+}
+
+/** 侧边栏一行读到哪儿了。`reading === null` = 还没读过。 */
+export interface EmailMailboxSlot {
+  loading: boolean;
+  reading: EmailMailboxReading | null;
 }
 
 /**
- * 聚合收件箱归一。
+ * 侧边栏顺序：有信的按最新来信倒序在前，读到但没信的居中，其余垫底。
  *
- * 读不到的邮箱单独拿出来，而不是并进消息列表：把「没读到」渲染成「没有信」，会让人
- * 去翻一个根本没被打开过的信箱。`enabled: false` 与空邮箱是同一件事（还没开始用），
- * 由页面给出空态与下一步，而不是显示内部原因。
+ * 「其余」包含还没读、正在读、读取失败三种 —— 它们都是**不知道**，而不知道的邮箱不能
+ * 混进「最新的在上面」里冒充已知。这一档保留池子顺序，让用户点过的那几个不会因为一次
+ * 重排跳走。
  */
-export function toInboxView(result: EmailInboxResponse | undefined): EmailInboxView {
-  const reading = toInboxReading(result);
+export function orderMailboxAddresses(
+  addresses: string[],
+  slots: Record<string, EmailMailboxSlot>
+): string[] {
+  const withMail: string[] = [];
+  const readEmpty: string[] = [];
+  const unknown: string[] = [];
+  for (const address of addresses) {
+    const reading = slots[address]?.reading ?? null;
+    if (reading === null || reading.error !== '') {
+      unknown.push(address);
+      continue;
+    }
+    (reading.latestAt === null ? readEmpty : withMail).push(address);
+  }
+  const latestMs = new Map<string, number>();
+  for (const address of withMail) {
+    const latest = slots[address]?.reading?.latestAt;
+    const ms = latest ? new Date(latest).getTime() : 0;
+    latestMs.set(address, Number.isNaN(ms) ? 0 : ms);
+  }
+  withMail.sort((left, right) => (latestMs.get(right) ?? 0) - (latestMs.get(left) ?? 0));
+  return [...withMail, ...readEmpty, ...unknown];
+}
+
+/**
+ * 默认选中哪个邮箱：最新来信的那个；都没有信时退回第一个读到的空邮箱。
+ *
+ * 一个都没读到时给 `''` —— 此时还没有任何真实答案可选，先让人看到「未读取」，而不是
+ * 随手挑一个空的顶上。
+ */
+export function pickDefaultMailbox(
+  addresses: string[],
+  slots: Record<string, EmailMailboxSlot>
+): string {
+  const ordered = orderMailboxAddresses(addresses, slots);
+  for (const address of ordered) {
+    if ((slots[address]?.reading?.latestAt ?? null) !== null) return address;
+  }
+  for (const address of ordered) {
+    const reading = slots[address]?.reading ?? null;
+    if (reading !== null && reading.error === '') return address;
+  }
+  return '';
+}
+
+/**
+ * 一封信在右栏里作为 JSON 展示的内容。
+ *
+ * 基座在 HTTP 上只给元数据与 240 字节摘录（全文只走插件通道），所以这里就是**全部拿
+ * 得到的**字段，不多不少。键名用页面自己的写法 —— 后端字段名留在本文件里。
+ */
+export interface EmailMessageDocument {
+  /** 在哪个池内邮箱收到的。 */
+  receivedBy: string;
+  /** 它在邮箱里的哪个文件夹（INBOX / 垃圾邮件）。 */
+  folder: string;
+  from: string;
+  to: string[];
+  subject: string;
+  receivedAt: string | null;
+  code: string;
+  preview: string;
+  links: string[];
+}
+
+export function toMessageDocument(address: string, mail: EmailMessage): EmailMessageDocument {
   return {
-    enabled: result?.enabled !== false,
-    windowHours: reading.windowHours,
-    messages: toMessages(result?.messages),
-    unread: reading.mailboxes.filter((item) => item.error !== ''),
+    receivedBy: address,
+    folder: mail.mailbox,
+    from: mail.from,
+    to: mail.to,
+    subject: mail.subject,
+    receivedAt: mail.receivedAt,
+    code: mail.code,
+    preview: mail.preview,
+    links: mail.links,
   };
+}
+
+/**
+ * 供应池里**能读信**的邮箱地址。
+ *
+ * 只有自带读信配置的身份才有 `mailbox` 块：渠道发出来的地址靠渠道那条连接读，不在这里
+ * 列 —— 列了也读不到，只会让人以为池子里有一批打不开的信箱。
+ */
+export function toPoolAddresses(records: SupplyLedgerWire[] | undefined): string[] {
+  if (!Array.isArray(records)) return [];
+  const seen = new Set<string>();
+  const addresses: string[] = [];
+  for (const record of records) {
+    const address = text(record.address);
+    if (address === '' || record.mailbox == null) continue;
+    const key = address.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    addresses.push(address);
+  }
+  return addresses;
 }
 
 /** 状态接口归一。 */

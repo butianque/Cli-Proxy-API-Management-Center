@@ -380,8 +380,10 @@ export interface EmailMessage {
   receivedAt: string | null;
   /** 提取出的验证码；`''` = 这封信没有码。 */
   code: string;
-  /** 正文摘录。 */
+  /** 正文摘录（基座给的是单行、最多 240 字节，末尾带省略号）。 */
   preview: string;
+  /** 信里出现的链接；`[]` = 没有。 */
+  links: string[];
 }
 
 /** 一条渠道的信箱这次读到了什么。 */
