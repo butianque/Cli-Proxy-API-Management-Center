@@ -346,6 +346,52 @@
   margin-top: 2px;
 }
 
+/* ---------- 结果里的两个当事人 ---------- */
+
+/* 两行账号 + 一句提示：核对完再往下点，比在一段 JSON 里找快得多。 */
+.pair {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--bg-tertiary) 45%, transparent);
+}
+
+.pairRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pairLabel {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.pairValue {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+  cursor: text;
+}
+
+.pairHint {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
 /* ---------- 结果里的链接 ---------- */
 
 .links {

@@ -5,7 +5,7 @@
  * `services/api/actions.ts` 的映射层里就消化掉了。
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -22,6 +22,8 @@ import {
   collectResultChoices,
   collectResultLinks,
   collectResultNotes,
+  collectResultPair,
+  collectResultPoll,
   collectResultSteps,
   formatResultJson,
 } from './actionResultLinks';
@@ -38,7 +40,15 @@ interface PluginActionCardProps {
   onTrigger: (values: Record<string, unknown>) => void;
   /** 结果里的步骤可以点名另一个动作；由页面按动作 key 重跑。 */
   onRunAction?: (key: string, params: Record<string, unknown>) => void;
+  /** 结果要求自动刷新时，由页面静默重跑同一动作；不置忙、不覆盖错误。 */
+  onPoll?: (key: string, params: Record<string, unknown>) => void;
 }
+
+/**
+ * 自动刷新的上限：等的是操作者在浏览器里完成的一步，页面可能一直开着没人动。
+ * 到这个次数就停下，改成手动刷新；不做没有尽头的后台请求。
+ */
+const MAX_POLL_ATTEMPTS = 80;
 
 export function PluginActionCard({
   action,
@@ -48,6 +58,7 @@ export function PluginActionCard({
   notice,
   onTrigger,
   onRunAction,
+  onPoll,
 }: PluginActionCardProps) {
   const { t } = useTranslation();
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
@@ -57,6 +68,33 @@ export function PluginActionCard({
   const choices = result === undefined ? [] : collectResultChoices(result);
   const steps = result === undefined ? [] : collectResultSteps(result);
   const notes = result === undefined ? [] : collectResultNotes(result);
+  const pair = result === undefined ? undefined : collectResultPair(result);
+  const poll = result === undefined ? undefined : collectResultPoll(result);
+
+  // 轮询的身份只由「重跑哪个动作、带什么参数」决定：结果每刷新一次都是新对象，
+  // 拿对象本身当依赖会把计时器一直重启。
+  const pollSignature = poll ? `${poll.key}:${poll.intervalMs}:${JSON.stringify(poll.params)}` : '';
+  const pollRef = useRef(poll);
+  pollRef.current = poll;
+  const onPollRef = useRef(onPoll);
+  onPollRef.current = onPoll;
+
+  useEffect(() => {
+    if (!pollSignature || busy) return undefined;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      const current = pollRef.current;
+      const runPoll = onPollRef.current;
+      if (!current || !runPoll) return;
+      attempts += 1;
+      if (attempts > MAX_POLL_ATTEMPTS) {
+        window.clearInterval(timer);
+        return;
+      }
+      runPoll(current.key, current.params);
+    }, pollRef.current?.intervalMs ?? 15_000);
+    return () => window.clearInterval(timer);
+  }, [pollSignature, busy]);
 
   const copyLink = async (link: string) => {
     const copied = await copyToClipboard(link);
@@ -160,6 +198,20 @@ export function PluginActionCard({
             {t('plugin_actions.run')}
           </Button>
         </div>
+
+        {/* 谁邀请、谁被邀请，先说在步骤前面：操作者拿这两行去核对浏览器里登录的
+            到底是哪个号，而不是从 JSON 里自己找。 */}
+        {pair ? (
+          <div className={styles.pair}>
+            {pair.items.map((item) => (
+              <div key={item.label} className={styles.pairRow}>
+                <span className={styles.pairLabel}>{item.label}</span>
+                <span className={styles.pairValue}>{item.value}</span>
+              </div>
+            ))}
+            {pair.hint ? <p className={styles.pairHint}>{pair.hint}</p> : null}
+          </div>
+        ) : null}
 
         {steps.length > 0 ? <ResultStepList steps={steps} onRunAction={onRunAction} /> : null}
 

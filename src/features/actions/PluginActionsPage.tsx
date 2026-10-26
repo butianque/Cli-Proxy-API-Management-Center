@@ -338,6 +338,25 @@ export function PluginActionsPage() {
     [actions, trigger]
   );
 
+  // 结果要求自动刷新时重跑同一个动作，原地更新结果：不置忙、不弹错、不切面板。
+  // 失败就保留上一次读到的真实状态，等下一次刷新。
+  const pollAction = useCallback(
+    async (key: string, values: Record<string, unknown>) => {
+      if (!actions.some((item) => item.key === key)) return;
+      try {
+        const outcome = await pluginActionsApi.trigger(key, values);
+        if (outcome.job) {
+          await loadJobs();
+          return;
+        }
+        setResults((prev) => ({ ...prev, [key]: outcome.result }));
+      } catch {
+        // 自动刷新不是用户操作，失败不该变成一条醒目的错误。
+      }
+    },
+    [actions, loadJobs]
+  );
+
   const groups = useMemo(() => {
     const byPlugin = new Map<string, PluginAction[]>();
     for (const action of actions) {
@@ -488,6 +507,7 @@ export function PluginActionsPage() {
                   notice={runningJob ? t('plugin_actions.running_notice') : undefined}
                   onTrigger={(values) => void trigger(activeAction, values)}
                   onRunAction={runChoice}
+                  onPoll={(key, params) => void pollAction(key, params)}
                 />
               </section>
             ) : null}

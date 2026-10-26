@@ -16,6 +16,82 @@ const MAX_DEPTH = 4;
 
 const LINK_PATTERN = /^https?:\/\/[^\s]+$/i;
 
+/**
+ * 结果里的两个当事人。
+ *
+ * 一条流水线常常先得说清「对谁做」：谁邀请、谁被邀请。这类结果可以带
+ * `pair`，页面把两行「称呼 + 账号」和一句提示显示在步骤上方 —— 操作者拿它去
+ * 核对浏览器里登录的到底是哪个号，而不是从 JSON 里自己找。
+ *
+ * 只认形状不认业务：没有 `pair`、或者条目缺称呼/值，就当没有。
+ */
+export interface ResultPairItem {
+  label: string;
+  value: string;
+}
+
+export interface ResultPair {
+  items: ResultPairItem[];
+  /** 提示句：为什么这两行必须和浏览器里的账号对得上。 */
+  hint?: string;
+}
+
+/** 一次最多列这么多：再多就不是「两个当事人」了。 */
+const MAX_PAIR_ITEMS = 4;
+
+export function collectResultPair(value: unknown): ResultPair | undefined {
+  if (!isRecord(value) || !isRecord(value.pair)) return undefined;
+  const rawItems = value.pair.items;
+  if (!Array.isArray(rawItems)) return undefined;
+
+  const items: ResultPairItem[] = [];
+  for (const item of rawItems) {
+    if (items.length >= MAX_PAIR_ITEMS) break;
+    if (!isRecord(item)) continue;
+    const label = typeof item.label === 'string' ? item.label.trim() : '';
+    const text = typeof item.value === 'string' ? item.value.trim() : '';
+    if (!label || !text) continue;
+    items.push({ label, value: text });
+  }
+  if (items.length === 0) return undefined;
+
+  const hint = typeof value.pair.hint === 'string' ? value.pair.hint.trim() : '';
+  return { items, hint: hint || undefined };
+}
+
+/**
+ * 结果要不要自己刷新。
+ *
+ * 有些步骤的完成不在本页面里：操作者要去浏览器登录、接受邀请，回来时结果已经
+ * 变了。这类结果可以带 `poll`，页面按给定间隔重跑同一个动作、原地更新结果 ——
+ * 不做跳转，也不自己判断「算不算完成」，那仍然由动作回答。
+ *
+ * `poll` 只在还需要等的时候出现，所以结果不再带它，轮询就自然停下。
+ */
+export interface ResultPoll {
+  key: string;
+  params: Record<string, unknown>;
+  intervalMs: number;
+}
+
+/** 最快 5 秒一次：再快就是替后端刷接口，读者也跟不上。 */
+const MIN_POLL_MS = 5_000;
+
+/** 最慢 2 分钟一次：更慢的话「自动进入下一步」就不成立了。 */
+const MAX_POLL_MS = 120_000;
+
+const DEFAULT_POLL_MS = 15_000;
+
+export function collectResultPoll(value: unknown): ResultPoll | undefined {
+  if (!isRecord(value) || !isRecord(value.poll)) return undefined;
+  const key = typeof value.poll.key === 'string' ? value.poll.key.trim() : '';
+  const params = value.poll.params;
+  if (!key || !isRecord(params)) return undefined;
+  const raw = typeof value.poll.interval_ms === 'number' ? value.poll.interval_ms : 0;
+  const intervalMs = Math.min(MAX_POLL_MS, Math.max(MIN_POLL_MS, raw || DEFAULT_POLL_MS));
+  return { key, params, intervalMs };
+}
+
 export function collectResultLinks(value: unknown): string[] {
   const links: string[] = [];
   const seen = new Set<string>();

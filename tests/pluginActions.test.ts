@@ -7,6 +7,8 @@ import { buildActionPayload } from '@/features/actions/actionPayload';
 import {
   collectResultLinks,
   collectResultNotes,
+  collectResultPair,
+  collectResultPoll,
   collectResultSteps,
 } from '@/features/actions/actionResultLinks';
 import { PluginActionCard } from '@/features/actions/PluginActionCard';
@@ -237,6 +239,97 @@ describe('collectResultNotes turns the plugin’s sentences into the only explan
     );
     // 步骤已经逐条说过的话，不再作为说明重复一遍（原始 JSON 里当然还在）。
     expect(withSteps).not.toContain(`>${notes[1]}<`);
+  });
+});
+
+describe('collectResultPair says who the result is about', () => {
+  const pair = {
+    items: [
+      { label: '邀请账号', value: 'inviter@outlook.com（UID u-1）' },
+      { label: '被邀请账号', value: 'invitee@outlook.com（UID u-2）' },
+    ],
+    hint: '未填写内容，系统自动获取以上信息，请务必保证登录为被邀请账号',
+  };
+
+  test('keeps labelled rows and the hint, and drops nameless entries', () => {
+    expect(collectResultPair({ pair })).toEqual(pair);
+    const partial = collectResultPair({
+      pair: { items: [{ label: '邀请账号', value: ' a@b ' }, { label: '', value: 'x' }, { value: 'y' }, 42] },
+    });
+    expect(partial?.items).toEqual([{ label: '邀请账号', value: 'a@b' }]);
+    expect(partial?.hint).toBeUndefined();
+  });
+
+  test('a result without a pair adds nothing', () => {
+    expect(collectResultPair({ status: 'ok' })).toBeUndefined();
+    expect(collectResultPair({ pair: { items: [] } })).toBeUndefined();
+    expect(collectResultPair({ pair: 'inviter / invitee' })).toBeUndefined();
+    expect(collectResultPair('not an object')).toBeUndefined();
+  });
+
+  test('the card shows both accounts and the hint above the steps', () => {
+    const markup = renderToStaticMarkup(
+      createElement(PluginActionCard, {
+        action: action({ destructive: false }),
+        busy: false,
+        result: {
+          status: 'ok',
+          pair,
+          steps: [
+            {
+              key: 'bind',
+              index: 1,
+              title: '绑定邀请码',
+              state: 'todo',
+              detail: '打开下面的链接',
+              link: 'https://zcode.z.ai/invite/6WYWVN2M',
+            },
+          ],
+        },
+        onTrigger: () => {},
+        onRunAction: () => {},
+      })
+    );
+    // 两个账号必须点名到邮箱，操作者才能核对浏览器里登录的是谁。
+    expect(markup).toContain('邀请账号');
+    expect(markup).toContain('inviter@outlook.com（UID u-1）');
+    expect(markup).toContain('被邀请账号');
+    expect(markup).toContain('invitee@outlook.com（UID u-2）');
+    expect(markup).toContain(pair.hint);
+    // 先说是谁，再说做什么：配对块排在步骤说明前面。
+    expect(markup.indexOf(pair.hint)).toBeLessThan(markup.indexOf('打开下面的链接'));
+    // 配对的账号是给人核对的文本，不是可点链接。
+    expect(markup).not.toContain('href="mailto:');
+  });
+});
+
+describe('collectResultPoll makes the page refresh while a step waits', () => {
+  test('reads the action, its params and the interval, clamped to a readable range', () => {
+    expect(
+      collectResultPoll({ poll: { key: 'zcode.referral-flow', params: { invitee: 'a' }, interval_ms: 15000 } })
+    ).toEqual({ key: 'zcode.referral-flow', params: { invitee: 'a' }, intervalMs: 15000 });
+    // 太快会替后端刷接口，太慢就不叫「自动进入下一步」。
+    expect(collectResultPoll({ poll: { key: 'k', params: {}, interval_ms: 10 } })?.intervalMs).toBe(5000);
+    expect(collectResultPoll({ poll: { key: 'k', params: {}, interval_ms: 900000 } })?.intervalMs).toBe(120000);
+    expect(collectResultPoll({ poll: { key: 'k', params: {} } })?.intervalMs).toBe(15000);
+  });
+
+  test('a poll without an action or params is ignored, and no poll means stop', () => {
+    expect(collectResultPoll({ poll: { params: {} } })).toBeUndefined();
+    expect(collectResultPoll({ poll: { key: 'k' } })).toBeUndefined();
+    expect(collectResultPoll({ status: 'ok' })).toBeUndefined();
+    expect(collectResultPoll('not an object')).toBeUndefined();
+  });
+
+  test('the card asks the page to re-run the action instead of fetching a plugin route', () => {
+    const card = read('features/actions/PluginActionCard.tsx');
+    expect(card).toContain('collectResultPoll(result)');
+    expect(card).toContain('onPollRef');
+    // 自动刷新仍然只打基座的动作路由：页面把 key 交给同一条 trigger。
+    expect(card).not.toContain('/plugin');
+    const page = read('features/actions/PluginActionsPage.tsx');
+    expect(page).toContain('onPoll={');
+    expect(page).toContain('pluginActionsApi.trigger(key, values)');
   });
 });
 
