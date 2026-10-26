@@ -1837,7 +1837,14 @@
     "job_state_running": "Running",
     "job_state_done": "Done",
     "job_state_failed": "Failed",
-    "job_state_cancelled": "Cancelled"
+    "job_state_cancelled": "Cancelled",
+    "rail_title": "Plugins",
+    "action_count": "{{count}} actions",
+    "step_pick": "Pick what to do",
+    "step_run": "Fill in and run",
+    "no_params": "This action needs no settings.",
+    "running_notice": "Running. Progress is under Jobs below.",
+    "result_links": "Links in the result"
   },
   "plugin_store": {
     "title": "Plugin Store",

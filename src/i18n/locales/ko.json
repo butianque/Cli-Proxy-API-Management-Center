@@ -1840,7 +1840,14 @@
     "job_state_running": "실행 중",
     "job_state_done": "완료",
     "job_state_failed": "실패",
-    "job_state_cancelled": "취소됨"
+    "job_state_cancelled": "취소됨",
+    "rail_title": "플러그인",
+    "action_count": "작업 {{count}}개",
+    "step_pick": "할 작업 선택",
+    "step_run": "값 입력 후 실행",
+    "no_params": "이 작업은 입력값이 필요 없습니다.",
+    "running_notice": "실행 중입니다. 진행 상황은 아래 작업에서 확인하세요.",
+    "result_links": "결과의 링크"
   },
   "plugin_store": {
     "title": "플러그인 스토어",

@@ -1,9 +1,10 @@
 /**
- * 插件动作页 —— 基座聚合的「动作网格」。
+ * 插件动作页 —— 左侧插件栏 + 右侧「先选动作、再运行」。
  *
- * 插件只声明「有哪些动作」（标题、参数、是否危险、是否长任务），页面负责渲染
- * 通用表单、触发、展示进度。因此换一个插件、加一个动作，面板不用改代码，也不必
- * 嵌入插件自建的 HTML。
+ * 一个插件可能声明五六个动作；把它们平铺成网格会让人无从下手。所以页面按工具
+ * 的用法组织：左侧选插件，右侧只显示这个插件的动作，并且分两步 —— 先选要做的
+ * 事，再填参数运行。动作的标题、说明、参数仍全部来自插件声明，页面不认任何插件
+ * 自己的字段。
  *
  * 长任务不阻塞页面：触发返回 job 后由轮询读取进度，运行中的任务可取消。
  */
@@ -14,25 +15,59 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Notice } from '@/components/ui/Notice';
+import { IconCheck, IconPlug } from '@/components/ui/icons';
+import { pluginsApi } from '@/services/api';
 import { pluginActionsApi } from '@/services/api/actions';
 import type { PluginAction, PluginJob } from '@/services/api/actions';
+import { useAuthStore } from '@/stores';
 import { getErrorMessage } from '@/utils/helpers';
 import { formatDateTimeValue } from '@/utils/format';
+import { getPluginTitle, resolvePluginAssetURL } from '@/features/plugins/pluginResources';
 import { PluginActionCard } from './PluginActionCard';
 import styles from './PluginActionsPage.module.scss';
 
 /** 轮询间隔：动作通常几分钟内完成，2 秒足够且不打扰后端。 */
 const JOB_POLL_INTERVAL_MS = 2000;
 
+/** 一个插件在左侧栏里的呈现：名字与图标都来自插件自己的声明。 */
+interface PluginSummary {
+  title: string;
+  logo: string;
+}
+
+function PluginMark({ logo }: { logo: string }) {
+  const [failed, setFailed] = useState(false);
+  if (logo && !failed) {
+    return (
+      <img
+        className={styles.pluginMark}
+        src={logo}
+        alt=""
+        aria-hidden="true"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return (
+    <span className={`${styles.pluginMark} ${styles.pluginMarkFallback}`} aria-hidden="true">
+      <IconPlug size={15} />
+    </span>
+  );
+}
+
 export function PluginActionsPage() {
   const { t } = useTranslation();
+  const apiBase = useAuthStore((state) => state.apiBase);
   const [actions, setActions] = useState<PluginAction[]>([]);
   const [jobs, setJobs] = useState<PluginJob[]>([]);
+  const [pluginSummaries, setPluginSummaries] = useState<Record<string, PluginSummary>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const [results, setResults] = useState<Record<string, unknown>>({});
+  const [selectedPluginId, setSelectedPluginId] = useState('');
+  const [selectedKey, setSelectedKey] = useState('');
 
   const loadActions = useCallback(async () => {
     try {
@@ -50,6 +85,30 @@ export function PluginActionsPage() {
     } catch {
       // 任务列表是辅助信息：读失败不覆盖动作本身的可用状态。
     }
+  }, []);
+
+  // 插件名与图标是展示信息：读不到就退回插件 id，不影响动作本身。
+  useEffect(() => {
+    let cancelled = false;
+    void pluginsApi.list().then(
+      (response) => {
+        if (cancelled) return;
+        const next: Record<string, PluginSummary> = {};
+        for (const plugin of response.plugins) {
+          next[plugin.id] = {
+            title: getPluginTitle(plugin),
+            logo: plugin.logo || plugin.metadata?.logo || '',
+          };
+        }
+        setPluginSummaries(next);
+      },
+      () => {
+        // 名字读不到时用 id 代替，不是错误状态。
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -112,15 +171,33 @@ export function PluginActionsPage() {
     [loadJobs]
   );
 
-  const grouped = useMemo(() => {
+  const groups = useMemo(() => {
     const byPlugin = new Map<string, PluginAction[]>();
     for (const action of actions) {
       const list = byPlugin.get(action.pluginId) ?? [];
       list.push(action);
       byPlugin.set(action.pluginId, list);
     }
-    return Array.from(byPlugin.entries());
-  }, [actions]);
+    return Array.from(byPlugin.entries())
+      .map(([pluginId, pluginActions]) => ({
+        pluginId,
+        title: pluginSummaries[pluginId]?.title || pluginId,
+        logo: resolvePluginAssetURL(pluginSummaries[pluginId]?.logo ?? '', apiBase),
+        actions: pluginActions,
+      }))
+      .sort((left, right) => left.title.localeCompare(right.title));
+  }, [actions, pluginSummaries, apiBase]);
+
+  // 选择是「插件 + 动作」，两者都允许回落到第一项：这样加载完成、插件被移除、
+  // 或者动作下架都不会留下一个空的面板，也不需要额外的同步 effect。
+  const activeGroup = groups.find((group) => group.pluginId === selectedPluginId) ?? groups[0];
+  const activeAction =
+    activeGroup?.actions.find((action) => action.key === selectedKey) ?? activeGroup?.actions[0];
+
+  // 运行中的任务由任务列表推导，而不是记住「刚点过」，这样任务结束后提示会自己消失。
+  const runningJob = activeAction
+    ? jobs.find((job) => job.key === activeAction.key && job.state === 'running')
+    : undefined;
 
   const jobStateLabel = (state: PluginJob['state']) => t(`plugin_actions.job_state_${state}`);
 
@@ -153,23 +230,103 @@ export function PluginActionsPage() {
           description={t('plugin_actions.empty_desc')}
         />
       ) : (
-        grouped.map(([pluginId, pluginActions]) => (
-          <section key={pluginId} className={styles.group}>
-            <h2 className={styles.groupTitle}>{pluginId}</h2>
-            <div className={styles.grid}>
-              {pluginActions.map((action) => (
-                <PluginActionCard
-                  key={action.key}
-                  action={action}
-                  busy={busyKey === action.key}
-                  error={actionErrors[action.key]}
-                  result={results[action.key]}
-                  onTrigger={(values) => void trigger(action, values)}
-                />
-              ))}
+        <div className={styles.workspace}>
+          <nav className={styles.rail} aria-label={t('plugin_actions.rail_title')}>
+            <p className={styles.railLabel}>{t('plugin_actions.rail_title')}</p>
+            {groups.map((group) => {
+              const current = group.pluginId === activeGroup?.pluginId;
+              return (
+                <button
+                  key={group.pluginId}
+                  type="button"
+                  className={current ? `${styles.railItem} ${styles.railItemActive}` : styles.railItem}
+                  aria-current={current ? 'page' : undefined}
+                  onClick={() => {
+                    setSelectedPluginId(group.pluginId);
+                    setSelectedKey('');
+                  }}
+                >
+                  <PluginMark logo={group.logo} />
+                  <span className={styles.railText}>
+                    <span className={styles.railName}>{group.title}</span>
+                    <span className={styles.railMeta}>
+                      {t('plugin_actions.action_count', { count: group.actions.length })}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className={styles.detail}>
+            <div className={styles.detailHead}>
+              <PluginMark logo={activeGroup.logo} />
+              <div className={styles.detailIdentity}>
+                <h2 className={styles.detailName}>{activeGroup.title}</h2>
+                <span className={styles.detailMeta}>
+                  {t('plugin_actions.action_count', { count: activeGroup.actions.length })}
+                </span>
+              </div>
             </div>
-          </section>
-        ))
+
+            <section className={styles.step} aria-labelledby="plugin-actions-step-pick">
+              <div className={styles.stepHead}>
+                <span className={styles.stepIndex} aria-hidden="true">
+                  1
+                </span>
+                <h3 className={styles.stepTitle} id="plugin-actions-step-pick">
+                  {t('plugin_actions.step_pick')}
+                </h3>
+              </div>
+              <div className={styles.picker}>
+                {activeGroup.actions.map((action) => {
+                  const current = action.key === activeAction?.key;
+                  return (
+                    <button
+                      key={action.key}
+                      type="button"
+                      className={
+                        current ? `${styles.pickerItem} ${styles.pickerItemActive}` : styles.pickerItem
+                      }
+                      aria-pressed={current}
+                      onClick={() => setSelectedKey(action.key)}
+                    >
+                      <span className={styles.pickerName}>{action.title}</span>
+                      {action.description ? (
+                        <span className={styles.pickerDesc}>{action.description}</span>
+                      ) : null}
+                      <span className={styles.pickerMark} aria-hidden="true">
+                        {current ? <IconCheck size={15} /> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {activeAction ? (
+              <section className={styles.step} aria-labelledby="plugin-actions-step-run">
+                <div className={styles.stepHead}>
+                  <span className={styles.stepIndex} aria-hidden="true">
+                    2
+                  </span>
+                  <h3 className={styles.stepTitle} id="plugin-actions-step-run">
+                    {t('plugin_actions.step_run')}
+                  </h3>
+                </div>
+                <PluginActionCard
+                  key={activeAction.key}
+                  action={activeAction}
+                  busy={busyKey === activeAction.key}
+                  error={actionErrors[activeAction.key]}
+                  result={results[activeAction.key]}
+                  notice={runningJob ? t('plugin_actions.running_notice') : undefined}
+                  onTrigger={(values) => void trigger(activeAction, values)}
+                />
+              </section>
+            ) : null}
+          </div>
+        </div>
       )}
 
       <Card title={t('plugin_actions.jobs_title')}>

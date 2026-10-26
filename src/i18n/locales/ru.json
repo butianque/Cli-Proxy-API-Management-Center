@@ -1840,7 +1840,14 @@
     "job_state_running": "Выполняется",
     "job_state_done": "Готово",
     "job_state_failed": "Ошибка",
-    "job_state_cancelled": "Отменено"
+    "job_state_cancelled": "Отменено",
+    "rail_title": "Плагины",
+    "action_count": "Действий: {{count}}",
+    "step_pick": "Выберите действие",
+    "step_run": "Заполните и запустите",
+    "no_params": "Этому действию не нужны параметры.",
+    "running_notice": "Выполняется. Прогресс — в разделе задач ниже.",
+    "result_links": "Ссылки в результате"
   },
   "plugin_store": {
     "title": "Магазин плагинов",

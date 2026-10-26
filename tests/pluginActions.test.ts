@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import i18n from '@/i18n';
 import { buildActionPayload } from '@/features/actions/actionPayload';
+import { collectResultLinks } from '@/features/actions/actionResultLinks';
 import { PluginActionCard } from '@/features/actions/PluginActionCard';
 import type { PluginAction } from '@/services/api/actions';
 
@@ -101,5 +102,59 @@ describe('PluginActionCard renders a declared action', () => {
     );
     expect(longRunning).toContain(i18n.t('plugin_actions.long_running'));
     expect(longRunning).not.toContain(i18n.t('plugin_actions.destructive'));
+  });
+
+  test('offers a returned link as copyable text with a copy button, never a navigation', () => {
+    const markup = renderToStaticMarkup(
+      createElement(PluginActionCard, {
+        action: action({ destructive: false }),
+        busy: false,
+        result: { status: 'ok', invite_link: 'https://zcode.z.ai/invite/6WYWVN2M' },
+        onTrigger: () => {},
+      })
+    );
+    expect(markup).toContain(i18n.t('plugin_actions.result_links'));
+    // 链接必须是可复制文本：点一下就跳走会让操作者丢掉刚跑完的结果。
+    expect(markup).toContain('https://zcode.z.ai/invite/6WYWVN2M');
+    expect(markup).not.toContain('href="https://zcode.z.ai/invite/6WYWVN2M"');
+    expect(markup).not.toContain('target="_blank"');
+    expect(markup).toContain(i18n.t('common.copy'));
+  });
+});
+
+describe('collectResultLinks finds only shareable links', () => {
+  test('walks the result, keeps absolute http(s) links, drops duplicates and prose', () => {
+    const links = collectResultLinks({
+      inviter: { name: 'zcode-2a48afcd', invited_total: 0 },
+      invite_link: 'https://zcode.z.ai/invite/6WYWVN2M',
+      notes: ['打开 https://zcode.z.ai/invite/6WYWVN2M 完成绑定', 'javascript:alert(1)'],
+      matches: [{ link: ' https://example.com/a ' }],
+    });
+    expect(links).toEqual(['https://zcode.z.ai/invite/6WYWVN2M', 'https://example.com/a']);
+  });
+
+  test('stops at five links so a noisy result stays readable', () => {
+    const links = collectResultLinks(
+      Array.from({ length: 8 }, (_, index) => ({ link: `https://example.com/${index}` }))
+    );
+    expect(links).toHaveLength(5);
+  });
+});
+
+describe('the actions page is a plugin rail, not a flat grid', () => {
+  test('one plugin is shown at a time, guided by two steps', () => {
+    const source = read('features/actions/PluginActionsPage.tsx');
+    expect(source).toContain('styles.rail');
+    expect(source).toContain("t('plugin_actions.step_pick')");
+    expect(source).toContain("t('plugin_actions.step_run')");
+    expect(source).toContain('activeGroup.actions');
+    expect(source).not.toContain('styles.grid');
+  });
+
+  test('names no plugin in the page source, so a new plugin needs no page change', () => {
+    const source = read('features/actions/PluginActionsPage.tsx');
+    for (const pluginId of ['loomy', 'zcode', 'workbuddy']) {
+      expect(source).not.toContain(`'${pluginId}'`);
+    }
   });
 });

@@ -1797,7 +1797,14 @@
     "job_state_running": "Đang chạy",
     "job_state_done": "Hoàn tất",
     "job_state_failed": "Thất bại",
-    "job_state_cancelled": "Đã hủy"
+    "job_state_cancelled": "Đã hủy",
+    "rail_title": "Tiện ích",
+    "action_count": "{{count}} thao tác",
+    "step_pick": "Chọn thao tác",
+    "step_run": "Điền và chạy",
+    "no_params": "Thao tác này không cần tham số.",
+    "running_notice": "Đang chạy. Tiến độ ở mục tác vụ bên dưới.",
+    "result_links": "Liên kết trong kết quả"
   },
   "plugin_store": {
     "title": "Cửa hàng Plugin",

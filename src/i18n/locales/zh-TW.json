@@ -1861,7 +1861,14 @@
     "job_state_running": "進行中",
     "job_state_done": "已完成",
     "job_state_failed": "失敗",
-    "job_state_cancelled": "已取消"
+    "job_state_cancelled": "已取消",
+    "rail_title": "外掛",
+    "action_count": "{{count}} 個動作",
+    "step_pick": "選擇要執行的動作",
+    "step_run": "填寫參數並執行",
+    "no_params": "這個動作不需要填寫參數。",
+    "running_notice": "正在執行，進度見下方任務。",
+    "result_links": "結果裡的連結"
   },
   "plugin_store": {
     "title": "插件商店",

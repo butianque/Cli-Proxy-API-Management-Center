@@ -1835,7 +1835,14 @@
     "job_state_running": "进行中",
     "job_state_done": "已完成",
     "job_state_failed": "失败",
-    "job_state_cancelled": "已取消"
+    "job_state_cancelled": "已取消",
+    "rail_title": "插件",
+    "action_count": "{{count}} 个动作",
+    "step_pick": "选择要执行的动作",
+    "step_run": "填写参数并运行",
+    "no_params": "这个动作不需要填写参数。",
+    "running_notice": "正在运行，进度见下方任务。",
+    "result_links": "结果里的链接"
   },
   "plugin_store": {
     "title": "插件商店",

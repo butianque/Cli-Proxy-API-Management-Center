@@ -1,14 +1,14 @@
 @use '../../styles/mixins' as *;
 
 /* ============================================================
- * 插件动作页 —— 基座聚合的动作网格。
+ * 插件动作页 —— 工具式布局。
  *
  * 自上而下：
  *  1. 页头（标题 + 说明 + 刷新）；
- *  2. 按插件分组的动作卡片（每个动作一张卡：标题 / 参数 / 触发）；
+ *  2. 工作区：左侧插件栏（选插件），右侧「1 选动作 → 2 填参数运行」；
  *  3. 任务卡（运行中的进度与取消）。
  *
- * 颜色只用于状态：危险动作黄、失败红、其余中性。
+ * 颜色只用于状态：危险动作黄、失败红、选中项主色，其余中性。
  * ============================================================ */
 
 .page {
@@ -56,42 +56,275 @@
   font-size: 13px;
 }
 
-/* ---------- 分组与网格 ---------- */
+.hint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
 
-.group {
+/* ---------- 工作区 ---------- */
+
+.workspace {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: $spacing-lg;
+  align-items: start;
+}
+
+/* ---------- 左侧插件栏 ---------- */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
+  border-radius: $radius-lg;
+  background: var(--bg-primary);
+  box-shadow: var(--shadow);
+}
+
+.railLabel {
+  margin: 0;
+  padding: 4px 9px 6px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.railItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: $radius-md;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background $transition-fast,
+    border-color $transition-fast,
+    color $transition-fast;
+
+  &:hover {
+    background: color-mix(in srgb, var(--bg-tertiary) 55%, transparent);
+    color: var(--text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary-color) 60%, transparent);
+    outline-offset: 1px;
+  }
+}
+
+.railItemActive {
+  border-color: color-mix(in srgb, var(--border-color) 80%, transparent);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.railText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.railName {
+  overflow: hidden;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.railMeta {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+
+.pluginMark {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: contain;
+  background: color-mix(in srgb, var(--bg-tertiary) 65%, transparent);
+}
+
+.pluginMarkFallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+/* ---------- 右侧详情 ---------- */
+
+.detail {
   display: flex;
   flex-direction: column;
   gap: $spacing-md;
+  min-width: 0;
 }
 
-.groupTitle {
+.detailHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+
+  .pluginMark {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+}
+
+.detailIdentity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.detailName {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.detailMeta {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* ---------- 两步：选动作 / 运行 ---------- */
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stepHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: $radius-full;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.stepTitle {
   margin: 0;
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 650;
-  letter-spacing: 0.02em;
-  text-transform: none;
+  letter-spacing: 0.01em;
 }
 
-.grid {
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pickerItem {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: $spacing-md;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 65%, transparent);
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background $transition-fast,
+    border-color $transition-fast;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--border-color) 100%, transparent);
+    background: color-mix(in srgb, var(--bg-tertiary) 50%, var(--bg-primary));
+  }
+
+  &:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary-color) 60%, transparent);
+    outline-offset: 1px;
+  }
 }
 
-/* ---------- 动作卡片 ---------- */
+.pickerItemActive {
+  border-color: color-mix(in srgb, var(--primary-color) 40%, var(--border-color));
+  background: color-mix(in srgb, var(--bg-tertiary) 60%, var(--bg-primary));
+
+  .pickerMark {
+    color: var(--primary-color);
+  }
+}
+
+.pickerName {
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.pickerDesc {
+  display: -webkit-box;
+  overflow: hidden;
+  grid-column: 1;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pickerMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 15px;
+  height: 15px;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  color: var(--text-tertiary);
+}
+
+/* ---------- 动作面板 ---------- */
 
 .cardTitle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-
-.pluginName {
-  color: var(--text-tertiary);
-  font-family: $font-mono;
-  font-size: 12px;
 }
 
 .cardBody {
@@ -111,6 +344,51 @@
   display: flex;
   justify-content: flex-end;
   margin-top: 2px;
+}
+
+/* ---------- 结果里的链接 ---------- */
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--bg-tertiary) 35%, transparent);
+}
+
+.linksTitle {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.linkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.linkText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+  cursor: text;
+}
+
+.copyLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 /* ---------- 标签 ---------- */
@@ -243,8 +521,42 @@
   color: var(--error-color);
 }
 
+/* ---------- 窄屏：插件栏折到上方 ---------- */
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    gap: $spacing-md;
+  }
+
+  .rail {
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    padding: 8px;
+  }
+
+  .railLabel {
+    display: none;
+  }
+
+  .railItem {
+    width: auto;
+    flex: 0 0 auto;
+  }
+
+  .railMeta {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .result summary {
+    transition: none;
+  }
+
+  .railItem,
+  .pickerItem {
     transition: none;
   }
 }

@@ -1,7 +1,7 @@
 /**
- * 一个插件动作的通用卡片：按动作声明的参数渲染表单，触发后展示结果。
+ * 一个插件动作的通用面板：按动作声明的参数渲染表单，触发后展示结果。
  *
- * 卡片只认界面形状（`PluginAction`），不认后端字段 —— 后端字段名在
+ * 面板只认界面形状（`PluginAction`），不认后端字段 —— 后端字段名在
  * `services/api/actions.ts` 的映射层里就消化掉了。
  */
 
@@ -13,9 +13,12 @@ import { Input } from '@/components/ui/Input';
 import { Notice } from '@/components/ui/Notice';
 import { Select } from '@/components/ui/Select';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
+import { IconCopy } from '@/components/ui/icons';
+import { copyToClipboard } from '@/utils/clipboard';
 import { useNotificationStore } from '@/stores';
 import type { PluginAction } from '@/services/api/actions';
 import { buildActionPayload, type ActionFormValue } from './actionPayload';
+import { collectResultLinks } from './actionResultLinks';
 import styles from './PluginActionsPage.module.scss';
 
 interface PluginActionCardProps {
@@ -23,10 +26,12 @@ interface PluginActionCardProps {
   busy: boolean;
   error?: string;
   result?: unknown;
+  /** 运行中提示（由页面按任务状态推导），不是由本组件记住状态。 */
+  notice?: string;
   onTrigger: (values: Record<string, unknown>) => void;
 }
 
-/** 结果里的 JSON 原样展示，便于通用网格承接任意动作的返回形状。 */
+/** 结果里的 JSON 原样展示，便于通用面板承接任意动作的返回形状。 */
 function formatResult(result: unknown): string {
   try {
     return JSON.stringify(result, null, 2) ?? '';
@@ -35,10 +40,29 @@ function formatResult(result: unknown): string {
   }
 }
 
-export function PluginActionCard({ action, busy, error, result, onTrigger }: PluginActionCardProps) {
+export function PluginActionCard({
+  action,
+  busy,
+  error,
+  result,
+  notice,
+  onTrigger,
+}: PluginActionCardProps) {
   const { t } = useTranslation();
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
+  const showNotification = useNotificationStore((state) => state.showNotification);
   const [values, setValues] = useState<Record<string, ActionFormValue>>({});
+  const links = result === undefined ? [] : collectResultLinks(result);
+
+  const copyLink = async (link: string) => {
+    const copied = await copyToClipboard(link);
+    showNotification(
+      copied
+        ? t('notification.link_copied', { defaultValue: 'Copied to clipboard' })
+        : t('notification.copy_failed', { defaultValue: 'Copy failed' }),
+      copied ? 'success' : 'error'
+    );
+  };
 
   const submit = () => {
     const payload = buildActionPayload(action, values);
@@ -75,10 +99,13 @@ export function PluginActionCard({ action, busy, error, result, onTrigger }: Plu
           ) : null}
         </span>
       }
-      extra={<span className={styles.pluginName}>{action.pluginId}</span>}
     >
       <div className={styles.cardBody}>
         {action.description ? <p className={styles.actionDesc}>{action.description}</p> : null}
+
+        {action.params.length === 0 ? (
+          <p className={styles.hint}>{t('plugin_actions.no_params')}</p>
+        ) : null}
 
         {action.params.map((param) => {
           if (param.type === 'bool') {
@@ -116,13 +143,41 @@ export function PluginActionCard({ action, busy, error, result, onTrigger }: Plu
           );
         })}
 
+        {notice ? <Notice tone="info">{notice}</Notice> : null}
         {error ? <Notice tone="danger">{error}</Notice> : null}
 
         <div className={styles.cardActions}>
-          <Button variant={action.destructive ? 'danger' : 'primary'} size="sm" loading={busy} onClick={submit}>
+          <Button
+            variant={action.destructive ? 'danger' : 'primary'}
+            size="sm"
+            loading={busy}
+            onClick={submit}
+          >
             {t('plugin_actions.run')}
           </Button>
         </div>
+
+        {links.length > 0 ? (
+          <div className={styles.links}>
+            <span className={styles.linksTitle}>{t('plugin_actions.result_links')}</span>
+            {links.map((link) => (
+              <div key={link} className={styles.linkRow}>
+                <code className={styles.linkText}>{link}</code>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void copyLink(link)}
+                  aria-label={t('common.copy')}
+                >
+                  <span className={styles.copyLabel}>
+                    <IconCopy size={13} aria-hidden="true" />
+                    {t('common.copy')}
+                  </span>
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {result !== undefined ? (
           <details className={styles.result}>
