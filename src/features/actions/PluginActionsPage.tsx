@@ -24,6 +24,7 @@ import { getErrorMessage } from '@/utils/helpers';
 import { formatDateTimeValue } from '@/utils/format';
 import { getPluginTitle, resolvePluginAssetURL } from '@/features/plugins/pluginResources';
 import { PluginActionCard } from './PluginActionCard';
+import { collectResultChoices, formatResultJson } from './actionResultLinks';
 import styles from './PluginActionsPage.module.scss';
 
 /** 轮询间隔：动作通常几分钟内完成，2 秒足够且不打扰后端。 */
@@ -59,8 +60,17 @@ function PluginMark({ logo }: { logo: string }) {
 const FINISHED_JOB_BATCH = 5;
 
 /** 一条任务：标题、状态、进度、时间与可展开日志；运行中的多一个取消。 */
-function JobItem({ job, onCancel }: { job: PluginJob; onCancel: (id: string) => void }) {
+function JobItem({
+  job,
+  onCancel,
+  onRunChoice,
+}: {
+  job: PluginJob;
+  onCancel: (id: string) => void;
+  onRunChoice: (key: string, params: Record<string, unknown>) => void;
+}) {
   const { t } = useTranslation();
+  const choices = collectResultChoices(job.result);
   return (
     <li className={styles.job}>
       <div className={styles.jobHead}>
@@ -84,6 +94,29 @@ function JobItem({ job, onCancel }: { job: PluginJob; onCancel: (id: string) => 
         {job.message ? <span className={styles.jobMessage}>{job.message}</span> : null}
         {job.error ? <span className={styles.jobError}>{job.error}</span> : null}
       </div>
+      {/* 结果里点名了候选账号时，下一步就是选一个再跑一次，不该让人去抄标识。 */}
+      {choices.length > 0 ? (
+        <div className={styles.choices}>
+          {choices.map((choice) => (
+            <div key={`${choice.label}:${JSON.stringify(choice.params)}`} className={styles.choice}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onRunChoice(job.key, choice.params)}
+              >
+                {choice.label}
+              </Button>
+              {choice.hint ? <span className={styles.choiceHint}>{choice.hint}</span> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {job.result !== undefined ? (
+        <details className={styles.result}>
+          <summary>{t('plugin_actions.job_result')}</summary>
+          <pre className={styles.resultBody}>{formatResultJson(job.result)}</pre>
+        </details>
+      ) : null}
       {job.logs.length > 0 ? (
         <details className={styles.result}>
           <summary>{t('plugin_actions.job_logs')}</summary>
@@ -97,6 +130,7 @@ function JobItem({ job, onCancel }: { job: PluginJob; onCancel: (id: string) => 
 interface PluginJobListProps {
   jobs: PluginJob[];
   onCancel: (id: string) => void;
+  onRunChoice: (key: string, params: Record<string, unknown>) => void;
 }
 
 /**
@@ -104,7 +138,7 @@ interface PluginJobListProps {
  *
  * 单独导出是为了让静态渲染测试能直接喂数据 —— 页面组件自己会去拉任务。
  */
-export function PluginJobList({ jobs, onCancel }: PluginJobListProps) {
+export function PluginJobList({ jobs, onCancel, onRunChoice }: PluginJobListProps) {
   const { t } = useTranslation();
   const [visibleFinished, setVisibleFinished] = useState(FINISHED_JOB_BATCH);
 
@@ -121,7 +155,7 @@ export function PluginJobList({ jobs, onCancel }: PluginJobListProps) {
           <h3 className={styles.jobGroupTitle}>{t('plugin_actions.jobs_running')}</h3>
           <ul className={styles.jobs}>
             {running.map((job) => (
-              <JobItem key={job.id} job={job} onCancel={onCancel} />
+              <JobItem key={job.id} job={job} onCancel={onCancel} onRunChoice={onRunChoice} />
             ))}
           </ul>
         </section>
@@ -138,7 +172,7 @@ export function PluginJobList({ jobs, onCancel }: PluginJobListProps) {
             }
           >
             {shownFinished.map((job) => (
-              <JobItem key={job.id} job={job} onCancel={onCancel} />
+              <JobItem key={job.id} job={job} onCancel={onCancel} onRunChoice={onRunChoice} />
             ))}
           </ul>
           {hasEarlier ? (
@@ -273,6 +307,19 @@ export function PluginActionsPage() {
       }
     },
     [loadJobs]
+  );
+
+  // 候选按钮来自某个任务的结果：先把动作切到那一条，再带着结果给的参数跑，
+  // 这样「选账号」就是一次点击，而不是抄一串标识回到表单里粘贴。
+  const runChoice = useCallback(
+    (key: string, values: Record<string, unknown>) => {
+      const action = actions.find((item) => item.key === key);
+      if (!action) return;
+      setSelectedPluginId(action.pluginId);
+      setSelectedKey(action.key);
+      void trigger(action, values);
+    },
+    [actions, trigger]
   );
 
   const groups = useMemo(() => {
@@ -434,7 +481,7 @@ export function PluginActionsPage() {
       {/* 没有任务时整块不出现：空卡片除了占地方没有别的用处。 */}
       {jobs.length > 0 ? (
         <Card title={t('plugin_actions.jobs_title')}>
-          <PluginJobList jobs={jobs} onCancel={(id) => void cancelJob(id)} />
+          <PluginJobList jobs={jobs} onCancel={(id) => void cancelJob(id)} onRunChoice={runChoice} />
         </Card>
       ) : null}
     </div>

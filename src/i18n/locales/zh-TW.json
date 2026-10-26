@@ -1874,6 +1874,7 @@
     "jobs_empty": "暫無任務",
     "job_cancel": "取消",
     "job_logs": "日誌",
+    "job_result": "結果",
     "job_state_running": "進行中",
     "job_state_done": "已完成",
     "job_state_failed": "失敗",

@@ -174,7 +174,9 @@ const job = (overrides: Partial<PluginJob> = {}): PluginJob => ({
 });
 
 const renderJobList = (jobs: PluginJob[]) =>
-  renderToStaticMarkup(createElement(PluginJobList, { jobs, onCancel: () => {} }));
+  renderToStaticMarkup(
+    createElement(PluginJobList, { jobs, onCancel: () => {}, onRunChoice: () => {} })
+  );
 
 describe('the job list stays short until the operator asks for more', () => {
   test('eight finished jobs plus a running one: five finished shown, the running one always shown', () => {
@@ -215,5 +217,29 @@ describe('the job list stays short until the operator asks for more', () => {
   test('without jobs the page renders no job card at all', () => {
     const markup = renderToStaticMarkup(createElement(PluginActionsPage));
     expect(markup).not.toContain(i18n.t('plugin_actions.jobs_title'));
+  });
+
+  test('a finished job shows its result and one button per named candidate', () => {
+    const markup = renderJobList([
+      job({
+        title: 'Complete onboarding',
+        message: '3 accounts still need a task',
+        result: {
+          status: 'needs_target',
+          choices: [
+            { label: 'Night lamp', hint: 'zcode-aaaa · 1/3', params: { invitee: 'idx-a' } },
+            { label: 'Second', hint: 'zcode-bbbb · 0/3', params: { invitee: 'idx-b' } },
+          ],
+        },
+      }),
+    ]);
+
+    // 候选必须点名到账号，人才能对上自己刚才登录的是哪一个。
+    expect(markup).toContain('Night lamp');
+    expect(markup).toContain('zcode-aaaa · 1/3');
+    expect(markup).toContain('Second');
+    // 结果的原始 JSON 仍然可查，但要点开才占地方。
+    expect(markup).toContain(i18n.t('plugin_actions.job_result'));
+    expect(markup).toContain('needs_target');
   });
 });

@@ -444,6 +444,29 @@
   word-break: break-all;
 }
 
+/* ---------- 结果里的候选 ---------- */
+
+/* 一条候选一个按钮：按钮本身就是「用这个账号跑一次」。 */
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.choiceHint {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  word-break: break-all;
+}
+
 /* ---------- 任务 ---------- */
 
 .jobGroups {

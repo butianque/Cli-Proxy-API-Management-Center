@@ -1853,6 +1853,7 @@
     "jobs_empty": "Задач пока нет",
     "job_cancel": "Отменить",
     "job_logs": "Журнал",
+    "job_result": "Результат",
     "job_state_running": "Выполняется",
     "job_state_done": "Готово",
     "job_state_failed": "Ошибка",

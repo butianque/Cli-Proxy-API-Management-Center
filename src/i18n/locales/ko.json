@@ -1853,6 +1853,7 @@
     "jobs_empty": "아직 작업이 없습니다",
     "job_cancel": "취소",
     "job_logs": "로그",
+    "job_result": "결과",
     "job_state_running": "실행 중",
     "job_state_done": "완료",
     "job_state_failed": "실패",

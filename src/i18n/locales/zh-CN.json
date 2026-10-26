@@ -1848,6 +1848,7 @@
     "jobs_empty": "暂无任务",
     "job_cancel": "取消",
     "job_logs": "日志",
+    "job_result": "结果",
     "job_state_running": "进行中",
     "job_state_done": "已完成",
     "job_state_failed": "失败",

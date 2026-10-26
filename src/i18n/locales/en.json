@@ -1850,6 +1850,7 @@
     "jobs_empty": "No jobs yet",
     "job_cancel": "Cancel",
     "job_logs": "Logs",
+    "job_result": "Result",
     "job_state_running": "Running",
     "job_state_done": "Done",
     "job_state_failed": "Failed",

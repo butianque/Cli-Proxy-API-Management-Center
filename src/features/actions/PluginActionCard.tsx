@@ -18,7 +18,7 @@ import { copyToClipboard } from '@/utils/clipboard';
 import { useNotificationStore } from '@/stores';
 import type { PluginAction } from '@/services/api/actions';
 import { buildActionPayload, type ActionFormValue } from './actionPayload';
-import { collectResultLinks } from './actionResultLinks';
+import { collectResultChoices, collectResultLinks, formatResultJson } from './actionResultLinks';
 import styles from './PluginActionsPage.module.scss';
 
 interface PluginActionCardProps {
@@ -29,15 +29,6 @@ interface PluginActionCardProps {
   /** 运行中提示（由页面按任务状态推导），不是由本组件记住状态。 */
   notice?: string;
   onTrigger: (values: Record<string, unknown>) => void;
-}
-
-/** 结果里的 JSON 原样展示，便于通用面板承接任意动作的返回形状。 */
-function formatResult(result: unknown): string {
-  try {
-    return JSON.stringify(result, null, 2) ?? '';
-  } catch {
-    return String(result);
-  }
 }
 
 export function PluginActionCard({
@@ -53,6 +44,7 @@ export function PluginActionCard({
   const showNotification = useNotificationStore((state) => state.showNotification);
   const [values, setValues] = useState<Record<string, ActionFormValue>>({});
   const links = result === undefined ? [] : collectResultLinks(result);
+  const choices = result === undefined ? [] : collectResultChoices(result);
 
   const copyLink = async (link: string) => {
     const copied = await copyToClipboard(link);
@@ -179,10 +171,24 @@ export function PluginActionCard({
           </div>
         ) : null}
 
+        {/* 结果点名了候选账号时，选一个就等于用它的参数重跑本动作。 */}
+        {choices.length > 0 ? (
+          <div className={styles.choices}>
+            {choices.map((choice) => (
+              <div key={`${choice.label}:${JSON.stringify(choice.params)}`} className={styles.choice}>
+                <Button variant="secondary" size="sm" onClick={() => onTrigger(choice.params)}>
+                  {choice.label}
+                </Button>
+                {choice.hint ? <span className={styles.choiceHint}>{choice.hint}</span> : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {result !== undefined ? (
           <details className={styles.result}>
             <summary>{t('plugin_actions.result_raw')}</summary>
-            <pre className={styles.resultBody}>{formatResult(result)}</pre>
+            <pre className={styles.resultBody}>{formatResultJson(result)}</pre>
           </details>
         ) : null}
       </div>
