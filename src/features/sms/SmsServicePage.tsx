@@ -2,7 +2,8 @@
  * 接码服务页 —— 两个视图：**号码池**（默认）与**渠道配置**（覆盖两类身份）。
  *
  * 号码池是统一台账（手机号 + 邮箱同一张 ledger，按 kind 过滤），进来就看到。
- * 右上角「⚙ 配置」切到配置页，左上角「← 返回」切回来。
+ * 右上角「⚙ 配置」切到配置页，左上角「← 返回」切回来；「收件箱」与「导入邮箱」
+ * 各开一个弹窗 —— 看信、导号都是当前这一页上的动作，不该换页。
  *
  * 配置页按身份类别切换，两类各有自己的正文：
  * - 手机号 → `PhoneSupplyView`（凭据 + 平台渠道 + 账本 + 护栏）；
@@ -21,8 +22,9 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { IconChevronLeft, IconPlus, IconSettings } from '@/components/ui/icons';
+import { IconChevronLeft, IconInbox, IconPlus, IconSettings } from '@/components/ui/icons';
 import { ImportMailboxesModal } from './ImportMailboxesModal';
+import { InboxModal } from './InboxModal';
 import { PhoneSupplyView } from './PhoneSupplyView';
 import { SupplyChannelCard } from './SupplyChannelCard';
 import { SupplyPoolCard } from './SupplyPoolCard';
@@ -36,6 +38,8 @@ export function SmsServicePage() {
   const [view, setView] = useState<PageView>('pool');
   const [category, setCategory] = useState<SupplyKind>('phone');
   const [importOpen, setImportOpen] = useState(false);
+  // 收件箱是一个弹窗：来信是「现在到了什么」，看完就关，不是第三个视图。
+  const [inboxOpen, setInboxOpen] = useState(false);
   // 导入写的是台账，而台账只在挂载时读一次：靠这个计数器叫它重读。
   const [poolReloadKey, setPoolReloadKey] = useState(0);
 
@@ -63,6 +67,14 @@ export function SmsServicePage() {
         </div>
         {view === 'pool' && (
           <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.ghostAction}
+              onClick={() => setInboxOpen(true)}
+            >
+              <IconInbox size={14} />
+              {t('sms_service.inbox_button')}
+            </button>
             <button
               type="button"
               className={styles.ghostAction}
@@ -116,6 +128,8 @@ export function SmsServicePage() {
           setPoolReloadKey((value) => value + 1);
         }}
       />
+
+      <InboxModal open={inboxOpen} onClose={() => setInboxOpen(false)} />
     </div>
   );
 }

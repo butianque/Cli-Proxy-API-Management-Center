@@ -134,7 +134,13 @@ describe('every locale carries the new copy', () => {
     'import_method_graph_note',
     'import_method_oauth2',
     'import_method_oauth2_note',
+    'import_method_imap',
+    'import_method_imap_note',
     'import_method_hint',
+    'import_lead_imap',
+    'import_imap_placeholder',
+    'import_imap_host',
+    'import_imap_host_placeholder',
     'nature_graph',
   ];
 
@@ -163,12 +169,31 @@ describe('the receiving method travels with the batch', () => {
     expect(modal).toContain('nature: method');
   });
 
-  test('both methods are offered, and neither is hidden behind the other', () => {
-    expect(modal).toContain("const RECEIVING_METHODS: readonly ReceivingMethod[] = ['graph', 'oauth2'];");
+  test('all three methods are offered, and none is hidden behind another', () => {
+    // A mailbox that logs in with its own password is a third transport: its
+    // server is not Microsoft's, and no refresh token exists for it.
+    expect(modal).toContain(
+      "const RECEIVING_METHODS: readonly ReceivingMethod[] = ['graph', 'oauth2', 'imap'];"
+    );
   });
 
   test('the API passes the method through to the backend', () => {
-    expect(api).toContain("nature?: 'oauth2' | 'graph'");
+    expect(api).toContain("nature?: 'imap' | 'oauth2' | 'graph'");
+  });
+
+  test('a password mailbox carries its server, a token batch does not', () => {
+    // Two-field lines have nowhere to write the server, so the modal asks once;
+    // a token batch takes a fixed one and must not send a value of its own.
+    expect(modal).toContain("host: method === 'imap' ? imapHost : undefined");
+    expect(api).toContain("host?: string");
+  });
+
+  test('a password batch with no server anywhere is refused per line, not guessed', () => {
+    // The panel does not read the paste, so it cannot know which lines carry a
+    // server. The backend refuses a hostless line and names it; guessing one
+    // would come back as "wrong password" for a mailbox whose password is fine.
+    expect(modal).not.toContain("split('----')");
+    expect(modal).toContain("t('sms_service.import_lead_imap')");
   });
 
   test('the channel editor never asks for a mailbox credential', () => {

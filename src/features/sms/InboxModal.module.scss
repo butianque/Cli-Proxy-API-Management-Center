@@ -1,0 +1,203 @@
+/* ============================================================
+ * 收件箱弹窗。
+ *
+ * 版面只做一件事：按时间倒序列出「哪个邮箱、谁寄的、什么时候、什么码」。
+ * 码是这里最常被拿走的东西，所以它在右边单独成一格；正文摘录压到两行，
+ * 不让它把一封一封的信挤成一片。
+ * ============================================================ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-sm;
+}
+
+.note {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-md 0;
+}
+
+.errorRow {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  color: var(--danger-color, #d9534f);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.errorText {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* ---------- 消息列表 ---------- */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+
+  &:first-child {
+    padding-top: 0;
+  }
+
+  &:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+}
+
+.itemHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+/* 收件邮箱：一条信归到哪个地址上，比这封信写了什么更先要看清。 */
+.itemMailbox {
+  color: var(--text-secondary);
+  font-family: $font-mono;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.itemTime {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.itemMain {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-sm;
+}
+
+.itemText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.itemSubject {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.itemFrom {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+/* 摘录只是「这封信大概是什么」，两行封顶：再长也读不完，还会把码挤出屏幕。 */
+.itemPreview {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* 码要被人抄走：点一下整段进剪贴板，点完当场换字给回执。 */
+.codeChip {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-sm;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast;
+
+  &:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 1px;
+  }
+}
+
+/* ---------- 这次没读到的信箱 ---------- */
+
+.unreadBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: $spacing-sm;
+  border-top: 1px solid var(--border-color);
+}
+
+.unreadTitle {
+  color: var(--warning-color, #b8860b);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.failureList {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+  max-height: 140px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.failureItem {
+  display: flex;
+  gap: $spacing-sm;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.failureAccount {
+  flex-shrink: 0;
+  color: var(--text-primary);
+  font-family: $font-mono;
+}
+
+.failureDetail {
+  color: var(--text-tertiary);
+  word-break: break-word;
+}

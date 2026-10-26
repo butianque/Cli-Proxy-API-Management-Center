@@ -12,7 +12,7 @@ import type {
   EmailStatusResponse,
 } from '@/services/api/email';
 import { formatInstantShort } from '@/utils/quota/relativeTime';
-import type { EmailInboxReading, EmailMailbox, EmailMessage } from './types';
+import type { EmailInboxReading, EmailInboxSummary, EmailMailbox, EmailMessage } from './types';
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -96,6 +96,34 @@ export function toInboxReading(result: EmailInboxResponse | undefined): EmailInb
     mailboxes,
     // 后端没说窗口多长就报 0：页面据此只说「N 封」，不替它假设「近三天」。
     windowHours: Number.isFinite(hours) && hours > 0 ? hours : 0,
+  };
+}
+
+/** 一次聚合收件箱读取：所有信箱最近的来信，以及这次没读到的信箱。 */
+export interface EmailInboxView {
+  /** 至少有一个可读的邮箱；`false` = 还没有可读的邮箱，按空态处理而不是错误。 */
+  enabled: boolean;
+  windowHours: number;
+  /** 后端已按最新在前排好；页面不再重排。 */
+  messages: EmailMessage[];
+  /** 这次没读到的信箱（`error` 非空）。空数组 = 全都读到了。 */
+  unread: EmailInboxSummary[];
+}
+
+/**
+ * 聚合收件箱归一。
+ *
+ * 读不到的邮箱单独拿出来，而不是并进消息列表：把「没读到」渲染成「没有信」，会让人
+ * 去翻一个根本没被打开过的信箱。`enabled: false` 与空邮箱是同一件事（还没开始用），
+ * 由页面给出空态与下一步，而不是显示内部原因。
+ */
+export function toInboxView(result: EmailInboxResponse | undefined): EmailInboxView {
+  const reading = toInboxReading(result);
+  return {
+    enabled: result?.enabled !== false,
+    windowHours: reading.windowHours,
+    messages: toMessages(result?.messages),
+    unread: reading.mailboxes.filter((item) => item.error !== ''),
   };
 }
 

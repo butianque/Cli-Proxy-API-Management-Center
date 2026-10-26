@@ -218,9 +218,18 @@ export const emailApi = {
    *
    * `address` 为空 = 整个邮箱最近的信（进页面时看的就是这个）；给了地址就只看
    * 寄给它的信 —— 一个邮箱可以承接很多地址，按地址过滤是常态而不是特例。
+   *
+   * `scope` 决定读哪一类身份：`pool` 读供应池里的邮箱身份（一次调用拿全部，
+   * 不用逐个地址去问），省略或 `channel` 读渠道（现有调用方走的就是这条）。
+   * 给了 `address` 时基座忽略 `scope` —— 地址比范围更具体。
    */
-  async getInbox(options?: { address?: string; limit?: number }): Promise<EmailInboxResponse> {
+  async getInbox(options?: {
+    address?: string;
+    limit?: number;
+    scope?: 'pool' | 'channel';
+  }): Promise<EmailInboxResponse> {
     const params = new URLSearchParams();
+    if (options?.scope) params.set('scope', options.scope);
     if (options?.address) params.set('address', options.address);
     if (options?.limit) params.set('limit', String(options.limit));
     const qs = params.toString();
@@ -274,13 +283,20 @@ export const emailApi = {
   },
 
   /**
-   * 批量导入邮箱：一行一个，`账号----密码----应用 ID----刷新令牌`。
+   * 批量导入邮箱。
    *
-   * 基座解析整批、验证每个邮箱能否收信，再把刷新令牌写进密钥库、为每个邮箱建一条
-   * 渠道。所以这里只发文本，不发逐条凭据 —— 值不经过面板，也不回到面板。
+   * 一行一个。微软账号的两条路是 `账号----密码----应用 ID----刷新令牌`；自有邮箱
+   * （`nature: 'imap'`）是 `账号----密码`，需要时再加第三段 `host:port` 覆盖请求体里的
+   * 服务器 —— 一个邮箱一个密码，没有令牌可交换。
    *
-   * `nature` 是这批邮箱的收信方式：`oauth2` 走邮箱服务器，`graph` 走微软的邮件接口。
-   * 同一份令牌通常只带其中一种权限，所以这是使用者要回答的问题，不是基座能猜的。
+   * 基座解析整批、验证每个邮箱能否收信，再把凭据写进密钥库、为每个邮箱建一条渠道。
+   * 所以这里只发文本，不发逐条凭据 —— 值不经过面板，也不回到面板。
+   *
+   * `nature` 是这批邮箱的收信方式：`oauth2` 走邮箱服务器的授权码，`graph` 走微软的
+   * 邮件接口，`imap` 用邮箱自己的密码。同一份凭据通常只带一种权限，所以这是使用者要
+   * 回答的问题，不是基座能猜的。
+   *
+   * `host` 只对 `imap` 有意义：两段行没有服务器地址，只能由请求体给。
    *
    * 超时单独放宽：一批里每个邮箱都要做一次令牌交换和一次登录，默认的 30 秒只够几个。
    * 调用方按批分片（见 `ImportMailboxesModal`），这里给每片留足时间。
@@ -288,12 +304,16 @@ export const emailApi = {
   async importMailboxes(input: {
     text: string;
     probe?: boolean;
-    nature?: 'oauth2' | 'graph';
+    nature?: 'imap' | 'oauth2' | 'graph';
+    /** IMAP 服务器（`host:port`）；空串不发，避免把「没填」当成一个值传下去。 */
+    host?: string;
   }): Promise<EmailImportResult> {
     try {
+      const { host, ...rest } = input;
+      const body = host?.trim() ? { ...rest, host: host.trim() } : rest;
       const response = await apiClient.post<EmailImportResponse>(
         `${SUPPLY_EMAIL_BASE}/import`,
-        input,
+        body,
         { timeout: 180_000 }
       );
       return {

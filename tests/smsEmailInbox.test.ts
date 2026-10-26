@@ -210,13 +210,36 @@ describe('each channel row carries its own mail and balance', () => {
     expect(table).toContain('useChannelStatus(kind, paged.items, reloadKey)');
   });
 
-  test('there is no separate inbox view to wonder about', () => {
-    // The mailbox category has exactly one entry: Settings → Email. What
-    // arrived is a property of a channel, not a page of its own.
+  test('the inbox is a dialog, not a third view', () => {
+    // What arrived is still a property of a mailbox, not a page of its own: the
+    // page keeps two views, and the inbox opens over them and closes again.
     const page = read('features/sms/SmsServicePage.tsx');
     expect(page).not.toContain('EmailInboxCard');
-    expect(page).not.toContain("'inbox'");
     expect(page).toContain("type PageView = 'pool' | 'config'");
+    expect(page).toContain('<InboxModal');
+    expect(page).toContain('open={inboxOpen}');
+    // One call reads the whole pool; asking address by address would open the
+    // same mailbox once per identity.
+    const modal = read('features/sms/InboxModal.tsx');
+    expect(modal).toContain("scope: 'pool'");
+    expect(modal).not.toContain('probeAddresses');
+  });
+
+  test('the inbox dialog never speaks in backend field names', () => {
+    const modal = read('features/sms/InboxModal.tsx');
+    expect(modal).not.toContain('received_at');
+    expect(modal).not.toContain('channel_id');
+    expect(modal).not.toContain('window_hours');
+    // A mailbox that could not be read is its own block: rendering it as "no
+    // mail" sends the operator to a mailbox that was never opened.
+    expect(modal).toContain('unread');
+  });
+
+  test('a pooled mailbox is read by the pool scope, a channel row by the default', () => {
+    // The two tables hold two different things, so each asks for its own mail.
+    // The channel strip keeps the old call: no scope means the channels.
+    const strip = read('features/sms/useChannelStatus.ts');
+    expect(strip).not.toContain('scope:');
   });
 
   test('saving a channel makes its row re-read', () => {

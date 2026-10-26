@@ -14,10 +14,11 @@
  *
  * 1. **值不经过面板**：面板从不持有、不解析、不落盘任何凭据；授权导入里它连凭据都
  *    见不到 —— 令牌从微软直接进基座的密钥库。
- * 2. **先说明白导入的是哪种邮箱，再问怎么收信**：这一批的文本格式是 Outlook 的，而
- *    同一份刷新令牌通常只带一种访问权 —— 邮箱服务器或者微软邮件接口。收信方式是
- *    使用者的答案，不是基座能猜的；选错时基座会说「令牌没有被授予这条路的权限」，
- *    换另一个再导一次即可。授权导入拿到的令牌只覆盖微软邮件接口，所以那一条不问。
+ * 2. **先说明白导入的是哪种邮箱，再问怎么收信**：同一份凭据通常只带一种访问权 —— 微软
+ *    邮件接口、邮箱服务器、或者邮箱自己的密码。收信方式是使用者的答案，不是基座能猜
+ *    的；选错时基座会说「令牌没有被授予这条路的权限」，换另一个再导一次即可。授权导入
+ *    拿到的令牌只覆盖微软邮件接口，所以那一条不问。自有域名邮箱只有「邮箱密码」这一条
+ *    路可用：它的服务器不认识微软，也没有人会为它签发刷新令牌。
  * 3. **验证默认打开**：验证不通过的邮箱不会入库 —— 一条连不上的渠道只会在表里多一
  *    行永远读不到信的东西，还得有人手工清。
  * 4. **分批发送**：一批里每个邮箱都要做一次令牌交换和一次登录，默认的 30 秒请求超时
@@ -51,10 +52,16 @@ type ImportMode = 'paste' | 'signin';
 
 const IMPORT_MODES: readonly ImportMode[] = ['paste', 'signin'];
 
-/** 收信方式。同一个信箱只走一条路，所以是单选。 */
-type ReceivingMethod = 'graph' | 'oauth2';
+/**
+ * 收信方式。同一个信箱只走一条路，所以是单选。
+ *
+ * 三条路读的是同一批信，差别只在「拿什么去开这个信箱」：微软账号的授权、卖家给的
+ * 刷新令牌、或者邮箱自己的密码。自有域名邮箱只有最后一条可用 —— 它的服务器不认识
+ * 微软，也没有人会为它签发刷新令牌。
+ */
+type ReceivingMethod = 'graph' | 'oauth2' | 'imap';
 
-const RECEIVING_METHODS: readonly ReceivingMethod[] = ['graph', 'oauth2'];
+const RECEIVING_METHODS: readonly ReceivingMethod[] = ['graph', 'oauth2', 'imap'];
 
 /** 失败清单最多列多少条：整批都失败时，列 200 条既看不清也没有用。 */
 const FAILURE_LIST_LIMIT = 20;
@@ -126,6 +133,8 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
   const [text, setText] = useState('');
   const [verify, setVerify] = useState(true);
   const [method, setMethod] = useState<ReceivingMethod>('graph');
+  // 自有邮箱的服务器地址。两段行没有地方写它，只能在这里给一次。
+  const [imapHost, setImapHost] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -149,6 +158,7 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
     setText('');
     setVerify(true);
     setMethod('graph');
+    setImapHost('');
     setPhase('idle');
     setProgress({ done: 0, total: 0 });
     setSummary(null);
@@ -258,6 +268,9 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
           text: chunk.join('\n'),
           probe: verify,
           nature: method,
+          // 只有自有邮箱需要这一栏；其余两种的服务器地址是固定的，传上去反而多一个
+          // 可以被误改的值。
+          host: method === 'imap' ? imapHost : undefined,
         });
         if (!result.ok) {
           setError(
@@ -437,7 +450,9 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
         <p className={styles.lead}>
           {mode === 'signin'
             ? t('sms_service.import_signin_lead')
-            : t('sms_service.import_lead')}
+            : method === 'imap'
+              ? t('sms_service.import_lead_imap')
+              : t('sms_service.import_lead')}
         </p>
 
         {mode === 'paste' && (
@@ -462,8 +477,28 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
                 </label>
               ))}
             </div>
-            <span className={styles.note}>{t('sms_service.import_method_hint')}</span>
+            {method !== 'imap' && (
+              <span className={styles.note}>{t('sms_service.import_method_hint')}</span>
+            )}
           </div>
+        )}
+
+        {/* 自有邮箱的服务器地址：两段行没有地方写它，只能在这里给一次。三段的行会用
+            自己那一段覆盖它，所以一栏可以同时服务两种写法。缺服务器的那一行由基座
+            逐行拒绝并说清缺什么 —— 面板不解析粘贴内容，也就不会替它猜一个服务器。 */}
+        {mode === 'paste' && method === 'imap' && (
+          <Input
+            label={t('sms_service.import_imap_host')}
+            placeholder={t('sms_service.import_imap_host_placeholder')}
+            value={imapHost}
+            onChange={(event) => {
+              setImapHost(event.target.value);
+              setError(null);
+            }}
+            disabled={phase === 'busy'}
+            autoComplete="off"
+            spellCheck={false}
+          />
         )}
 
         <label className={styles.fieldLabel} htmlFor="mailbox-import-list">
@@ -480,7 +515,9 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
           placeholder={
             mode === 'signin'
               ? t('sms_service.import_signin_placeholder')
-              : t('sms_service.import_placeholder')
+              : method === 'imap'
+                ? t('sms_service.import_imap_placeholder')
+                : t('sms_service.import_placeholder')
           }
           value={text}
           onChange={(event) => setText(event.target.value)}
