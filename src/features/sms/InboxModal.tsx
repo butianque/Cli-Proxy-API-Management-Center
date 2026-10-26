@@ -1,7 +1,7 @@
 /**
  * 收件箱 —— 三栏：邮箱 → 这个邮箱的信 → 选中那封信的内容。
  *
- * 一列混排时「哪个邮箱有新信」只能靠眼睛扫；池子里有二十个号，扫不动。按邮箱分栏后，
+ * 一列混排时「哪个邮箱有新信」只能靠眼睛扫；池子里有上百个号，扫不动。按邮箱分栏后，
  * 左边是邮箱、中间是这个邮箱收到的信、右边是选中那封的全部可得字段。
  *
  * 四条边界：
@@ -16,13 +16,18 @@
  *    所以 JSON 里就是这些字段，不多不少；验证码单独可复制。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Modal } from '@/components/ui/Modal';
-import { IconAlertTriangle, IconCopy, IconRefreshCw } from '@/components/ui/icons';
+import {
+  IconAlertTriangle,
+  IconCopy,
+  IconRefreshCw,
+  IconSearch,
+} from '@/components/ui/icons';
 import { emailApi } from '@/services/api/email';
 import { supplyApi } from '@/services/api/supply';
 import { copyToClipboard } from '@/utils/clipboard';
@@ -52,11 +57,25 @@ const COPIED_HINT_MS = 2000;
 /** 还没读过的一行。共享同一个对象：它不会被改。 */
 const NOT_READ: EmailMailboxSlot = { loading: false, reading: null };
 
+/** 键 = `"某字段":`，值 = 这一行剩下的部分（含逗号）。只用来上色，不改一个字符。 */
+const JSON_KEY_LINE = /^(\s*"[A-Za-z]+":\s*)(.*)$/;
+
 type Phase = 'loading' | 'ready' | 'error';
 
 interface InboxModalProps {
   open: boolean;
   onClose: () => void;
+}
+
+/**
+ * 一行 JSON 拆成「键 + 值」。
+ *
+ * 文本本身来自 `JSON.stringify`，这里只是挑出键来上色 —— 复制出去与看到的逐字符一致。
+ */
+function splitJsonLine(line: string): { key: string; value: string } {
+  const match = JSON_KEY_LINE.exec(line);
+  if (!match) return { key: '', value: line };
+  return { key: match[1], value: match[2] };
 }
 
 export function InboxModal({ open, onClose }: InboxModalProps) {
@@ -66,17 +85,18 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
   const [slots, setSlots] = useState<Record<string, EmailMailboxSlot>>({});
   const [selected, setSelected] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   // 第一批读完了没有。默认选中要等它 —— 否则会挑到「最先回来的」而不是「最新来信的」。
   const [batchDone, setBatchDone] = useState(false);
-  // 刷新与重试是同一个动作：重新读一次。计数器变化即重读。
+  // 重新读：计数器变化即重读。列表读不出来时由它重试。
   const [reloadKey, setReloadKey] = useState(0);
   const [copiedCode, setCopiedCode] = useState('');
   const [copiedJson, setCopiedJson] = useState(false);
 
   // 一次打开算一次会话：换会话后回来的响应一律作废，否则旧邮箱的信会落到新列表上。
   const runRef = useRef(0);
-  // 同一个邮箱不并发读两遍：一次读取就是一次登录。
+  // 同一个邮箱不并发读两遍：一次读取就是一次登录。键里带会话号，重读时不会误挡自己。
   const inflightRef = useRef(new Set<string>());
   // 异步回来的错误文案要用当下的语言，而不是发起那一刻的。
   const translateRef = useRef(t);
@@ -86,9 +106,10 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
   }, [t]);
 
   const readMailbox = useCallback(async (address: string) => {
-    if (inflightRef.current.has(address)) return;
-    inflightRef.current.add(address);
     const run = runRef.current;
+    const key = `${run}:${address}`;
+    if (inflightRef.current.has(key)) return;
+    inflightRef.current.add(key);
     setSlots((current) => ({
       ...current,
       [address]: { loading: true, reading: current[address]?.reading ?? null },
@@ -105,12 +126,23 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
         readError,
         translateRef.current('sms_service.inbox_error')
       );
-      setSlots((current) => ({
-        ...current,
-        [address]: { loading: false, reading: { messages: [], latestAt: null, error: reason } },
-      }));
+      // 读失败不抹掉上一次读到的信：一封已经在眼前，不能因为一次刷新失败就消失。
+      setSlots((current) => {
+        const previous = current[address]?.reading ?? null;
+        return {
+          ...current,
+          [address]: {
+            loading: false,
+            reading: {
+              messages: previous?.messages ?? [],
+              latestAt: previous?.latestAt ?? null,
+              error: reason,
+            },
+          },
+        };
+      });
     } finally {
-      inflightRef.current.delete(address);
+      inflightRef.current.delete(key);
     }
   }, []);
 
@@ -125,10 +157,11 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
     setSlots({});
     setSelected('');
     setSelectedIndex(0);
+    setQuery('');
     setBatchDone(false);
     void (async () => {
       try {
-        // 池子清单不连邮箱：先把二十个地址列全，读信再一个个来。
+        // 池子清单不连邮箱：先把地址列全，读信再一个个来。
         const pool = toPoolAddresses(await supplyApi.listPool('email'));
         if (runRef.current !== run) return;
         setAddresses(pool);
@@ -195,6 +228,12 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
   };
 
   const ordered = orderMailboxAddresses(addresses, slots);
+  const needle = query.trim().toLowerCase();
+  const visible =
+    needle === ''
+      ? ordered
+      : ordered.filter((address) => address.toLowerCase().includes(needle));
+
   const readCount = addresses.filter((address) => {
     const reading = slots[address]?.reading ?? null;
     return reading !== null && reading.error === '';
@@ -203,13 +242,17 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
   const selectedSlot = slots[selected] ?? NOT_READ;
   const reading = selectedSlot.reading;
   const messages = reading?.messages ?? [];
-  const mail = messages[Math.min(selectedIndex, Math.max(messages.length - 1, 0))] ?? null;
-  const document = mail !== null && selected !== '' ? toMessageDocument(selected, mail) : null;
+  // 按当下来信数夹住：重新读之后信变少了，中间高亮的和右栏显示的不能各说各的。
+  const activeIndex = messages.length === 0 ? 0 : Math.min(selectedIndex, messages.length - 1);
+  const mail = messages[activeIndex] ?? null;
+  const mailDocument =
+    mail !== null && selected !== '' ? toMessageDocument(selected, mail) : null;
+  const json = mailDocument === null ? '' : JSON.stringify(mailDocument, null, 2);
+  const jsonLines = json === '' ? [] : json.split('\n');
 
   const poolEmpty = phase === 'ready' && addresses.length === 0;
   // 正在重读时不算失败：上一次的原因先收起来，别让「重试」按钮跟着一闪。
-  const readingFailed =
-    !selectedSlot.loading && reading !== null && reading.error !== '';
+  const readingFailed = !selectedSlot.loading && reading !== null && reading.error !== '';
 
   return (
     <Modal
@@ -219,14 +262,9 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
       width={1080}
       className={styles.modal}
       footer={
-        <>
-          <Button variant="ghost" onClick={reload} loading={phase === 'loading'}>
-            {t('sms_service.inbox_refresh')}
-          </Button>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.close')}
-          </Button>
-        </>
+        <Button variant="secondary" onClick={onClose}>
+          {t('common.close')}
+        </Button>
       }
     >
       <div className={styles.panes}>
@@ -260,7 +298,7 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
 
         {phase === 'ready' && addresses.length > 0 && (
           <>
-            <aside className={styles.mailboxes}>
+            <aside className={styles.mailboxes} aria-label={t('sms_service.inbox_mailboxes')}>
               <div className={styles.paneHead}>
                 <span className={styles.paneTitle}>{t('sms_service.inbox_mailboxes')}</span>
                 <span className={styles.progress}>
@@ -270,8 +308,21 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
                   })}
                 </span>
               </div>
+
+              <div className={styles.filterRow}>
+                <IconSearch size={14} />
+                <input
+                  type="search"
+                  className={`input ${styles.filterInput}`}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={t('sms_service.inbox_filter')}
+                  aria-label={t('sms_service.inbox_filter')}
+                />
+              </div>
+
               <ul className={styles.mailboxList}>
-                {ordered.map((address) => {
+                {visible.map((address) => {
                   const slot = slots[address] ?? NOT_READ;
                   const box = slot.reading;
                   const active = address === selected;
@@ -307,9 +358,10 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
                         aria-current={active ? 'true' : undefined}
                         onClick={() => handleSelectMailbox(address)}
                       >
-                        <span className={styles.mailboxAddress}>{address}</span>
-                        <span className={styles.mailboxMeta}>
-                          {meta}
+                        <span className={styles.mailboxTop}>
+                          <span className={styles.mailboxAddress} title={address}>
+                            {address}
+                          </span>
                           {box !== null && box.error === '' && box.messages.length > 0 && (
                             <span
                               className={styles.countBadge}
@@ -323,28 +375,34 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
                             </span>
                           )}
                         </span>
+                        <span className={styles.mailboxMeta}>{meta}</span>
                       </button>
                     </li>
                   );
                 })}
               </ul>
+
+              {visible.length === 0 && (
+                <p className={styles.panePlaceholder}>{t('sms_service.inbox_filter_empty')}</p>
+              )}
             </aside>
 
-            <section className={styles.messages}>
+            <section className={styles.messages} aria-label={t('sms_service.inbox_messages')}>
               <div className={styles.paneHead}>
-                <span className={styles.paneTitleMono}>
+                <span className={styles.paneTitleMono} title={selected}>
                   {selected === '' ? t('sms_service.inbox_messages') : selected}
                 </span>
                 {selected !== '' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <button
+                    type="button"
+                    className={styles.iconButton}
                     aria-label={t('sms_service.inbox_refresh')}
+                    title={t('sms_service.inbox_refresh')}
                     onClick={() => void readMailbox(selected)}
-                    loading={selectedSlot.loading}
+                    disabled={selectedSlot.loading}
                   >
                     <IconRefreshCw size={14} />
-                  </Button>
+                  </button>
                 )}
               </div>
 
@@ -358,12 +416,21 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
                 <p className={styles.placeholder}>{t('sms_service.inbox_select_mailbox')}</p>
               )}
 
+              {selected !== '' && selectedSlot.loading && messages.length === 0 && (
+                <div className={styles.center}>
+                  <LoadingSpinner size={16} />
+                </div>
+              )}
+
               {selected !== '' && readingFailed && (
                 <div className={styles.paneError}>
                   <div className={styles.errorRow}>
                     <IconAlertTriangle size={15} />
-                    <span className={styles.errorText}>{reading?.error}</span>
+                    <span className={styles.errorText}>{t('sms_service.inbox_failed')}</span>
                   </div>
+                  {reading !== null && reading.error !== '' && (
+                    <p className={styles.paneErrorDetail}>{reading.error}</p>
+                  )}
                   <Button
                     variant="secondary"
                     size="sm"
@@ -374,15 +441,12 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
                 </div>
               )}
 
-              {selected !== '' && selectedSlot.loading && messages.length === 0 && (
-                <div className={styles.center}>
-                  <LoadingSpinner size={16} />
-                </div>
-              )}
-
-              {selected !== '' && !selectedSlot.loading && !readingFailed && messages.length === 0 && (
-                <p className={styles.placeholder}>{t('sms_service.inbox_mailbox_empty')}</p>
-              )}
+              {selected !== '' &&
+                !selectedSlot.loading &&
+                !readingFailed &&
+                messages.length === 0 && (
+                  <p className={styles.placeholder}>{t('sms_service.inbox_mailbox_empty')}</p>
+                )}
 
               {messages.length > 0 && (
                 <ul className={styles.messageList}>
@@ -391,9 +455,9 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
                       <button
                         type="button"
                         className={`${styles.message} ${
-                          index === selectedIndex ? styles.messageActive : ''
+                          index === activeIndex ? styles.messageActive : ''
                         }`}
-                        aria-current={index === selectedIndex ? 'true' : undefined}
+                        aria-current={index === activeIndex ? 'true' : undefined}
                         onClick={() => setSelectedIndex(index)}
                       >
                         <span className={styles.messageTop}>
@@ -419,16 +483,16 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
               )}
             </section>
 
-            <section className={styles.content}>
+            <section className={styles.content} aria-label={t('sms_service.inbox_content_title')}>
               <div className={styles.paneHead}>
                 <span className={styles.paneTitle}>
                   {t('sms_service.inbox_content_title')}
                 </span>
-                {document !== null && (
+                {mailDocument !== null && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => void handleCopyJson(JSON.stringify(document, null, 2))}
+                    onClick={() => void handleCopyJson(json)}
                   >
                     <IconCopy size={14} />
                     {copiedJson ? t('sms_service.inbox_copied') : t('sms_service.inbox_copy_json')}
@@ -436,23 +500,58 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
                 )}
               </div>
 
-              {document === null || mail === null ? (
+              {mailDocument === null || mail === null ? (
                 <p className={styles.placeholder}>{t('sms_service.inbox_select_message')}</p>
               ) : (
                 <div className={styles.contentBody}>
                   {mail.code !== '' && (
-                    <button
-                      type="button"
-                      className={styles.codeChip}
-                      aria-label={t('sms_service.inbox_copy_code', { code: mail.code })}
-                      onClick={() => void handleCopyCode(mail.code)}
-                    >
-                      {copiedCode === mail.code
-                        ? t('sms_service.inbox_copied')
-                        : mail.code}
-                    </button>
+                    <div className={styles.codeBar}>
+                      <span className={styles.codeLabel}>
+                        {t('sms_service.inbox_code_label')}
+                      </span>
+                      <button
+                        type="button"
+                        className={styles.codeChip}
+                        aria-label={t('sms_service.inbox_copy_code', { code: mail.code })}
+                        onClick={() => void handleCopyCode(mail.code)}
+                      >
+                        {copiedCode === mail.code
+                          ? t('sms_service.inbox_copied')
+                          : mail.code}
+                      </button>
+                    </div>
                   )}
-                  <pre className={styles.json}>{JSON.stringify(document, null, 2)}</pre>
+                  <pre className={styles.json}>
+                    {jsonLines.map((line, index) => {
+                      const { key, value } = splitJsonLine(line);
+                      const trimmed = value.replace(/,\s*$/, '').trim();
+                      const valueClass =
+                        trimmed === '""' || trimmed === '[]' || trimmed === 'null'
+                          ? styles.jsonEmpty
+                          : styles.jsonValue;
+                      return (
+                        <Fragment key={index}>
+                          {key !== '' ? (
+                            <>
+                              <span className={styles.jsonKey}>{key}</span>
+                              <span className={valueClass}>{value}</span>
+                            </>
+                          ) : (
+                            <span
+                              className={
+                                /^[[\]{}]/.test(value.trim())
+                                  ? styles.jsonPunctuation
+                                  : valueClass
+                              }
+                            >
+                              {value}
+                            </span>
+                          )}
+                          {index < jsonLines.length - 1 ? '\n' : ''}
+                        </Fragment>
+                      );
+                    })}
+                  </pre>
                 </div>
               )}
             </section>

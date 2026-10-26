@@ -150,11 +150,16 @@ export function orderMailboxAddresses(
   const unknown: string[] = [];
   for (const address of addresses) {
     const reading = slots[address]?.reading ?? null;
-    if (reading === null || reading.error !== '') {
+    if (reading === null) {
       unknown.push(address);
       continue;
     }
-    (reading.latestAt === null ? readEmpty : withMail).push(address);
+    if (reading.latestAt !== null) {
+      withMail.push(address);
+      continue;
+    }
+    // 一次失败但一个字都没读到，才是「不知道」。已知有信、只是这次没刷新成功的不沉底。
+    (reading.error === '' ? readEmpty : unknown).push(address);
   }
   const latestMs = new Map<string, number>();
   for (const address of withMail) {

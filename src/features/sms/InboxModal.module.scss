@@ -1,8 +1,18 @@
+@use '../../styles/mixins' as *;
+
 /* ============================================================
  * 收件箱弹窗 —— 三栏：邮箱 / 信 / 内容。
  *
- * 版面只做一件事：一眼看到「哪个邮箱有新信」，再点两层就能读到那封信的内容。
- * 三栏各自滚动、整块不滚 —— 一列长页会把另外两栏顶出视野。
+ * 版面只回答两件事：哪个邮箱有新信，那封信里是什么。三栏各自滚动、整块不滚 ——
+ * 一列长页会把另外两栏顶出视野。
+ *
+ * 底色只有两档，规则只有一条：**被打开的东西浮起来**。
+ *   底面 = 弹窗自身的 `--bg-primary`（三栏共用，靠 1px 竖线分栏）
+ *   浮面 = `--floating-surface`（选中的邮箱、选中的那封信、正在读的 JSON）
+ * 这样「谁被选中」在任何一栏都是同一个视觉信号，不用记三套。
+ *
+ * 内容文字一律 `--text-secondary` 以上：`--text-tertiary` 在这个暖灰底上只有
+ * 2.2:1，读久了刺眼。`--text-tertiary` 只留给纯装饰（括号、逗号、空值）。
  * ============================================================ */
 
 .modal {
@@ -33,33 +43,34 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* 定宽的栏也要能压住：`min-width` 默认是 `auto`，内容是地址与摘录这种不换行的长串，
+     自动最小宽度会超过定宽，把右栏挤成一条缝。 */
+  min-width: 0;
 }
 
 .mailboxes {
-  flex: 0 0 236px;
+  flex: 0 0 264px;
   border-right: 1px solid var(--border-color);
-  background: var(--bg-secondary);
 }
 
 .messages {
-  flex: 0 0 300px;
+  flex: 0 0 320px;
   border-right: 1px solid var(--border-color);
 }
 
 .content {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 0;
 }
 
-/* 每栏自己的抬头：它说的是「这一栏是什么」，不与正文抢层级。 */
+/* 每栏自己的抬头：它说的是「这一栏是什么」，一行就够，不占正文的层级。 */
 .paneHead {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: $spacing-sm;
-  min-height: 40px;
-  padding: 4px $spacing-md;
+  min-height: 44px;
+  padding: 0 14px;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -67,53 +78,51 @@
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 /* 选中的邮箱本身就是这一栏的标题，用等宽字体：地址是拿来看准的，不是拿来读的。 */
 .paneTitleMono {
   min-width: 0;
-  overflow: hidden;
   color: var(--text-primary);
   font-family: $font-mono;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 12.5px;
+  @include text-ellipsis;
 }
 
 .progress {
   flex-shrink: 0;
-  color: var(--text-tertiary);
-  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- 左栏：邮箱 ---------- */
-
-.mailboxList {
-  flex: 1;
-  min-height: 0;
-  margin: 0;
-  padding: $spacing-xs 0;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.mailbox {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  width: 100%;
-  padding: 7px $spacing-md;
+/* 图标按钮：只放一个动作，不带底色，悬停才显形。 */
+.iconButton {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border: 0;
-  border-left: 2px solid transparent;
+  border-radius: $radius-sm;
   background: none;
-  color: inherit;
-  text-align: left;
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: background $transition-fast, border-color $transition-fast;
+  transition:
+    background $transition-fast,
+    color $transition-fast;
 
-  &:hover {
-    background: var(--bg-primary);
+  &:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
   }
 
   &:focus-visible {
@@ -122,54 +131,131 @@
   }
 }
 
+/* ---------- 左栏：邮箱 ---------- */
+
+.filterRow {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-tertiary);
+}
+
+/* 复用全局 `.input`，只把高度收一档：这是筛选框，不是表单字段。 */
+.filterInput {
+  padding: 6px 9px;
+  border-radius: $radius-sm;
+  background-color: var(--floating-surface);
+  font-size: 12px;
+}
+
+.mailboxList {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  list-style: none;
+}
+
+.mailbox {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 7px 12px 8px;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background $transition-fast,
+    border-color $transition-fast;
+
+  &:hover {
+    background: var(--bg-tertiary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+  }
+}
+
+/* 选中 = 一条竖标 + 一层抬起来的面 + 加重的地址：三个信号叠在一起，不靠一种颜色撑。
+   抬起来的那一档与「选中的那封信」「正在读的那份 JSON」是同一个面，
+   于是整屏只有一条规则：被打开的东西浮在底面上。 */
 .mailboxActive {
   border-left-color: var(--primary-color);
-  background: var(--bg-primary);
+  background: var(--floating-surface);
+
+  &:hover {
+    background: var(--floating-surface);
+  }
+
+  .mailboxAddress {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+}
+
+.mailboxTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
 }
 
 .mailboxAddress {
-  overflow: hidden;
-  color: var(--text-primary);
+  min-width: 0;
+  color: var(--text-secondary);
   font-family: $font-mono;
-  font-size: 11.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 12px;
+  @include text-ellipsis;
 }
 
 .mailboxMeta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: $spacing-sm;
+  min-height: 15px;
 }
 
 .mailboxTime {
-  color: var(--text-tertiary);
-  font-size: 11px;
+  color: var(--text-secondary);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 /* 三种「不知道」：还没读、正在读、读失败。它们都不显示成「0 封」。 */
 .mailboxState {
-  color: var(--text-tertiary);
-  font-size: 11px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .mailboxFailed {
-  color: var(--danger-color, #d9534f);
-  font-size: 11px;
+  color: var(--error-color);
+  font-size: 12px;
 }
 
 /* 封数只是角标：基座按 limit 截断，到顶就写 20+，不假装知道真实总数。 */
 .countBadge {
   flex-shrink: 0;
-  padding: 0 5px;
-  border: 1px solid var(--border-color);
+  min-width: 20px;
+  padding: 0 6px;
   border-radius: $radius-full;
-  color: var(--text-secondary);
+  background: var(--count-badge-bg);
+  color: var(--count-badge-text);
   font-family: $font-mono;
-  font-size: 10.5px;
-  line-height: 15px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
 }
 
 /* ---------- 中栏：这个邮箱的信 ---------- */
@@ -180,25 +266,29 @@
   margin: 0;
   padding: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   list-style: none;
 }
 
 .message {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   width: 100%;
-  padding: 9px $spacing-md;
+  padding: 10px 14px 11px;
   border: 0;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--border-color) 55%, transparent);
   background: none;
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background $transition-fast;
+  transition:
+    background $transition-fast,
+    box-shadow $transition-fast;
 
   &:hover {
-    background: var(--bg-secondary);
+    background: var(--bg-tertiary);
   }
 
   &:focus-visible {
@@ -207,9 +297,19 @@
   }
 }
 
+/* 选中的那封要「浮起来」：这一栏的底色是卡面，最亮的那一档才是被打开的那份。 */
 .messageActive {
-  background: var(--bg-secondary);
-  box-shadow: inset 2px 0 0 var(--primary-color);
+  border-bottom-color: transparent;
+  background: var(--floating-surface);
+  box-shadow: inset 3px 0 0 var(--primary-color);
+
+  &:hover {
+    background: var(--floating-surface);
+  }
+
+  .messageSubject {
+    color: var(--text-primary);
+  }
 }
 
 .messageTop {
@@ -217,42 +317,36 @@
   align-items: baseline;
   justify-content: space-between;
   gap: $spacing-sm;
+  min-width: 0;
 }
 
 .messageSubject {
   min-width: 0;
-  overflow: hidden;
   color: var(--text-primary);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  @include text-ellipsis;
 }
 
 .messageTime {
   flex-shrink: 0;
-  color: var(--text-tertiary);
-  font-size: 11px;
+  color: var(--text-secondary);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 .messageFrom {
-  overflow: hidden;
   color: var(--text-secondary);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 12px;
+  @include text-ellipsis;
 }
 
 /* 摘录一行封顶：中间那栏是目录，不是正文。 */
 .messagePreview {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: 11px;
+  color: var(--text-secondary);
+  font-size: 12px;
   line-height: 1.5;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  @include text-ellipsis;
 }
 
 /* ---------- 右栏：这封信的内容 ---------- */
@@ -261,53 +355,87 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: $spacing-sm;
+  gap: 10px;
   min-height: 0;
-  padding: $spacing-md;
+  padding: 14px;
 }
 
-/* 码要被人抄走：点一下整段进剪贴板，点完当场换字给回执。 */
-.codeChip {
-  align-self: flex-start;
+/* 码是这里最常被拿走的东西：给它一条专属的行，点一下整段进剪贴板。 */
+.codeBar {
+  display: flex;
   flex-shrink: 0;
-  padding: 4px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: $radius-sm;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--success-color) 30%, transparent);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--success-color) 9%, transparent);
+}
+
+.codeLabel {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.codeChip {
+  padding: 1px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--success-color);
   font-family: $font-mono;
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   cursor: pointer;
-  transition: border-color $transition-fast, color $transition-fast;
+  transition: background $transition-fast;
 
   &:hover {
-    border-color: var(--primary-color);
-    color: var(--primary-color);
+    background: color-mix(in srgb, var(--success-color) 14%, transparent);
   }
 
   &:focus-visible {
-    outline: 2px solid var(--primary-color);
+    outline: 2px solid var(--success-color);
     outline-offset: 1px;
   }
 }
 
-/* 内容就是 JSON 本身：不换字体、不重排、不折叠，复制出去仍然是一份完整的信。 */
+/* 内容就是 JSON 本身：不重排、不折叠，复制出去仍然是一份完整的信。
+   底色取最亮的那一档，让它成为这一屏唯一「浮起来」的面。 */
 .json {
   flex: 1;
   min-height: 0;
   margin: 0;
-  padding: $spacing-md;
+  padding: 12px 14px;
   overflow: auto;
   border: 1px solid var(--border-color);
-  border-radius: $radius-sm;
-  background: var(--bg-secondary);
+  border-radius: $radius-md;
+  background: var(--floating-surface);
   color: var(--text-primary);
   font-family: $font-mono;
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: 12.5px;
+  line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* 键轻、值重：眼睛先落在值上，键只是它的名字。 */
+.jsonKey {
+  color: var(--text-secondary);
+}
+
+.jsonValue {
+  color: var(--text-primary);
+}
+
+/* 空值压到最轻：一屏 `""` 全是重色，真正的字段就找不着了。 */
+.jsonEmpty {
+  color: var(--text-tertiary);
+}
+
+/* 括号与逗号是结构，不是内容。 */
+.jsonPunctuation {
+  color: var(--text-quaternary);
 }
 
 /* ---------- 空态与错误 ---------- */
@@ -329,14 +457,23 @@
   justify-content: center;
   margin: 0;
   padding: $spacing-lg;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: 12.5px;
   text-align: center;
 }
 
+/* 筛选之后没有匹配：这是空态，不是错误，所以不画红框。 */
+.panePlaceholder {
+  margin: 0;
+  padding: 14px 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+
 .note {
-  color: var(--text-tertiary);
-  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -348,12 +485,22 @@
   padding: $spacing-md;
 }
 
+/* 具体原因比标题小一号、浅一档：它解释的是「为什么」，不是「现在是什么」。 */
+.paneErrorDetail {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 .errorRow {
   display: flex;
   align-items: flex-start;
   gap: $spacing-sm;
-  color: var(--danger-color, #d9534f);
+  color: var(--error-color);
   font-size: 12.5px;
+  font-weight: 600;
   line-height: 1.5;
 }
 

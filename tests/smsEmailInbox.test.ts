@@ -353,6 +353,38 @@ describe('the three panes: mailboxes, mail, content', () => {
     expect(order).toEqual(['fresh', 'broken', 'unknown']);
   });
 
+  test('a refresh that fails does not sink a mailbox that already has mail', () => {
+    // "This box had mail five minutes ago, the refresh failed" is not the same as
+    // "we have never opened this box". Dropping it to the bottom would claim the
+    // pool got newer mail than a box we already know about.
+    const stale: EmailMailboxSlot = {
+      loading: false,
+      reading: {
+        messages: [
+          {
+            channelId: '',
+            mailbox: 'INBOX',
+            from: '',
+            to: [],
+            subject: 'older',
+            receivedAt: '2026-10-26T11:00:00Z',
+            code: '',
+            preview: '',
+            links: [],
+          },
+        ],
+        latestAt: '2026-10-26T11:00:00Z',
+        error: 'the mailbox refused the login',
+      },
+    };
+    const order = orderMailboxAddresses(['fresh', 'stale', 'unknown'], {
+      fresh: loaded('2026-10-26T09:00:00Z'),
+      stale,
+      unknown: notRead,
+    });
+    expect(order).toEqual(['stale', 'fresh', 'unknown']);
+  });
+
   test('the default is the newest mailbox, not the first one listed', () => {
     const slots = {
       a: loaded('2026-10-26T09:00:00Z', 2),
@@ -563,6 +595,9 @@ describe('every locale can say the channel-row words', () => {
     'inbox_no_subject',
     'inbox_count_label',
     'inbox_count_more',
+    'inbox_filter',
+    'inbox_filter_empty',
+    'inbox_code_label',
   ];
 
   test('the read progress says how much of the pool has been read, in every locale', () => {
