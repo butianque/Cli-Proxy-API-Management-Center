@@ -40,11 +40,11 @@ export type AuthFileRoutingPolicySheetProps = {
   open: boolean;
   /** 供标题使用：本次改的是哪个凭证。 */
   fileName: string;
-  /** 当前策略；缺省 = 默认。 */
+  /** 当前允许的套餐；缺省 = 全部套餐。 */
   policy?: AccountPolicy;
   /**
-   * 该账号实际可用的渠道；缺省或空 = 只有「默认」一项，下拉不出现。
-   * 缺省不代表「没有路由策略」——策略区始终渲染，只是退化为说明空态。
+   * 这个凭证实际带哪些套餐（插件按账号实时上报）；缺省或空 = 没有可选套餐。
+   * 缺省不代表「没有套餐设置」——套餐区始终渲染，只是退化为说明态。
    */
   channels?: readonly AccountChannel[];
   /** 已保存的逐模型并发上限。 */
@@ -68,8 +68,9 @@ export type AuthFileRoutingPolicySheetProps = {
 };
 
 /**
- * 路由策略抽屉。控件属于「账号池」这一层：钉渠道决定请求落到哪个凭证，
- * 逐模型并发上限决定同一凭证上各模型各自能同时跑几个请求。
+ * 路由套餐抽屉。控件属于「账号池」这一层：套餐决定这个凭证允许用哪一档
+ * （例如免费的 Start Plan、付费的 Coding Plan），逐模型并发上限决定同一凭证
+ * 上各模型各自能同时跑几个请求。
  *
  * 抽屉里的改动先落草稿，底部一次保存，避免两个字段分批提交时互相覆盖。
  */
@@ -129,17 +130,21 @@ export function AuthFileRoutingPolicySheet(props: AuthFileRoutingPolicySheetProp
     };
   }, [props.open]);
 
-  const options = routingPolicyOptions(props.channels ?? [], props.policy).map((option) => ({
+  const channels = props.channels ?? [];
+  const options = routingPolicyOptions(channels, props.policy).map((option) => ({
     value: option.value,
     label:
       option.channelLabel === null
         ? t('account_pool.policy_default')
         : t('account_pool.policy_only', { name: option.channelLabel }),
   }));
-  // 只剩「默认」一项时，下拉出现也改变不了任何东西：换成说明空态 + 下一步。
-  const hasChoice = options.length > 1;
-  // 策略区始终渲染：`channels` 缺省只说明这张凭证还没上报可用渠道，
-  // 不代表它没有路由策略——把它整块藏掉会让已有策略凭空「消失」。
+  // 一个凭证带哪几个套餐，由插件按账号实时上报；面板不内置套餐清单。
+  // 两个以上才需要选：只有一个时选也改变不了任何东西，一个都没有就没有可选项。
+  const reportedPlans = channels.length;
+  const hasChoice = reportedPlans > 1;
+  const onlyChannel = reportedPlans === 1 ? channels[0] : null;
+  // 套餐区始终渲染：`channels` 缺省只说明这张凭证还没上报套餐，不代表它没有套餐
+  // 设置——把它整块藏掉会让已存的选择凭空「消失」。
   const syncScope = props.syncScope;
   const showSync = syncScope !== undefined && syncScope.peerCount > 0;
 
@@ -226,6 +231,17 @@ export function AuthFileRoutingPolicySheet(props: AuthFileRoutingPolicySheetProp
             />
             <div className="hint">{t('account_pool.policy_hint')}</div>
           </div>
+        ) : onlyChannel ? (
+          <section className={styles.section}>
+            <div className={styles.sectionHead}>
+              <span className={styles.sectionTitle}>{t('account_pool.policy_label')}</span>
+            </div>
+            <div className="hint">
+              {t('account_pool.policy_single_plan', {
+                name: onlyChannel.label || onlyChannel.key,
+              })}
+            </div>
+          </section>
         ) : (
           <EmptyState
             title={t('account_pool.policy_no_channels_title')}
