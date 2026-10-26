@@ -6,7 +6,7 @@
  * 自上而下：
  *  1. 页头（标题 + 说明 + 刷新）；
  *  2. 工作区：左侧插件栏（选插件），右侧「1 选动作 → 2 填参数运行」；
- *  3. 任务卡（运行中的进度与取消）。
+ *  3. 任务卡（运行中的进度与取消，已收尾的按批展开）。
  *
  * 颜色只用于状态：危险动作黄、失败红、选中项主色，其余中性。
  * ============================================================ */
@@ -446,12 +446,44 @@
 
 /* ---------- 任务 ---------- */
 
+.jobGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.jobGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.jobGroupTitle {
+  margin: 0 0 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
 .jobs {
   margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
+}
+
+/* 展开后才限高：默认那几条不该出现滚动条，展开后页面也不会被无限拉长。 */
+.jobsExpanded {
+  max-height: 24rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.jobMore {
+  align-self: flex-start;
+  margin-top: 6px;
 }
 
 .job {

@@ -55,6 +55,110 @@ function PluginMark({ logo }: { logo: string }) {
   );
 }
 
+/** 已收尾的任务默认只露最近 5 条，点一次多露 5 条。 */
+const FINISHED_JOB_BATCH = 5;
+
+/** 一条任务：标题、状态、进度、时间与可展开日志；运行中的多一个取消。 */
+function JobItem({ job, onCancel }: { job: PluginJob; onCancel: (id: string) => void }) {
+  const { t } = useTranslation();
+  return (
+    <li className={styles.job}>
+      <div className={styles.jobHead}>
+        <span className={styles.jobTitle}>{job.title || job.key}</span>
+        <span
+          className={`${styles.tag} ${job.state === 'failed' ? styles.tagWarning : styles.tagMuted}`}
+        >
+          {t(`plugin_actions.job_state_${job.state}`)}
+        </span>
+        {job.state === 'running' ? (
+          <Button variant="ghost" size="sm" onClick={() => onCancel(job.id)}>
+            {t('plugin_actions.job_cancel')}
+          </Button>
+        ) : null}
+      </div>
+      {job.state === 'running' ? (
+        <progress className={styles.jobProgress} value={job.progress} max={1} />
+      ) : null}
+      <div className={styles.jobMeta}>
+        <span>{formatDateTimeValue(job.startedAt)}</span>
+        {job.message ? <span className={styles.jobMessage}>{job.message}</span> : null}
+        {job.error ? <span className={styles.jobError}>{job.error}</span> : null}
+      </div>
+      {job.logs.length > 0 ? (
+        <details className={styles.result}>
+          <summary>{t('plugin_actions.job_logs')}</summary>
+          <pre className={styles.resultBody}>{job.logs.join('\n')}</pre>
+        </details>
+      ) : null}
+    </li>
+  );
+}
+
+interface PluginJobListProps {
+  jobs: PluginJob[];
+  onCancel: (id: string) => void;
+}
+
+/**
+ * 任务列表：运行中的全部显示，已收尾的只显示最近几条，更早的按批展开。
+ *
+ * 单独导出是为了让静态渲染测试能直接喂数据 —— 页面组件自己会去拉任务。
+ */
+export function PluginJobList({ jobs, onCancel }: PluginJobListProps) {
+  const { t } = useTranslation();
+  const [visibleFinished, setVisibleFinished] = useState(FINISHED_JOB_BATCH);
+
+  const running = jobs.filter((job) => job.state === 'running');
+  // 后端按新→旧下发，这里保持原顺序，切片即「最近 N 条」。
+  const finished = jobs.filter((job) => job.state !== 'running');
+  const shownFinished = finished.slice(0, visibleFinished);
+  const hasEarlier = finished.length > shownFinished.length;
+
+  return (
+    <div className={styles.jobGroups}>
+      {running.length > 0 ? (
+        <section className={styles.jobGroup}>
+          <h3 className={styles.jobGroupTitle}>{t('plugin_actions.jobs_running')}</h3>
+          <ul className={styles.jobs}>
+            {running.map((job) => (
+              <JobItem key={job.id} job={job} onCancel={onCancel} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {finished.length > 0 ? (
+        <section className={styles.jobGroup}>
+          <h3 className={styles.jobGroupTitle}>{t('plugin_actions.jobs_finished')}</h3>
+          <ul
+            className={
+              shownFinished.length > FINISHED_JOB_BATCH
+                ? `${styles.jobs} ${styles.jobsExpanded}`
+                : styles.jobs
+            }
+          >
+            {shownFinished.map((job) => (
+              <JobItem key={job.id} job={job} onCancel={onCancel} />
+            ))}
+          </ul>
+          {hasEarlier ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={styles.jobMore}
+              onClick={() => setVisibleFinished((count) => count + FINISHED_JOB_BATCH)}
+            >
+              {`${t('plugin_actions.jobs_show_earlier')} · ${t('plugin_actions.jobs_total', {
+                count: finished.length,
+              })}`}
+            </Button>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 export function PluginActionsPage() {
   const { t } = useTranslation();
   const apiBase = useAuthStore((state) => state.apiBase);
@@ -199,8 +303,6 @@ export function PluginActionsPage() {
     ? jobs.find((job) => job.key === activeAction.key && job.state === 'running')
     : undefined;
 
-  const jobStateLabel = (state: PluginJob['state']) => t(`plugin_actions.job_state_${state}`);
-
   return (
     <div className={styles.page}>
       <header className={styles.pageHeader}>
@@ -329,43 +431,12 @@ export function PluginActionsPage() {
         </div>
       )}
 
-      <Card title={t('plugin_actions.jobs_title')}>
-        {jobs.length === 0 ? (
-          <p className={styles.muted}>{t('plugin_actions.jobs_empty')}</p>
-        ) : (
-          <ul className={styles.jobs}>
-            {jobs.map((job) => (
-              <li key={job.id} className={styles.job}>
-                <div className={styles.jobHead}>
-                  <span className={styles.jobTitle}>{job.title || job.key}</span>
-                  <span className={`${styles.tag} ${job.state === 'failed' ? styles.tagWarning : styles.tagMuted}`}>
-                    {jobStateLabel(job.state)}
-                  </span>
-                  {job.state === 'running' ? (
-                    <Button variant="ghost" size="sm" onClick={() => void cancelJob(job.id)}>
-                      {t('plugin_actions.job_cancel')}
-                    </Button>
-                  ) : null}
-                </div>
-                {job.state === 'running' ? (
-                  <progress className={styles.jobProgress} value={job.progress} max={1} />
-                ) : null}
-                <div className={styles.jobMeta}>
-                  <span>{formatDateTimeValue(job.startedAt)}</span>
-                  {job.message ? <span className={styles.jobMessage}>{job.message}</span> : null}
-                  {job.error ? <span className={styles.jobError}>{job.error}</span> : null}
-                </div>
-                {job.logs.length > 0 ? (
-                  <details className={styles.result}>
-                    <summary>{t('plugin_actions.job_logs')}</summary>
-                    <pre className={styles.resultBody}>{job.logs.join('\n')}</pre>
-                  </details>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {/* 没有任务时整块不出现：空卡片除了占地方没有别的用处。 */}
+      {jobs.length > 0 ? (
+        <Card title={t('plugin_actions.jobs_title')}>
+          <PluginJobList jobs={jobs} onCancel={(id) => void cancelJob(id)} />
+        </Card>
+      ) : null}
     </div>
   );
 }

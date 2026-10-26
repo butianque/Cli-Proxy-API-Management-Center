@@ -6,7 +6,8 @@ import i18n from '@/i18n';
 import { buildActionPayload } from '@/features/actions/actionPayload';
 import { collectResultLinks } from '@/features/actions/actionResultLinks';
 import { PluginActionCard } from '@/features/actions/PluginActionCard';
-import type { PluginAction } from '@/services/api/actions';
+import { PluginActionsPage, PluginJobList } from '@/features/actions/PluginActionsPage';
+import type { PluginAction, PluginJob } from '@/services/api/actions';
 
 /**
  * 插件动作是「基座渲染插件声明的操作」这条链路的用户侧。这里锁两件事：
@@ -156,5 +157,63 @@ describe('the actions page is a plugin rail, not a flat grid', () => {
     for (const pluginId of ['loomy', 'zcode', 'workbuddy']) {
       expect(source).not.toContain(`'${pluginId}'`);
     }
+  });
+});
+
+const job = (overrides: Partial<PluginJob> = {}): PluginJob => ({
+  id: 'job-1',
+  pluginId: 'loomy',
+  key: 'loomy.rewards-bind',
+  title: 'Rewards bind',
+  state: 'done',
+  progress: 1,
+  message: '',
+  startedAt: 1_700_000_000_000,
+  logs: [],
+  ...overrides,
+});
+
+const renderJobList = (jobs: PluginJob[]) =>
+  renderToStaticMarkup(createElement(PluginJobList, { jobs, onCancel: () => {} }));
+
+describe('the job list stays short until the operator asks for more', () => {
+  test('eight finished jobs plus a running one: five finished shown, the running one always shown', () => {
+    const jobs = [
+      job({ id: 'live', title: 'Live 01', state: 'running', progress: 0.5 }),
+      ...Array.from({ length: 8 }, (_, index) =>
+        job({ id: `done-${index}`, title: `Finished 0${index + 1}` })
+      ),
+    ];
+    const markup = renderJobList(jobs);
+
+    // 后端按新→旧下发，默认露最近五条，顺序不能被打乱。
+    expect(markup.match(/Finished 0\d/g)).toEqual([
+      'Finished 01',
+      'Finished 02',
+      'Finished 03',
+      'Finished 04',
+      'Finished 05',
+    ]);
+    // 运行中的任务不能被折叠掉：它带着唯一的取消入口。
+    expect(markup).toContain('Live 01');
+    expect(markup).toContain(i18n.t('plugin_actions.job_cancel'));
+    expect(markup).toContain(i18n.t('plugin_actions.jobs_running'));
+    expect(markup).toContain(i18n.t('plugin_actions.jobs_finished'));
+    // 更早的任务要有入口，并说清总数。
+    expect(markup).toContain(i18n.t('plugin_actions.jobs_show_earlier'));
+    expect(markup).toContain(i18n.t('plugin_actions.jobs_total', { count: 8 }));
+  });
+
+  test('five finished jobs or fewer need no "show earlier" control', () => {
+    const markup = renderJobList(
+      Array.from({ length: 5 }, (_, index) => job({ id: `done-${index}`, title: `Finished 0${index + 1}` }))
+    );
+    expect(markup.match(/Finished 0\d/g)).toHaveLength(5);
+    expect(markup).not.toContain(i18n.t('plugin_actions.jobs_show_earlier'));
+  });
+
+  test('without jobs the page renders no job card at all', () => {
+    const markup = renderToStaticMarkup(createElement(PluginActionsPage));
+    expect(markup).not.toContain(i18n.t('plugin_actions.jobs_title'));
   });
 });
