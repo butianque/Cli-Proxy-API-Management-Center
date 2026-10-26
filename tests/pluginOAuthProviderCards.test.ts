@@ -48,14 +48,14 @@ describe('plugin OAuth provider cards', () => {
         plugin({
           oauthProvider: 'zcode',
           oauthProviders: ['zcode-bigmodel', 'zcode-zai'],
-          oauthProviderLabels: { 'zcode-bigmodel': '智谱站', 'zcode-zai': '国际站' },
+          oauthProviderLabels: { 'zcode-bigmodel': '国内站', 'zcode-zai': '国际站' },
         }),
       ],
       ''
     );
 
     expect(cards.map((card) => card.id)).toEqual(['zcode-bigmodel', 'zcode-zai']);
-    expect(cards.map((card) => card.title)).toEqual(['ZCode · 智谱站', 'ZCode · 国际站']);
+    expect(cards.map((card) => card.title)).toEqual(['ZCode · 国内站', 'ZCode · 国际站']);
     expect(cards.map((card) => card.icon)).toEqual([
       '/plugins/zcode/logo.png',
       '/plugins/zcode/logo.png',
@@ -119,7 +119,7 @@ describe('plugin OAuth provider cards', () => {
           effective_enabled: true,
           oauth_provider: 'zcode',
           oauth_providers: ['ZCode-Bigmodel', 'zcode-zai', 'bad key', ''],
-          oauth_provider_labels: { 'zcode-bigmodel': '智谱站', 'zcode-zai': '   ' },
+          oauth_provider_labels: { 'zcode-bigmodel': '国内站', 'zcode-zai': '   ' },
         },
         {
           id: 'loomy',
@@ -135,13 +135,13 @@ describe('plugin OAuth provider cards', () => {
 
     const { plugins } = await pluginsApi.list();
     expect(plugins[0].oauthProviders).toEqual(['zcode-bigmodel', 'zcode-zai']);
-    expect(plugins[0].oauthProviderLabels).toEqual({ 'zcode-bigmodel': '智谱站' });
+    expect(plugins[0].oauthProviderLabels).toEqual({ 'zcode-bigmodel': '国内站' });
     expect(plugins[1].oauthProviders).toBeUndefined();
     expect(plugins[1].oauthProviderLabels).toBeUndefined();
 
     const cards = buildPluginOAuthProviderCards(plugins, '');
     expect(cards.map((card) => card.id)).toEqual(['zcode-bigmodel', 'zcode-zai', 'loomy']);
-    expect(cards.map((card) => card.title)).toEqual(['zcode · 智谱站', 'zcode', 'loomy']);
+    expect(cards.map((card) => card.title)).toEqual(['zcode · 国内站', 'zcode', 'loomy']);
   });
 });
 
