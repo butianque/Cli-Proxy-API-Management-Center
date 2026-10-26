@@ -61,6 +61,35 @@ export function AuthFilePolicyFields({
         )}
         <div className="hint">{t('auth_files.policy_retry_hint')}</div>
       </div>
+      <div className="form-group">
+        {modeSelect('maxConcurrency', 'auth_files.policy_concurrency_label')}
+        {draft.maxConcurrency.mode === 'custom' ? (
+          <>
+            <Input
+              label={t('auth_files.policy_concurrency_count')}
+              type="number"
+              min={0}
+              step={1}
+              value={draft.maxConcurrency.value}
+              disabled={disabled}
+              error={
+                error === 'auth_files.policy_concurrency_invalid' ? t(error) : undefined
+              }
+              onChange={(event) =>
+                onChange('maxConcurrency', {
+                  ...draft.maxConcurrency,
+                  value: event.target.value,
+                })
+              }
+            />
+            <div className="hint">{t('auth_files.policy_concurrency_hint')}</div>
+          </>
+        ) : (
+          // 继承态不给数字：默认上限由渠道决定，面板没有那份数据，写一个数字出来
+          // 就是编的。
+          <div className="hint">{t('auth_files.policy_concurrency_inherit_hint')}</div>
+        )}
+      </div>
       {(['modelAliases', 'errorRules'] as const).map((field) => {
         const key = field === 'modelAliases' ? 'aliases' : 'rules';
         const policy = draft[field];

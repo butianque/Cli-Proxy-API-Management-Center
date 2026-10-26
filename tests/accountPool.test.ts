@@ -638,6 +638,31 @@ describe('credential site identity', () => {
     expect(resolveCredentialSite('zcode-zai')?.domain).toBe('z.ai');
     // 未登记的键不造站点：徽标回落到 i18n 标签，站点行不出现。
     expect(resolveCredentialSite('codex')).toBeNull();
+    // Loomy 的模型网关（loomyad.xunfei.cn）与账号服务（account.xfinfr.com）不是一个
+    // 站点域名，写哪个都是编的；台账侧也明确断言它没有站点，这里保持一致。
+    expect(resolveCredentialSite('loomy')).toBeNull();
+  });
+
+  test('gives every credential key its own badge colour', async () => {
+    // 徽标文字不足以区分同一插件的多个站点（workbuddy-cn 与 workbuddy-global
+    // 都叫 WorkBuddy），所以站点表里的每个键都必须在配色表里有自己的一项，
+    // 不能落到 unknown 的虚线灰底。
+    const { resolveCredentialSite } = await import('../src/features/authFiles/siteIdentity');
+    const { TYPE_COLORS } = await import('../src/utils/quota/constants');
+    for (const key of [
+      'workbuddy-cn',
+      'workbuddy-intl',
+      'workbuddy-global',
+      'zcode-bigmodel',
+      'zcode-zai',
+    ]) {
+      expect(resolveCredentialSite(key)).not.toBeNull();
+      expect(TYPE_COLORS[key]?.light).toBeDefined();
+      expect(TYPE_COLORS[key]?.dark).toBeDefined();
+    }
+    // loomy 没有站点行，但它的徽标仍然要出现在凭据页与 tab 上。
+    expect(TYPE_COLORS.loomy?.light).toBeDefined();
+    expect(TYPE_COLORS.loomy?.dark).toBeDefined();
   });
 
   test('keeps the filter tab to a product name plus 国内/国际', () => {

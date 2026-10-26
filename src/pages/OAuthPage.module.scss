@@ -173,6 +173,17 @@
   color: var(--text-tertiary);
 }
 
+.cardHintAction {
+  color: var(--primary-color);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.cardHintAction:hover {
+  text-decoration: underline;
+}
+
 .fingerprintOption {
   display: flex;
   flex-direction: column;

@@ -62,6 +62,24 @@ export const TYPE_COLORS: Record<string, TypeColorSet> = {
     light: { bg: '#e6f6f2', text: '#0f7a63' },
     dark: { bg: '#0b4a3d', text: '#7fd8c2' },
   },
+  // 同一插件的多个站点各有自己的键：颜色是它们的第二重区分（徽标文字里
+  // workbuddy-cn 与 workbuddy-global 都叫 WorkBuddy）。
+  'workbuddy-cn': {
+    light: { bg: '#e3eefc', text: '#1c5fae' },
+    dark: { bg: '#0d2d54', text: '#8fbdf0' },
+  },
+  'workbuddy-intl': {
+    light: { bg: '#e6f1f8', text: '#0f6a8c' },
+    dark: { bg: '#0a3a4d', text: '#7fc9e0' },
+  },
+  'workbuddy-global': {
+    light: { bg: '#eaf3e8', text: '#2f6b3a' },
+    dark: { bg: '#17351d', text: '#9ad3a6' },
+  },
+  loomy: {
+    light: { bg: '#fdeae6', text: '#b23a20' },
+    dark: { bg: '#4a1a10', text: '#f0a894' },
+  },
   empty: {
     light: { bg: '#f5f5f5', text: '#616161' },
     dark: { bg: '#424242', text: '#bdbdbd' },

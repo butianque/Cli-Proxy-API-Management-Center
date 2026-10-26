@@ -51,20 +51,38 @@ describe('routing policy sheet presentation contract', () => {
   });
 
   test('shows the default option when the credential carries no policy', () => {
-    const markup = render();
+    const markup = render({ channels: [{ key: 'start-plan', label: 'Start Plan (free)' }] });
     expect(markup).toContain(i18n.t('account_pool.policy_default'));
   });
 
   test('states the effect of the choice without explaining the mechanism', () => {
-    const markup = render();
+    const markup = render({ channels: [{ key: 'start-plan', label: 'Start Plan (free)' }] });
     expect(markup).toContain(i18n.t('account_pool.policy_hint'));
     expect(markup).not.toContain('start-plan-only');
     expect(markup).not.toContain('metadata');
   });
 
+  test('offers nothing to pin when the account reported no channel', () => {
+    // 只有「默认」一项时，下拉改了也改变不了任何东西：不摆一个死控件，
+    // 直接说清现状并给出下一步。
+    const markup = render();
+    expect(markup).not.toContain(i18n.t('account_pool.policy_hint'));
+    expect(markup).not.toContain('<select');
+    expect(markup).toContain(i18n.t('account_pool.policy_no_channels_title'));
+    expect(markup).toContain(i18n.t('account_pool.policy_no_channels_desc'));
+  });
+
+  test('lets the empty state re-check channels when a reload is wired', () => {
+    const withAction = render({ onRefreshChannels: () => {} });
+    expect(withAction).toContain(i18n.t('account_pool.policy_no_channels_action'));
+    // 没有回读的地方就不给动作，否则是一个点了没反应的按钮。
+    expect(render()).not.toContain(i18n.t('account_pool.policy_no_channels_action'));
+  });
+
   test('locks the control and reports progress while saving', () => {
-    const idle = render();
-    const saving = render({ saving: true });
+    const channels = [{ key: 'start-plan', label: 'Start Plan (free)' }];
+    const idle = render({ channels });
+    const saving = render({ channels, saving: true });
     expect(idle).not.toContain(i18n.t('auth_files.routing_policy_saving'));
     expect(saving).toContain(i18n.t('auth_files.routing_policy_saving'));
     expect(saving).toContain('disabled=""');

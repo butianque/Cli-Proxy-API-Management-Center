@@ -142,6 +142,7 @@ const normalizePluginEntry = (value: unknown): PluginListEntry | null => {
     oauthProviderLabels,
     supportsQuota: asBoolean(value.supports_quota) && quotaProvider !== '',
     quotaProvider: quotaProvider || undefined,
+    supportsFingerprintBrowser: supportsOAuth && asBoolean(value.supports_fingerprint_browser),
     logo: asString(value.logo || metadata?.logo).trim(),
     configFields: configFields.length > 0 ? configFields : (metadata?.configFields ?? []),
     menus: normalizeMenus(value.menus),

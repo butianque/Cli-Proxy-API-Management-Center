@@ -51,6 +51,8 @@ export interface PluginListEntry {
   supportsQuota: boolean;
   /** 该插件负责额度的 provider 键；缺省即无额度通道。 */
   quotaProvider?: string;
+  /** 该插件的登录会读取指纹浏览器选项；只有为真时才应渲染那个开关。 */
+  supportsFingerprintBrowser: boolean;
   logo: string;
   configFields: PluginConfigField[];
   menus: PluginMenu[];

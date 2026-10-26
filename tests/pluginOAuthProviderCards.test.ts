@@ -9,7 +9,6 @@ import { apiClient } from '@/services/api/client';
 import { pluginsApi } from '@/services/api/plugins';
 import {
   buildPluginOAuthProviderCards,
-  isFingerprintBrowserProvider,
   OAuthPage,
 } from '@/pages/OAuthPage';
 import type { PluginListEntry } from '@/types';
@@ -145,25 +144,25 @@ describe('plugin OAuth provider cards', () => {
   });
 });
 
-describe('ZCode fingerprint browser login option', () => {
-  test('is offered for ZCode providers only', () => {
-    for (const id of ['zcode', 'zcode-zai', 'zcode-bigmodel']) {
-      expect(isFingerprintBrowserProvider(id)).toBe(true);
-    }
-    for (const id of [
-      'codex',
-      'anthropic',
-      'antigravity',
-      'kimi',
-      'kimi-ai',
-      'xai',
-      'devin',
-      'meta',
-      'loomy',
-      'example-plugin',
-    ]) {
-      expect(isFingerprintBrowserProvider(id)).toBe(false);
-    }
+describe('fingerprint browser login option', () => {
+  test('is offered only where the plugin declares the capability', () => {
+    // 指纹浏览器是插件自己的登录方式，宿主不能凭 provider 名字猜：声明了能力位的
+    // 插件卡才带这个开关，没声明的一律不带。
+    const [declared] = buildPluginOAuthProviderCards(
+      [plugin({ oauthProvider: 'zcode', supportsFingerprintBrowser: true })],
+      ''
+    );
+    expect(declared.fingerprintBrowser).toBe(true);
+
+    const [undeclared] = buildPluginOAuthProviderCards(
+      [plugin({ id: 'loomy', oauthProvider: 'loomy', supportsFingerprintBrowser: false })],
+      ''
+    );
+    expect(undeclared.fingerprintBrowser).toBe(false);
+
+    // 宿主没给这个字段（老版本后端）时按「不支持」处理，而不是默认开启。
+    const [legacy] = buildPluginOAuthProviderCards([plugin({ oauthProvider: 'zcode-zai' })], '');
+    expect(legacy.fingerprintBrowser).toBeUndefined();
   });
 
   test('is labelled in all six shipped locales', async () => {
@@ -179,13 +178,14 @@ describe('ZCode fingerprint browser login option', () => {
 
   test('drives the request from the per-provider page state instead of local decoration', () => {
     const source = readFileSync('src/pages/OAuthPage.tsx', 'utf8');
-    expect(source).toContain('isFingerprintBrowserProvider(provider.id) &&');
+    expect(source).toContain('supportsFingerprintBrowser(provider) &&');
     expect(source).toContain('checked={state.fingerprintBrowser ?? true}');
     expect(source).toContain('updateProviderState(provider.id, { fingerprintBrowser: value })');
-    expect(source).toContain('states[provider]?.fingerprintBrowser ?? true');
+    // 只有声明了能力位的 provider 才把选择发给宿主；其余传 undefined，保持插件默认。
+    expect(source).toContain('fingerprintBrowser: fingerprintBrowserProviders.has(provider)');
   });
 
-  test('offers no such control on cards that are not ZCode', async () => {
+  test('offers no such control on built-in cards', async () => {
     const i18n = createInstance();
     await i18n.init({ lng: 'en', resources: { en: { translation: en } } });
     const markup = renderToStaticMarkup(

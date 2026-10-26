@@ -65,6 +65,11 @@ export type AuthFileCardProps = {
   /** 路由策略改动的回传；`null` = 清除策略（回到默认）。 */
   onPolicyChange?: (policy: AccountPolicy | null) => void | Promise<void>;
   /**
+   * 让宿主重新探测这张凭证的渠道。
+   * 缺省时路由策略抽屉的空态只讲现状、不给动作（没有回读的地方）。
+   */
+  onRefreshChannels?: (file: AuthFileItem) => void | Promise<void>;
+  /**
    * 出口改完之后重新读一次账号视图。
    * 缺省时卡片不显示出口下拉框（没有回读的地方，改完行上还是旧值）。
    */
@@ -100,6 +105,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
     onCooldownReset,
     onPolicyChange,
     onEgressChanged,
+    onRefreshChannels,
     quotaCapable,
     onOpenPrefixProxyEditor,
     onDelete,
@@ -400,6 +406,9 @@ export function AuthFileCard(props: AuthFileCardProps) {
           disabled={disableControls}
           onClose={() => setPolicySheetOpen(false)}
           onChange={(nextPolicy) => void handlePolicyChange(nextPolicy)}
+          onRefreshChannels={
+            onRefreshChannels ? () => onRefreshChannels(file) : undefined
+          }
         />
       )}
     </article>

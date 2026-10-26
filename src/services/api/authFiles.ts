@@ -22,6 +22,11 @@ export type AuthFileLookup = { name: string; authIndex?: string };
 type AuthFileEntry = AuthFilesResponse['files'][number];
 export type AuthFileFieldsPatch = {
   request_retry?: number | null;
+  /**
+   * 每个凭证的并发硬上限。`null` = 清除该键、回到宿主按 provider 分档的默认值；
+   * `0` = 关闭上限（不限并发）。
+   */
+  max_concurrency?: number | null;
   model_aliases?: Array<{
     name: string;
     alias: string;

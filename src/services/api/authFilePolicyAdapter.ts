@@ -92,10 +92,17 @@ export function applyCredentialPolicyValues(
   json: Record<string, unknown>,
   patch: Record<string, unknown>
 ) {
-  for (const key of ['request_retry', 'model_aliases', 'request_scoped_errors']) {
+  for (const key of [
+    'request_retry',
+    'max_concurrency',
+    'model_aliases',
+    'request_scoped_errors',
+  ]) {
     if (patch[key] === undefined) continue;
+    // 两种写法都清掉：宿主按规范键读，配置文件风格里可能留的是 kebab 变体。
     delete json[key.replace(/_/g, '-')];
-    if (key === 'request_retry' && patch[key] === null) delete json[key];
+    // `null` = 清除该键、回到继承；其余值原样写回。
+    if (patch[key] === null) delete json[key];
     else json[key] = patch[key];
   }
 }

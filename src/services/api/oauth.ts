@@ -20,7 +20,13 @@ export interface OAuthStartResponse {
 }
 
 export interface OAuthStartOptions {
-  /** Open the authorization page in the user's fingerprint browser (ZCode only). */
+  /**
+   * Open the authorization page in the user's fingerprint browser.
+   *
+   * `undefined` leaves the plugin's own default in place; `false` is sent as an
+   * explicit 0 so a plugin that defaults to the fingerprint browser can be
+   * turned off for this login.
+   */
   fingerprintBrowser?: boolean;
 }
 
@@ -50,10 +56,12 @@ export const oauthApi = {
     if (WEBUI_SUPPORTED.has(providerKey)) {
       params.is_webui = true;
     }
-    // The backend reads this flag from the query string; an unchecked box must
-    // send nothing at all, so the plugin keeps its own default.
-    if (options.fingerprintBrowser) {
-      params.fingerprint_browser = '1';
+    // The backend reads this flag from the query string. Omit it entirely when
+    // the caller has no opinion, so the plugin keeps its own default; send an
+    // explicit 0 when the box is unchecked, because a plugin may default to the
+    // fingerprint browser and would otherwise ignore the choice.
+    if (options.fingerprintBrowser !== undefined) {
+      params.fingerprint_browser = options.fingerprintBrowser ? '1' : '0';
     }
     return apiClient.get<OAuthStartResponse>('/oauth/auth-url', {
       params,

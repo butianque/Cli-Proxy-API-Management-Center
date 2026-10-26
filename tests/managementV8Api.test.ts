@@ -256,8 +256,14 @@ describe('v8 management API contracts', () => {
       params: { provider: 'zcode-zai', fingerprint_browser: '1' },
     });
     await oauthApi.startAuth('zcode-bigmodel', { fingerprintBrowser: false });
+    // 取消勾选必须显式发 0：插件默认可能开着指纹浏览器，不发参数就关不掉。
     expect(get).toHaveBeenLastCalledWith('/oauth/auth-url', {
-      params: { provider: 'zcode-bigmodel' },
+      params: { provider: 'zcode-bigmodel', fingerprint_browser: '0' },
+    });
+    // 没有意见（未声明能力位的 provider）就不发这个参数，保持插件自己的默认。
+    await oauthApi.startAuth('loomy');
+    expect(get).toHaveBeenLastCalledWith('/oauth/auth-url', {
+      params: { provider: 'loomy' },
     });
     await oauthApi.submitCallback('anthropic', 'https://example.test/callback?code=test');
     expect(post).toHaveBeenLastCalledWith(

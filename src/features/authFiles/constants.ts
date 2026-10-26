@@ -78,6 +78,9 @@ export const AUTH_FILE_MANUAL_REFRESH_PROVIDERS = new Set([
 // 标签类型颜色配置：权威版本在 @/utils/quota/constants.ts，此处仅转发
 export { TYPE_COLORS } from '@/utils/quota';
 
+// 图标是可选的装饰：这里只收仓库里真实存在的品牌资源。workbuddy-* 与 loomy
+// 没有可打包的图标，`getAuthFileIcon` 返回 null，调用方回落到标签首字
+// （WorkBuddy → W、CodeBuddy → C、Loomy → L），而不是拿别家的图标顶替。
 export const AUTH_FILE_ICONS: Record<string, AuthFileIconAsset> = {
   antigravity: iconAntigravity,
   aistudio: iconGemini,
@@ -94,7 +97,6 @@ export const AUTH_FILE_ICONS: Record<string, AuthFileIconAsset> = {
   'zcode-bigmodel': iconGlm,
   'zcode-zai': iconGlm,
 };
-
 export const clampCardPageSize = (value: number) =>
   Math.min(MAX_CARD_PAGE_SIZE, Math.max(MIN_CARD_PAGE_SIZE, Math.round(value)));
 

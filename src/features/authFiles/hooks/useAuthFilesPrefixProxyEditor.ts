@@ -650,7 +650,12 @@ export function useAuthFilesPrefixProxyEditor(
   ) => {
     setPrefixProxyEditor((prev) => {
       if (!prev) return prev;
-      if (field === 'requestRetry' || field === 'modelAliases' || field === 'errorRules') {
+      if (
+        field === 'requestRetry' ||
+        field === 'maxConcurrency' ||
+        field === 'modelAliases' ||
+        field === 'errorRules'
+      ) {
         const policy = prev.policy ?? readCredentialPolicy(prev.json ?? {});
         return {
           ...prev,

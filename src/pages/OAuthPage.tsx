@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
@@ -77,6 +77,8 @@ interface PluginOAuthProviderCard {
   id: string;
   title: string;
   icon: string;
+  /** 插件声明它的登录会读取指纹浏览器选项。 */
+  fingerprintBrowser: boolean;
 }
 
 type OAuthProviderCard = BuiltInOAuthProviderCard | PluginOAuthProviderCard;
@@ -139,10 +141,22 @@ const PROVIDERS: BuiltInOAuthProviderCard[] = [
 
 const BUILTIN_PROVIDER_IDS = new Set<string>(PROVIDERS.map((provider) => provider.id));
 const CALLBACK_SUPPORTED = new Set<string>(['codex', 'anthropic', 'antigravity', 'xai', 'devin']);
-// Only ZCode logins can be handed to the fingerprint browser; every other card
-// must not offer the control at all.
-export const isFingerprintBrowserProvider = (providerId: string): boolean =>
-  providerId.startsWith('zcode');
+// 插件卡的下一步不是一个通用句：每张卡真正需要的那一步不一样。这里只登记
+// 与通用文案不同的插件，未登记的一律用通用的 plugin_oauth_hint。
+const PLUGIN_LOGIN_GUIDES: Record<string, { hintKey: string; route: string; actionKey: string }> = {
+  // Loomy 用手机号 + 短信验证码登录，号码要从接码服务取；说「走 OAuth 流程」
+  // 会把人送到一个不存在的入口。
+  loomy: {
+    hintKey: 'auth_login.plugin_loomy_hint',
+    route: '/sms-service',
+    actionKey: 'auth_login.plugin_loomy_hint_action',
+  },
+};
+// 指纹浏览器是插件登录的一个选项，不是宿主能力：只有插件声明它会读取这个
+// 标志时才渲染开关，否则那个开关改了也不会有任何效果。
+const supportsFingerprintBrowser = (provider: OAuthProviderCard): boolean =>
+  provider.kind === 'plugin' ? provider.fingerprintBrowser : false;
+
 const XAI_CALLBACK_URL = 'http://127.0.0.1:56121/callback';
 const SUCCESS_RESET_DELAY_MS = 5000;
 const getProviderI18nPrefix = (provider: string) => provider.replace('-', '_');
@@ -205,6 +219,7 @@ export const buildPluginOAuthProviderCards = (
           id: provider,
           title: label ? `${title} · ${label}` : title,
           icon,
+          fingerprintBrowser: plugin.supportsFingerprintBrowser,
         },
       ];
     });
@@ -350,6 +365,13 @@ export function OAuthPage() {
     [pluginProviders]
   );
 
+  // The fingerprint choice is per login entry, and only entries whose plugin
+  // declares the flag may offer it.
+  const fingerprintBrowserProviders = useMemo(
+    () => new Set(providerCards.filter(supportsFingerprintBrowser).map((card) => card.id)),
+    [providerCards]
+  );
+
   const getProviderTitleText = (provider: OAuthProviderCard) =>
     provider.kind === 'plugin'
       ? t('auth_login.plugin_oauth_title', { name: provider.title })
@@ -375,9 +397,13 @@ export function OAuthPage() {
   const resetProviderAttempt = (provider: string) => {
     attempts.current.get(provider)?.invalidate();
     setStates((prev) => {
+      // The fingerprint choice is a preference for the next login, not part of
+      // the attempt, so finishing or cancelling one must not flip it back to the
+      // default under the user's hands.
+      const fingerprintBrowser = prev[provider]?.fingerprintBrowser;
       return {
         ...prev,
-        [provider]: {},
+        [provider]: fingerprintBrowser === undefined ? {} : { fingerprintBrowser },
       };
     });
   };
@@ -503,9 +529,9 @@ export function OAuthPage() {
       const res = await oauthApi.startAuth(
         provider,
         {
-          fingerprintBrowser:
-            isFingerprintBrowserProvider(provider) &&
-            (states[provider]?.fingerprintBrowser ?? true),
+          fingerprintBrowser: fingerprintBrowserProviders.has(provider)
+            ? (states[provider]?.fingerprintBrowser ?? true)
+            : undefined,
         },
         attempt.signal
       );
@@ -681,10 +707,13 @@ export function OAuthPage() {
 
   const renderOAuthProviderCard = (provider: OAuthProviderCard, featured = false) => {
     const state = states[provider.id] || {};
+    // 只有插件卡可能登记了专属的下一步；内置卡一律用通用文案。
+    const loginGuide = provider.kind === 'plugin' ? PLUGIN_LOGIN_GUIDES[provider.id] : undefined;
     const showKimiSignUp =
       featured && provider.kind === 'builtin' && ['kimi', 'kimi-ai'].includes(provider.id);
-    const canSubmitCallback =
-      (provider.kind === 'plugin' || CALLBACK_SUPPORTED.has(provider.id)) && Boolean(state.url);
+    // Plugin logins are polled; the host never reads a callback for them, so the
+    // input would be a control that changes nothing.
+    const canSubmitCallback = CALLBACK_SUPPORTED.has(provider.id) && Boolean(state.url);
     const loginButtonLabel =
       state.status === 'success'
         ? t('auth_login.login_another_account')
@@ -740,9 +769,17 @@ export function OAuthPage() {
       >
         <div className={styles.cardContent}>
           <div className={featured ? styles.featuredHint : styles.cardHint}>
-            {getProviderText(provider, 'oauth_hint')}
+            {loginGuide ? t(loginGuide.hintKey) : getProviderText(provider, 'oauth_hint')}
+            {loginGuide && (
+              <>
+                {' '}
+                <Link className={styles.cardHintAction} to={loginGuide.route}>
+                  {t(loginGuide.actionKey)}
+                </Link>
+              </>
+            )}
           </div>
-          {isFingerprintBrowserProvider(provider.id) && (
+          {supportsFingerprintBrowser(provider) && (
             <div className={styles.fingerprintOption}>
               <SelectionCheckbox
                 checked={state.fingerprintBrowser ?? true}
