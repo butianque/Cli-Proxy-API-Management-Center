@@ -1864,7 +1864,11 @@
     "step_run": "Заполните и запустите",
     "no_params": "Этому действию не нужны параметры.",
     "running_notice": "Выполняется. Прогресс — в разделе задач ниже.",
-    "result_links": "Ссылки в результате"
+    "result_links": "Ссылки в результате",
+    "steps_title": "Следующие шаги",
+    "step_state_done": "Готово",
+    "step_state_todo": "Осталось",
+    "step_state_blocked": "Ждёт шаг 1"
   },
   "plugin_store": {
     "title": "Магазин плагинов",

@@ -1859,7 +1859,11 @@
     "step_run": "填写参数并运行",
     "no_params": "这个动作不需要填写参数。",
     "running_notice": "正在运行，进度见下方任务。",
-    "result_links": "结果里的链接"
+    "result_links": "结果里的链接",
+    "steps_title": "接下来",
+    "step_state_done": "已完成",
+    "step_state_todo": "待完成",
+    "step_state_blocked": "等前一步"
   },
   "plugin_store": {
     "title": "插件商店",

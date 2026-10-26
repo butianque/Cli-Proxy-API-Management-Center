@@ -24,7 +24,8 @@ import { getErrorMessage } from '@/utils/helpers';
 import { formatDateTimeValue } from '@/utils/format';
 import { getPluginTitle, resolvePluginAssetURL } from '@/features/plugins/pluginResources';
 import { PluginActionCard } from './PluginActionCard';
-import { collectResultChoices, formatResultJson } from './actionResultLinks';
+import { ResultStepList } from './ResultStepList';
+import { collectResultChoices, collectResultSteps, formatResultJson } from './actionResultLinks';
 import styles from './PluginActionsPage.module.scss';
 
 /** 轮询间隔：动作通常几分钟内完成，2 秒足够且不打扰后端。 */
@@ -71,6 +72,7 @@ function JobItem({
 }) {
   const { t } = useTranslation();
   const choices = collectResultChoices(job.result);
+  const steps = collectResultSteps(job.result);
   return (
     <li className={styles.job}>
       <div className={styles.jobHead}>
@@ -94,6 +96,13 @@ function JobItem({
         {job.message ? <span className={styles.jobMessage}>{job.message}</span> : null}
         {job.error ? <span className={styles.jobError}>{job.error}</span> : null}
       </div>
+      {/* 一条流水线的结果先给步骤清单：现在在哪一步、每步差什么。 */}
+      {steps.length > 0 ? (
+        <ResultStepList
+          steps={steps}
+          onRunAction={(key, params) => onRunChoice(key, params)}
+        />
+      ) : null}
       {/* 结果里点名了候选账号时，下一步就是选一个再跑一次，不该让人去抄标识。 */}
       {choices.length > 0 ? (
         <div className={styles.choices}>
@@ -471,6 +480,7 @@ export function PluginActionsPage() {
                   result={results[activeAction.key]}
                   notice={runningJob ? t('plugin_actions.running_notice') : undefined}
                   onTrigger={(values) => void trigger(activeAction, values)}
+                  onRunAction={runChoice}
                 />
               </section>
             ) : null}

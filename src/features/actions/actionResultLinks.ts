@@ -78,6 +78,74 @@ export function collectResultChoices(value: unknown): ResultChoice[] {
   return choices;
 }
 
+/** 一次最多列这么多步：再多就该看原样 JSON 了。 */
+const MAX_STEPS = 6;
+
+/** 一步的状态：已完成 / 待做 / 被前一步挡住。 */
+export type ResultStepState = 'done' | 'todo' | 'blocked';
+
+/** 一步自带的下一个动作：点了就用这些参数重跑它点名的动作。 */
+export interface ResultStepAction {
+  key: string;
+  label: string;
+  params: Record<string, unknown>;
+}
+
+/** 结果里的一步：状态、说明、可复制的链接、以及下一步。 */
+export interface ResultStep {
+  key: string;
+  index: number;
+  title: string;
+  state: ResultStepState;
+  detail?: string;
+  link?: string;
+  action?: ResultStepAction;
+}
+
+/**
+ * 结果里的执行步骤。
+ *
+ * 有些动作本身是一条流水线（绑定 → 发消息 → 客户端登录）。这类结果可以带
+ * `steps`，每一步给出序号、标题、状态、说明、该打开的链接和下一步动作；页面照
+ * 顺序渲染成清单，状态用徽标区分 —— 操作者一眼看到「现在在哪一步、下一步做什么」。
+ *
+ * 只认形状不认业务：没有 `steps`、或者条目缺 key/标题，就当没有。
+ */
+export function collectResultSteps(value: unknown): ResultStep[] {
+  if (!isRecord(value) || !Array.isArray(value.steps)) return [];
+  const steps: ResultStep[] = [];
+  for (const item of value.steps) {
+    if (steps.length >= MAX_STEPS) break;
+    if (!isRecord(item)) continue;
+    if (typeof item.key !== 'string' || !item.key.trim()) continue;
+    if (typeof item.title !== 'string' || !item.title.trim()) continue;
+    const state: ResultStepState =
+      item.state === 'done' || item.state === 'blocked' ? item.state : 'todo';
+    const rawIndex = typeof item.index === 'number' ? item.index : steps.length + 1;
+    let action: ResultStepAction | undefined;
+    if (isRecord(item.action) && typeof item.action.key === 'string' && isRecord(item.action.params)) {
+      action = {
+        key: item.action.key,
+        label:
+          typeof item.action.label === 'string' && item.action.label.trim()
+            ? item.action.label.trim()
+            : item.action.key,
+        params: item.action.params,
+      };
+    }
+    steps.push({
+      key: item.key,
+      index: Number.isFinite(rawIndex) ? rawIndex : steps.length + 1,
+      title: item.title.trim(),
+      state,
+      detail: typeof item.detail === 'string' && item.detail.trim() ? item.detail.trim() : undefined,
+      link: typeof item.link === 'string' && LINK_PATTERN.test(item.link.trim()) ? item.link.trim() : undefined,
+      action,
+    });
+  }
+  return steps.sort((left, right) => left.index - right.index);
+}
+
 /** 结果原样展示：动作返回什么就显示什么，面板不替它挑字段。 */
 export function formatResultJson(value: unknown): string {
   try {

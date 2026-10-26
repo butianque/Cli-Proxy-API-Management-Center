@@ -4,7 +4,10 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import i18n from '@/i18n';
 import { buildActionPayload } from '@/features/actions/actionPayload';
-import { collectResultLinks } from '@/features/actions/actionResultLinks';
+import {
+  collectResultLinks,
+  collectResultSteps,
+} from '@/features/actions/actionResultLinks';
 import { PluginActionCard } from '@/features/actions/PluginActionCard';
 import { PluginActionsPage, PluginJobList } from '@/features/actions/PluginActionsPage';
 import type { PluginAction, PluginJob } from '@/services/api/actions';
@@ -120,6 +123,78 @@ describe('PluginActionCard renders a declared action', () => {
     expect(markup).not.toContain('href="https://zcode.z.ai/invite/6WYWVN2M"');
     expect(markup).not.toContain('target="_blank"');
     expect(markup).toContain(i18n.t('common.copy'));
+  });
+});
+
+describe('steps turn one result into a checklist', () => {
+  const steps = [
+    {
+      key: 'bind',
+      index: 1,
+      title: '绑定邀请码',
+      state: 'todo',
+      detail: '用浏览器登录 zcode.z.ai，打开下面的链接',
+      link: 'https://zcode.z.ai/invite/6WYWVN2M',
+      action: { key: 'zcode.referral-redeem', label: '检查进度', params: { invitee: 'idx-a' } },
+    },
+    { key: 'message', index: 2, title: '发一条消息', state: 'blocked', detail: '绑定成功后自动发送' },
+    { key: 'device', index: 3, title: '客户端登录', state: 'done' },
+  ];
+
+  test('the shape is normalized: order by index, unknown state becomes todo, links must be http(s)', () => {
+    const collected = collectResultSteps({
+      status: 'not_bound',
+      steps: [
+        { key: 'device', index: 3, title: '客户端登录', state: 'done' },
+        { key: 'bind', index: 1, title: '绑定邀请码', state: 'weird', link: 'javascript:alert(1)' },
+        { key: 'message', index: 2, title: '发一条消息', state: 'blocked' },
+      ],
+    });
+    expect(collected.map((step) => step.key)).toEqual(['bind', 'message', 'device']);
+    expect(collected[0]?.state).toBe('todo');
+    expect(collected[0]?.link).toBeUndefined();
+    expect(collected[1]?.state).toBe('blocked');
+  });
+
+  test('a result without steps or with unnamed entries adds nothing', () => {
+    expect(collectResultSteps({ status: 'ok' })).toEqual([]);
+    expect(collectResultSteps({ steps: [{ title: 'no key' }, { key: 'k' }] })).toEqual([]);
+    expect(collectResultSteps('not an object')).toEqual([]);
+  });
+
+  test('a job renders each step with its state, link and next action', () => {
+    const markup = renderJobList([
+      job({ title: 'Complete onboarding', result: { status: 'not_bound', steps } }),
+    ]);
+
+    expect(markup).toContain(i18n.t('plugin_actions.steps_title'));
+    // 每一步都要能看出「在哪一步、差什么」。
+    expect(markup).toContain('1');
+    expect(markup).toContain('绑定邀请码');
+    expect(markup).toContain(i18n.t('plugin_actions.step_state_todo'));
+    expect(markup).toContain(i18n.t('plugin_actions.step_state_blocked'));
+    expect(markup).toContain(i18n.t('plugin_actions.step_state_done'));
+    expect(markup).toContain('发一条消息');
+    // 链接是复制对象，不是跳转。
+    expect(markup).toContain('https://zcode.z.ai/invite/6WYWVN2M');
+    expect(markup).not.toContain('href="https://zcode.z.ai/invite/6WYWVN2M"');
+    // 下一步就是再跑一次，按钮直接带好参数。
+    expect(markup).toContain('检查进度');
+  });
+
+  test('a step link is not repeated by the generic link block in the action card', () => {
+    const markup = renderToStaticMarkup(
+      createElement(PluginActionCard, {
+        action: action({ destructive: false }),
+        busy: false,
+        result: { status: 'not_bound', steps },
+        onTrigger: () => {},
+        onRunAction: () => {},
+      })
+    );
+    // 步骤里已经带着自己的链接，再列一遍同样的地址就是重复。
+    expect(markup).toContain('https://zcode.z.ai/invite/6WYWVN2M');
+    expect(markup).not.toContain(i18n.t('plugin_actions.result_links'));
   });
 });
 

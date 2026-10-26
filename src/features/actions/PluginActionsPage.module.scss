@@ -391,6 +391,135 @@
   gap: 5px;
 }
 
+/* ---------- 结果里的执行步骤 ---------- */
+
+/* 一条流水线：序号 + 标题 + 状态 + 说明 + 下一步。整块跟着结果走，不是常驻面板。 */
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--bg-tertiary) 35%, transparent);
+}
+
+.flowTitle {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.flowList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flowStep {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+  border-left-width: 3px;
+  border-radius: $radius-sm;
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+}
+
+.flowStep_done {
+  border-left-color: rgba($success-color, 0.75);
+}
+
+.flowStep_todo {
+  border-left-color: var(--text-tertiary);
+}
+
+.flowStep_blocked {
+  border-left-color: rgba($warning-color, 0.55);
+  opacity: 0.82;
+}
+
+.flowIndex {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+  border-radius: $radius-full;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.flowBody {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flowHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flowStepTitle {
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.flowState {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 0 6px;
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.flowState_done {
+  border-color: rgba($success-color, 0.24);
+  background: rgba($success-color, 0.1);
+  color: var(--success-color);
+}
+
+.flowState_todo {
+  border-color: color-mix(in srgb, var(--border-color) 60%, transparent);
+  background: color-mix(in srgb, var(--bg-tertiary) 60%, transparent);
+  color: var(--text-secondary);
+}
+
+.flowState_blocked {
+  border-color: rgba($warning-color, 0.22);
+  background: rgba($warning-color, 0.08);
+  color: var(--warning-color);
+}
+
+.flowDetail {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.flowActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
 /* ---------- 标签 ---------- */
 
 .tag {

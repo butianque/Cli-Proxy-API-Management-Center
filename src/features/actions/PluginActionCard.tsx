@@ -18,7 +18,13 @@ import { copyToClipboard } from '@/utils/clipboard';
 import { useNotificationStore } from '@/stores';
 import type { PluginAction } from '@/services/api/actions';
 import { buildActionPayload, type ActionFormValue } from './actionPayload';
-import { collectResultChoices, collectResultLinks, formatResultJson } from './actionResultLinks';
+import {
+  collectResultChoices,
+  collectResultLinks,
+  collectResultSteps,
+  formatResultJson,
+} from './actionResultLinks';
+import { ResultStepList } from './ResultStepList';
 import styles from './PluginActionsPage.module.scss';
 
 interface PluginActionCardProps {
@@ -29,6 +35,8 @@ interface PluginActionCardProps {
   /** 运行中提示（由页面按任务状态推导），不是由本组件记住状态。 */
   notice?: string;
   onTrigger: (values: Record<string, unknown>) => void;
+  /** 结果里的步骤可以点名另一个动作；由页面按动作 key 重跑。 */
+  onRunAction?: (key: string, params: Record<string, unknown>) => void;
 }
 
 export function PluginActionCard({
@@ -38,6 +46,7 @@ export function PluginActionCard({
   result,
   notice,
   onTrigger,
+  onRunAction,
 }: PluginActionCardProps) {
   const { t } = useTranslation();
   const showConfirmation = useNotificationStore((state) => state.showConfirmation);
@@ -45,6 +54,7 @@ export function PluginActionCard({
   const [values, setValues] = useState<Record<string, ActionFormValue>>({});
   const links = result === undefined ? [] : collectResultLinks(result);
   const choices = result === undefined ? [] : collectResultChoices(result);
+  const steps = result === undefined ? [] : collectResultSteps(result);
 
   const copyLink = async (link: string) => {
     const copied = await copyToClipboard(link);
@@ -149,7 +159,10 @@ export function PluginActionCard({
           </Button>
         </div>
 
-        {links.length > 0 ? (
+        {steps.length > 0 ? <ResultStepList steps={steps} onRunAction={onRunAction} /> : null}
+
+        {/* 步骤里已经带着自己的链接，再列一遍同样的地址只是噪音。 */}
+        {steps.length === 0 && links.length > 0 ? (
           <div className={styles.links}>
             <span className={styles.linksTitle}>{t('plugin_actions.result_links')}</span>
             {links.map((link) => (

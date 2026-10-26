@@ -1861,7 +1861,11 @@
     "step_run": "Fill in and run",
     "no_params": "This action needs no settings.",
     "running_notice": "Running. Progress is under Jobs below.",
-    "result_links": "Links in the result"
+    "result_links": "Links in the result",
+    "steps_title": "Next steps",
+    "step_state_done": "Done",
+    "step_state_todo": "To do",
+    "step_state_blocked": "Waiting"
   },
   "plugin_store": {
     "title": "Plugin Store",

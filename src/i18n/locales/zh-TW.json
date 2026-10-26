@@ -1885,7 +1885,11 @@
     "step_run": "填寫參數並執行",
     "no_params": "這個動作不需要填寫參數。",
     "running_notice": "正在執行，進度見下方任務。",
-    "result_links": "結果裡的連結"
+    "result_links": "結果裡的連結",
+    "steps_title": "接下來",
+    "step_state_done": "已完成",
+    "step_state_todo": "待完成",
+    "step_state_blocked": "等前一步"
   },
   "plugin_store": {
     "title": "插件商店",
