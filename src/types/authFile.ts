@@ -40,6 +40,12 @@ export interface AuthFileCooldownSnapshot {
   records: AuthFileCooldown[] | null;
 }
 
+/** 一个模型的并发上限。`0` = 该模型不限并发。 */
+export interface ModelConcurrencyEntry {
+  model: string;
+  max_concurrency: number;
+}
+
 export interface AuthFileItem {
   name: string;
   type?: AuthFileType | string;
@@ -74,6 +80,12 @@ export interface AuthFileItem {
   recentRequests?: RecentRequestBucket[];
   /** Absent on older servers. Never interpreted as credential health. */
   cooldownSnapshot?: AuthFileCooldownSnapshot;
+  /** 逐模型并发上限（列表接口 `model_max_concurrency` 归一化后的结果）。 */
+  modelMaxConcurrency?: ModelConcurrencyEntry[];
+  /** 凭证级兜底上限；缺省表示沿用下面的 provider 默认值。 */
+  maxConcurrency?: number;
+  /** 未单列模型的 provider 默认上限；旧服务端不下发。 */
+  maxConcurrencyDefault?: number;
   [key: string]: unknown;
 }
 

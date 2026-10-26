@@ -652,7 +652,6 @@ export function useAuthFilesPrefixProxyEditor(
       if (!prev) return prev;
       if (
         field === 'requestRetry' ||
-        field === 'maxConcurrency' ||
         field === 'modelAliases' ||
         field === 'errorRules'
       ) {

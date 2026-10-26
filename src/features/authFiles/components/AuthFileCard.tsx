@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/icons';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
 import type { AuthFileItem } from '@/types';
+import type { ModelConcurrencyEntry } from '@/types/authFile';
 import type { AccountPolicy, AccountView } from '@/types/accounts';
 import { statusBarDataFromRecentRequests } from '@/utils/recentRequests';
 import { formatFileSize } from '@/utils/format';
@@ -38,6 +39,7 @@ import { AuthFileQuotaSection } from '@/features/authFiles/components/AuthFileQu
 import { AuthFileCooldownSection } from './AuthFileCooldownSection';
 import { AuthFilePoolSection } from './AuthFilePoolSection';
 import { AuthFileRoutingPolicySheet } from './AuthFileRoutingPolicySheet';
+import type { AuthFileRoutingPolicySyncScope } from './AuthFileRoutingPolicySheet';
 import styles from './AuthFileCard.module.scss';
 
 export type AuthFileCardProps = {
@@ -62,8 +64,22 @@ export type AuthFileCardProps = {
   onDownload: (name: string) => void;
   onManualRefresh: (file: AuthFileItem) => void;
   onCooldownReset: (file: AuthFileItem) => void;
-  /** 路由策略改动的回传；`null` = 清除策略（回到默认）。 */
-  onPolicyChange?: (policy: AccountPolicy | null) => void | Promise<void>;
+  /**
+   * 路由策略改动的回传：策略与逐模型并发上限一次提交，避免两个字段分开落盘时互相覆盖。
+   * `policy = null` = 清除策略（回到默认）；`syncToCategory` = 同分类一起写。
+   */
+  onPolicyChange?: (
+    policy: AccountPolicy | null,
+    modelMaxConcurrency: ModelConcurrencyEntry[],
+    syncToCategory: boolean
+  ) => void | Promise<void>;
+  /** 同分类可同步的凭证数与分类名；缺省时不出现同步开关。 */
+  policySyncScope?: AuthFileRoutingPolicySyncScope;
+  /**
+   * 打开路由策略抽屉时拉取候选模型名。
+   * 缺省时抽屉只能手填模型名。
+   */
+  onLoadModels?: (file: AuthFileItem) => Promise<string[]>;
   /**
    * 让宿主重新探测这张凭证的渠道。
    * 缺省时路由策略抽屉的空态只讲现状、不给动作（没有回读的地方）。
@@ -104,6 +120,8 @@ export function AuthFileCard(props: AuthFileCardProps) {
     onManualRefresh,
     onCooldownReset,
     onPolicyChange,
+    policySyncScope,
+    onLoadModels,
     onEgressChanged,
     onRefreshChannels,
     quotaCapable,
@@ -161,14 +179,22 @@ export function AuthFileCard(props: AuthFileCardProps) {
   // 路由策略是账号池层面的开关，正文只留状态与额度，所以收进动作行的抽屉里。
   const [policySheetOpen, setPolicySheetOpen] = useState(false);
   const [policySaving, setPolicySaving] = useState(false);
-  const showPolicyButton = Boolean(account) && Boolean(onPolicyChange);
+  const showPolicyButton =
+    Boolean(onPolicyChange) && (Boolean(account) || file.maxConcurrencyDefault !== undefined);
 
   const handlePolicyChange = useCallback(
-    async (nextPolicy: AccountPolicy | null) => {
+    async (
+      nextPolicy: AccountPolicy | null,
+      modelMaxConcurrency: ModelConcurrencyEntry[],
+      syncToCategory: boolean
+    ) => {
       if (!onPolicyChange) return;
       setPolicySaving(true);
       try {
-        await onPolicyChange(nextPolicy);
+        await onPolicyChange(nextPolicy, modelMaxConcurrency, syncToCategory);
+        setPolicySheetOpen(false);
+      } catch {
+        // 报告由调用方负责。抽屉保持打开，用户填的内容还在，可以直接重试。
       } finally {
         setPolicySaving(false);
       }
@@ -402,10 +428,17 @@ export function AuthFileCard(props: AuthFileCardProps) {
           fileName={file.name}
           policy={account?.policy}
           channels={account?.channels}
+          modelMaxConcurrency={file.modelMaxConcurrency}
+          maxConcurrency={file.maxConcurrency}
+          maxConcurrencyDefault={file.maxConcurrencyDefault}
           saving={policySaving}
           disabled={disableControls}
           onClose={() => setPolicySheetOpen(false)}
-          onChange={(nextPolicy) => void handlePolicyChange(nextPolicy)}
+          onSave={(next) =>
+            handlePolicyChange(next.policy, next.modelMaxConcurrency, next.syncToCategory)
+          }
+          syncScope={policySyncScope}
+          onLoadModels={onLoadModels ? () => onLoadModels(file) : undefined}
           onRefreshChannels={
             onRefreshChannels ? () => onRefreshChannels(file) : undefined
           }

@@ -44,6 +44,7 @@ import {
 } from '@/features/authFiles/logic';
 import { useAuthFilesData } from '@/features/authFiles/hooks/useAuthFilesData';
 import type { AuthFileItem } from '@/types';
+import type { ModelConcurrencyEntry } from '@/types/authFile';
 import { useAuthFilesModels } from '@/features/authFiles/hooks/useAuthFilesModels';
 import { useAuthFilesOauth } from '@/features/authFiles/hooks/useAuthFilesOauth';
 import { useAuthFilesPrefixProxyEditor } from '@/features/authFiles/hooks/useAuthFilesPrefixProxyEditor';
@@ -161,6 +162,8 @@ export function AuthFilesPage() {
     handleManualRefresh,
     handleCooldownReset,
     updateAccountPolicy,
+    loadModelCandidates,
+    syncModelMaxConcurrency,
     refreshQuotas,
     handleStatusToggle,
     toggleSelect,
@@ -605,16 +608,72 @@ export function AuthFilesPage() {
     [showNotification, t]
   );
 
-  /** 策略改动失败由页面兜住：卡片只管把选择回传上来。 */
+  // 同分类凭证数：勾「同分类一起改」时要如实说出会写几个（分类与顶部 tab 同源）。
+  const policyCategoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const file of files) {
+      if (isRuntimeOnlyAuthFile(file)) continue;
+      const key = normalizeProviderKey(String(file.type ?? file.provider ?? ''));
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [files]);
+
+  const resolvePolicySyncScope = useCallback(
+    (file: AuthFileItem) => {
+      const key = normalizeProviderKey(String(file.type ?? file.provider ?? ''));
+      if (!key) return undefined;
+      const total = policyCategoryCounts.get(key) ?? 0;
+      // 只有一张凭证的分类没有「同步」可言：不摆一个勾了也没区别的控件。
+      if (total <= 1) return undefined;
+      return { categoryLabel: getTypeLabel(t, key), peerCount: total - 1 };
+    },
+    [policyCategoryCounts, t]
+  );
+
+  /**
+   * 策略保存失败由页面提示，错误继续往上抛：卡片据此决定关不关抽屉。
+   * 吞掉错误会让抽屉在没保存成功的状态下关掉，用户刚填的行就看不见了。
+   */
   const handleAccountPolicyChange = useCallback(
-    async (name: string, policy: AccountPolicy | null) => {
+    async (
+      name: string,
+      policy: AccountPolicy | null,
+      modelMaxConcurrency: ModelConcurrencyEntry[],
+      syncToCategory: boolean
+    ) => {
       try {
-        await updateAccountPolicy(name, policy);
+        await updateAccountPolicy(name, policy, modelMaxConcurrency);
+      } catch (error) {
+        showNotification(t('account_pool.policy_save_failed'), 'error');
+        throw error;
+      }
+      if (!syncToCategory) return;
+
+      const file = files.find((item) => item.name === name);
+      const categoryKey = normalizeProviderKey(String(file?.type ?? file?.provider ?? ''));
+      if (!categoryKey) return;
+      try {
+        const { ok, failed } = await syncModelMaxConcurrency(
+          categoryKey,
+          name,
+          modelMaxConcurrency
+        );
+        if (ok + failed === 0) return;
+        if (failed === 0) {
+          showNotification(t('auth_files.routing_policy_sync_done', { count: ok }), 'success');
+        } else {
+          showNotification(
+            t('auth_files.routing_policy_sync_partial', { ok, failed }),
+            'warning'
+          );
+        }
       } catch {
         showNotification(t('account_pool.policy_save_failed'), 'error');
       }
     },
-    [showNotification, t, updateAccountPolicy]
+    [files, showNotification, syncModelMaxConcurrency, t, updateAccountPolicy]
   );
 
   const [quotaRefreshing, setQuotaRefreshing] = useState(false);
@@ -873,7 +932,16 @@ export function AuthFilesPage() {
                 onDownload={handleDownload}
                 onManualRefresh={handleManualRefresh}
                 onCooldownReset={handleCooldownReset}
-                onPolicyChange={(policy) => void handleAccountPolicyChange(file.name, policy)}
+                onPolicyChange={(policy, modelMaxConcurrency, syncToCategory) =>
+                  handleAccountPolicyChange(
+                    file.name,
+                    policy,
+                    modelMaxConcurrency,
+                    syncToCategory
+                  )
+                }
+                policySyncScope={resolvePolicySyncScope(file)}
+                onLoadModels={loadModelCandidates}
                 onEgressChanged={() => loadFiles({ background: true })}
                 onRefreshChannels={handleRefreshChannels}
                 onOpenPrefixProxyEditor={openPrefixProxyEditor}

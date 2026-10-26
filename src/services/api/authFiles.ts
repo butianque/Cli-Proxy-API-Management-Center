@@ -15,6 +15,7 @@ import {
   normalizeUsageTotal,
 } from '@/utils/recentRequests';
 import { parseTimestampMs } from '@/utils/timestamp';
+import { readModelConcurrencyEntries } from '@/utils/models';
 import { normalizeAuthFileCooldowns, normalizeCooldownTimestamp } from './authFileCooldowns';
 
 type AuthFileStatusResponse = { status: string; disabled: boolean };
@@ -22,6 +23,11 @@ export type AuthFileLookup = { name: string; authIndex?: string };
 type AuthFileEntry = AuthFilesResponse['files'][number];
 export type AuthFileFieldsPatch = {
   request_retry?: number | null;
+  /**
+   * 逐模型并发硬上限。数组即全量覆盖：漏掉的模型回到凭证级/渠道默认值；
+   * 空数组或 `null` = 清除整表。每项 `0` 表示该模型不限并发。
+   */
+  model_max_concurrency?: Array<{ model: string; max_concurrency: number }> | null;
   /**
    * 每个凭证的并发硬上限。`null` = 清除该键、回到宿主按 provider 分档的默认值；
    * `0` = 关闭上限（不限并发）。
@@ -277,6 +283,8 @@ const normalizeAuthFileEntry = (
   const modified = readDateField(entry);
   const priority = readIntegerField(entry['priority']);
   const weight = readIntegerField(entry['weight']);
+  const maxConcurrency = readIntegerField(entry['max_concurrency']);
+  const maxConcurrencyDefault = readIntegerField(entry['max_concurrency_default']);
 
   return {
     ...entry,
@@ -290,6 +298,9 @@ const normalizeAuthFileEntry = (
     ...(modified > 0 ? { modified } : {}),
     priority,
     weight,
+    modelMaxConcurrency: readModelConcurrencyEntries(entry['model_max_concurrency']),
+    ...(maxConcurrency === undefined ? {} : { maxConcurrency }),
+    ...(maxConcurrencyDefault === undefined ? {} : { maxConcurrencyDefault }),
     ...(note ? { note } : {}),
     ...(email ? { email } : {}),
     ...(projectId ? { projectId } : {}),

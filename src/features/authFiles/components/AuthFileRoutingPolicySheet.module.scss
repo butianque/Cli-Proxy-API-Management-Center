@@ -3,7 +3,65 @@
 .body {
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 12px;
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sectionNote {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.removeButton {
+  margin-top: 2px;
+}
+
+.rowActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* 同步范围是「这一份并发上限写到哪里」，跟行编辑同属一组但要有视觉分隔。 */
+.sync {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .saving {

@@ -13,6 +13,8 @@ import { IconChevronDown } from './icons';
 
 interface AutocompleteInputProps {
   label?: string;
+  /** Accessible name for a field whose visible label lives outside the control. */
+  ariaLabel?: string;
   value: string;
   onChange: (value: string) => void;
   options: string[] | { value: string; label?: string }[];
@@ -29,6 +31,7 @@ interface AutocompleteInputProps {
 
 export function AutocompleteInput({
   label,
+  ariaLabel,
   value,
   onChange,
   options,
@@ -150,6 +153,8 @@ export function AutocompleteInput({
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
+          aria-label={label ? undefined : ariaLabel}
+          aria-invalid={error ? true : undefined}
           disabled={disabled}
           autoComplete="off"
           style={{ paddingRight: 32 }}

@@ -10,6 +10,7 @@ import { notifyAuthFilesChanged } from '@/features/authFiles/authFilesEvents';
 import { buildAccountIndex } from '@/features/authFiles/accountPool';
 import { useNotificationStore } from '@/stores';
 import type { AuthFileItem } from '@/types';
+import type { ModelConcurrencyEntry } from '@/types/authFile';
 import type { AccountPolicy, AccountsResponse, AccountView } from '@/types/accounts';
 import { formatFileSize } from '@/utils/format';
 import { MAX_AUTH_FILE_SIZE } from '@/utils/constants';
@@ -75,8 +76,30 @@ export type UseAuthFilesDataResult = {
   handleManualRefresh: (item: AuthFileItem) => Promise<void>;
   handleCooldownReset: (item: AuthFileItem) => void;
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
-  /** 写账号路由策略；`null` 清除策略。失败时 reject，由调用方提示。 */
-  updateAccountPolicy: (name: string, policy: AccountPolicy | null) => Promise<void>;
+  /**
+   * 写账号路由策略与逐模型并发上限；`policy = null` 清除策略，空数组清除逐模型上限。
+   * 两个字段一起提交：分开写会让后一个响应覆盖前一个还没读到的值。失败时 reject，由调用方提示。
+   */
+  updateAccountPolicy: (
+    name: string,
+    policy: AccountPolicy | null,
+    modelMaxConcurrency: ModelConcurrencyEntry[]
+  ) => Promise<void>;
+  /**
+   * 该凭证可用的模型名，用于「路由策略 → 按模型并发上限」的候选。
+   * 取不到时返回空数组（手填仍然可用），不抛错。
+   */
+  loadModelCandidates: (file: AuthFileItem) => Promise<string[]>;
+  /**
+   * 把一份按模型并发上限写进同一账号池分类下的其它凭证。
+   * 只改 `model_max_concurrency`，各凭证自己的路由策略保持原样。
+   * 返回实际成功/失败条数，由调用方决定怎么提示。
+   */
+  syncModelMaxConcurrency: (
+    categoryKey: string,
+    excludeName: string,
+    entries: ModelConcurrencyEntry[]
+  ) => Promise<{ ok: number; failed: number }>;
   /**
    * 触发宿主探测这些凭据的额度（宿主快照只能由插件额度通道写入），随后重读 `/accounts`。
    * `total` 只计入选的凭据——取不到额度插件或没有 `authIndex` 的跳过。不弹通知。
@@ -286,14 +309,92 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
   );
 
   const updateAccountPolicy = useCallback(
-    async (name: string, policy: AccountPolicy | null) => {
+    async (
+      name: string,
+      policy: AccountPolicy | null,
+      modelMaxConcurrency: ModelConcurrencyEntry[]
+    ) => {
       const connectionRevision = apiClient.getConnectionRevision();
-      await authFilesApi.patchFields(name, { policy });
+      await authFilesApi.patchFields(name, {
+        policy,
+        model_max_concurrency: modelMaxConcurrency,
+      });
       if (connectionRevision !== apiClient.getConnectionRevision()) return;
       invalidateInFlightLoads();
       await loadFiles({ background: true });
     },
     [invalidateInFlightLoads, loadFiles]
+  );
+
+  const loadModelCandidates = useCallback(async (file: AuthFileItem): Promise<string[]> => {
+    const names: string[] = [];
+    const seen = new Set<string>();
+    const add = (model: unknown) => {
+      const name = typeof model === 'string' ? model.trim() : '';
+      if (!name || seen.has(name.toLowerCase())) return;
+      seen.add(name.toLowerCase());
+      names.push(name);
+    };
+
+    // 两条来源各自尽力：某个端点不可用时另一些仍然给出候选，全失败就只剩手填。
+    const channels = [String(file.type ?? ''), String(file.provider ?? '')].filter(
+      (channel, index, list) => channel.trim() !== '' && list.indexOf(channel) === index
+    );
+    const [perCredential, ...byChannel] = await Promise.allSettled([
+      authFilesApi.getModelsForAuthFile(file.name),
+      ...channels.map((channel) => authFilesApi.getModelDefinitions(channel)),
+    ]);
+    if (perCredential.status === 'fulfilled') {
+      perCredential.value.forEach((model) => add(model.id));
+    }
+    for (const result of byChannel) {
+      if (result.status !== 'fulfilled') continue;
+      result.value.forEach((model) => add(model.id));
+    }
+    return names;
+  }, []);
+
+  /**
+   * 勾了「同分类一起改」之后，把同一份按模型并发上限写进分类下的其它凭证。
+   * 只带 `model_max_concurrency`：不带 `policy` 就不会碰别人的路由策略。
+   * 小批量并发，避免十几个凭证同时改文件与列表轮询抢锁；失败只计数，不中断。
+   */
+  const syncModelMaxConcurrency = useCallback(
+    async (
+      categoryKey: string,
+      excludeName: string,
+      entries: ModelConcurrencyEntry[]
+    ): Promise<{ ok: number; failed: number }> => {
+      const revision = apiClient.getConnectionRevision();
+      const names = new Set<string>();
+      for (const file of files) {
+        if (isRuntimeOnlyAuthFile(file) || file.name === excludeName) continue;
+        if (normalizeProviderKey(String(file.type ?? file.provider ?? '')) !== categoryKey) continue;
+        names.add(file.name);
+      }
+      const targets = [...names];
+      if (targets.length === 0) return { ok: 0, failed: 0 };
+
+      const chunkSize = 4;
+      let ok = 0;
+      let failed = 0;
+      for (let index = 0; index < targets.length; index += chunkSize) {
+        const chunk = targets.slice(index, index + chunkSize);
+        const results = await Promise.allSettled(
+          chunk.map((name) => authFilesApi.patchFields(name, { model_max_concurrency: entries }))
+        );
+        if (revision !== apiClient.getConnectionRevision()) return { ok, failed };
+        for (const result of results) {
+          if (result.status === 'fulfilled') ok++;
+          else failed++;
+        }
+      }
+
+      invalidateInFlightLoads();
+      await loadFiles({ background: true });
+      return { ok, failed };
+    },
+    [files, invalidateInFlightLoads, loadFiles]
   );
 
   /**
@@ -1071,6 +1172,8 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
     handleCooldownReset,
     handleStatusToggle,
     updateAccountPolicy,
+    loadModelCandidates,
+    syncModelMaxConcurrency,
     refreshQuotas,
     toggleSelect,
     selectAllVisible,

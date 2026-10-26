@@ -85,6 +85,37 @@ export function normalizeModelList(payload: unknown, { dedupe = false } = {}): M
   });
 }
 
+/** 非负整数（数字或数字字符串）→ number；其余一律 null。 */
+export function parseNonNegativeInteger(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/**
+ * 逐模型并发上限（列表接口的 `model_max_concurrency`）→ 干净条目。
+ * 读不懂的行直接丢掉：界面宁可不显示，也不显示一个后端不会执行的上限。
+ */
+export function readModelConcurrencyEntries(
+  raw: unknown
+): { model: string; max_concurrency: number }[] {
+  if (!Array.isArray(raw)) return [];
+  const entries: { model: string; max_concurrency: number }[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const model = typeof item.model === 'string' ? item.model.trim() : '';
+    const limit = parseNonNegativeInteger(item.max_concurrency);
+    if (!model || limit === null) continue;
+    entries.push({ model, max_concurrency: limit });
+  }
+  return entries;
+}
+
 export interface ModelGroup {
   id: string;
   label: string;

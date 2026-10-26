@@ -69,62 +69,6 @@ describe('auth-file structured credential policy contracts', () => {
     });
   });
 
-  test('reads a concurrency cap as inherit unless it is a whole non-negative number', () => {
-    // 宿主在读取时解析上限：非法值一律按「未设置」回退到渠道默认，面板不能把
-    // 一个宿主会忽略的值显示成生效值。0 是合法值（关闭上限），不是继承。
-    expect(readCredentialPolicy({}).maxConcurrency).toEqual({ mode: 'inherit', value: '0' });
-    expect(readCredentialPolicy({ max_concurrency: 0 }).maxConcurrency).toEqual({
-      mode: 'custom',
-      value: '0',
-    });
-    expect(readCredentialPolicy({ max_concurrency: 4 }).maxConcurrency).toEqual({
-      mode: 'custom',
-      value: '4',
-    });
-    expect(readCredentialPolicy({ 'max-concurrency': '5' }).maxConcurrency).toEqual({
-      mode: 'custom',
-      value: '5',
-    });
-    for (const max_concurrency of [-1, 1.5, '2.0', 'abc', null, true]) {
-      expect(readCredentialPolicy({ max_concurrency }).maxConcurrency.mode).toBe('inherit');
-    }
-  });
-
-  test('writes the cap as a number, null to clear it, and rejects invalid input', () => {
-    expect(
-      buildCredentialPolicyPatch(
-        {},
-        changed({}, 'maxConcurrency', { mode: 'custom', value: '3' })
-      )
-    ).toEqual({ max_concurrency: 3 });
-    // 0 是「关闭上限」，必须真的写出去，不能被当成空值吞掉。
-    expect(
-      buildCredentialPolicyPatch({}, changed({}, 'maxConcurrency', { mode: 'custom', value: '0' }))
-    ).toEqual({ max_concurrency: 0 });
-    const original = { max_concurrency: 3 };
-    expect(
-      buildCredentialPolicyPatch(
-        original,
-        changed(original, 'maxConcurrency', { mode: 'inherit', value: '3' })
-      )
-    ).toEqual({ max_concurrency: null });
-    // 已经是继承态时选继承，不产生任何改动。
-    expect(
-      buildCredentialPolicyPatch({}, changed({}, 'maxConcurrency', { mode: 'inherit', value: '0' }))
-    ).toEqual({});
-    for (const value of ['', '-1', '1.5', '1e2', 'NaN', '9007199254740992']) {
-      const draft = changed({}, 'maxConcurrency', { mode: 'custom', value });
-      expect(credentialPolicyError(draft)).toBe('auth_files.policy_concurrency_invalid');
-      expect(() => buildCredentialPolicyPatch({}, draft)).toThrow();
-    }
-  });
-
-  test('clears both spellings of the cap when it goes back to inherit', () => {
-    const json = { max_concurrency: 2, 'max-concurrency': 2, provider: 'zcode' };
-    applyCredentialPolicyPatch(json, { max_concurrency: null });
-    expect(json).toEqual({ provider: 'zcode' });
-  });
-
   test('recognizes negative retry sentinels and null policy lists as inherited without rewriting them', () => {    for (const request_retry of [-1, '-2', null, undefined]) {
       const original = { request_retry, model_aliases: null, request_scoped_errors: null };
       const draft = readCredentialPolicy(original);

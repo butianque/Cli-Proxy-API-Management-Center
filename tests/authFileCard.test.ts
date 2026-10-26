@@ -100,8 +100,10 @@ describe('auth file card presentation contract', () => {
     expect(download).toBeGreaterThan(policy);
   });
 
-  test('offers the policy control only where the account pool knows the credential', () => {
-    expect(source).toContain('Boolean(account) && Boolean(onPolicyChange)');
+  test('offers the policy control where the credential has a pool view or a channel cap', () => {
+    // 账号池视图在时能钉渠道；没有视图但宿主报了渠道默认并发上限时，
+    // 抽屉里的「按模型并发」仍然必须够得着，否则那张卡片就没有入口。
+    expect(source).toContain('Boolean(account) || file.maxConcurrencyDefault !== undefined');
   });
 
   test('names the routing policy control in every locale', () => {
