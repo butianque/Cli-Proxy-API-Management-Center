@@ -1863,7 +1863,8 @@
     "steps_title": "接下来",
     "step_state_done": "已完成",
     "step_state_todo": "待完成",
-    "step_state_blocked": "等前一步"
+    "step_state_blocked": "等前一步",
+    "choices_title": "选一个继续"
   },
   "plugin_store": {
     "title": "插件商店",

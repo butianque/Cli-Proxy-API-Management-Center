@@ -1868,7 +1868,8 @@
     "steps_title": "Следующие шаги",
     "step_state_done": "Готово",
     "step_state_todo": "Осталось",
-    "step_state_blocked": "Ждёт шаг 1"
+    "step_state_blocked": "Ждёт шаг 1",
+    "choices_title": "Выберите, чтобы продолжить"
   },
   "plugin_store": {
     "title": "Магазин плагинов",

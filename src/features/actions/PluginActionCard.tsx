@@ -21,6 +21,7 @@ import { buildActionPayload, type ActionFormValue } from './actionPayload';
 import {
   collectResultChoices,
   collectResultLinks,
+  collectResultNotes,
   collectResultSteps,
   formatResultJson,
 } from './actionResultLinks';
@@ -55,6 +56,7 @@ export function PluginActionCard({
   const links = result === undefined ? [] : collectResultLinks(result);
   const choices = result === undefined ? [] : collectResultChoices(result);
   const steps = result === undefined ? [] : collectResultSteps(result);
+  const notes = result === undefined ? [] : collectResultNotes(result);
 
   const copyLink = async (link: string) => {
     const copied = await copyToClipboard(link);
@@ -161,6 +163,17 @@ export function PluginActionCard({
 
         {steps.length > 0 ? <ResultStepList steps={steps} onRunAction={onRunAction} /> : null}
 
+        {/* 步骤已经逐条说过的话不再重复；没有步骤时，这几句就是全部的说明。 */}
+        {steps.length === 0 && notes.length > 0 ? (
+          <ul className={styles.notes}>
+            {notes.map((note) => (
+              <li key={note} className={styles.note}>
+                {note}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
         {/* 步骤里已经带着自己的链接，再列一遍同样的地址只是噪音。 */}
         {steps.length === 0 && links.length > 0 ? (
           <div className={styles.links}>
@@ -184,17 +197,24 @@ export function PluginActionCard({
           </div>
         ) : null}
 
-        {/* 结果点名了候选账号时，选一个就等于用它的参数重跑本动作。 */}
+        {/* 结果点名了候选时，选一个就等于用它的参数重跑本动作。标题必须说清楚
+            「这些是给你点的」，否则一排孤立按钮看不出是下一步。 */}
         {choices.length > 0 ? (
-          <div className={styles.choices}>
-            {choices.map((choice) => (
-              <div key={`${choice.label}:${JSON.stringify(choice.params)}`} className={styles.choice}>
-                <Button variant="secondary" size="sm" onClick={() => onTrigger(choice.params)}>
-                  {choice.label}
-                </Button>
-                {choice.hint ? <span className={styles.choiceHint}>{choice.hint}</span> : null}
-              </div>
-            ))}
+          <div className={styles.links}>
+            <span className={styles.linksTitle}>{t('plugin_actions.choices_title')}</span>
+            <div className={styles.choices}>
+              {choices.map((choice) => (
+                <div
+                  key={`${choice.label}:${JSON.stringify(choice.params)}`}
+                  className={styles.choice}
+                >
+                  <Button variant="secondary" size="sm" onClick={() => onTrigger(choice.params)}>
+                    {choice.label}
+                  </Button>
+                  {choice.hint ? <span className={styles.choiceHint}>{choice.hint}</span> : null}
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 

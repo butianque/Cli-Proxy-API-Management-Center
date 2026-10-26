@@ -78,6 +78,29 @@ export function collectResultChoices(value: unknown): ResultChoice[] {
   return choices;
 }
 
+/** 一次最多列这么多说明：再多就该看原样 JSON 了。 */
+const MAX_NOTES = 4;
+
+/**
+ * 结果里的说明句。
+ *
+ * 有些结果把「这个链接对谁有效、做完回哪里点」写成几条句子（`notes`）。这些句子
+ * 没有字段名可认，页面照顺序显示；重复的只留一条。步骤已经带着同样的说明时不再
+ * 重复列出。
+ */
+export function collectResultNotes(value: unknown): string[] {
+  if (!isRecord(value) || !Array.isArray(value.notes)) return [];
+  const notes: string[] = [];
+  for (const item of value.notes) {
+    if (notes.length >= MAX_NOTES) break;
+    if (typeof item !== 'string') continue;
+    const text = item.trim();
+    if (!text || notes.includes(text)) continue;
+    notes.push(text);
+  }
+  return notes;
+}
+
 /** 一次最多列这么多步：再多就该看原样 JSON 了。 */
 const MAX_STEPS = 6;
 

@@ -1825,7 +1825,8 @@
     "steps_title": "Bước tiếp theo",
     "step_state_done": "Xong",
     "step_state_todo": "Cần làm",
-    "step_state_blocked": "Chờ bước trước"
+    "step_state_blocked": "Chờ bước trước",
+    "choices_title": "Chọn một để tiếp tục"
   },
   "plugin_store": {
     "title": "Cửa hàng Plugin",

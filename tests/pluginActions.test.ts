@@ -6,6 +6,7 @@ import i18n from '@/i18n';
 import { buildActionPayload } from '@/features/actions/actionPayload';
 import {
   collectResultLinks,
+  collectResultNotes,
   collectResultSteps,
 } from '@/features/actions/actionResultLinks';
 import { PluginActionCard } from '@/features/actions/PluginActionCard';
@@ -198,6 +199,47 @@ describe('steps turn one result into a checklist', () => {
   });
 });
 
+describe('collectResultNotes turns the plugin’s sentences into the only explanation', () => {
+  test('keeps trimmed, non-empty, unique notes and caps them', () => {
+    expect(
+      collectResultNotes({
+        notes: ['  打开前先确认登录的是 a@b.com  ', '', 42, '同一句', '同一句', 'n2', 'n3', 'n4'],
+      })
+    ).toEqual(['打开前先确认登录的是 a@b.com', '同一句', 'n2', 'n3']);
+    expect(collectResultNotes({ notes: 'not a list' })).toEqual([]);
+    expect(collectResultNotes('not an object')).toEqual([]);
+  });
+
+  test('a result without steps shows its notes, a result with steps does not repeat them', () => {
+    const notes = ['链接不认账号：打开前先确认登录的是 a@b.com', '这个链接对池里 3 个号都有效'];
+    const withoutSteps = renderToStaticMarkup(
+      createElement(PluginActionCard, {
+        action: action({ destructive: false }),
+        busy: false,
+        result: { status: 'ok', invite_link: 'https://zcode.z.ai/invite/ABC', notes },
+        onTrigger: () => {},
+      })
+    );
+    expect(withoutSteps).toContain(`>${notes[0]}<`);
+    expect(withoutSteps).toContain(`>${notes[1]}<`);
+
+    const withSteps = renderToStaticMarkup(
+      createElement(PluginActionCard, {
+        action: action({ destructive: false }),
+        busy: false,
+        result: {
+          status: 'not_bound',
+          notes,
+          steps: [{ key: 'bind', index: 1, title: '绑定邀请码', state: 'todo', detail: notes[0] }],
+        },
+        onTrigger: () => {},
+      })
+    );
+    // 步骤已经逐条说过的话，不再作为说明重复一遍（原始 JSON 里当然还在）。
+    expect(withSteps).not.toContain(`>${notes[1]}<`);
+  });
+});
+
 describe('collectResultLinks finds only shareable links', () => {
   test('walks the result, keeps absolute http(s) links, drops duplicates and prose', () => {
     const links = collectResultLinks({
@@ -313,6 +355,8 @@ describe('the job list stays short until the operator asks for more', () => {
     expect(markup).toContain('Night lamp');
     expect(markup).toContain('zcode-aaaa · 1/3');
     expect(markup).toContain('Second');
+    // 一排按钮前面必须有句话，说明「点它就是继续」。
+    expect(markup).toContain(i18n.t('plugin_actions.choices_title'));
     // 结果的原始 JSON 仍然可查，但要点开才占地方。
     expect(markup).toContain(i18n.t('plugin_actions.job_result'));
     expect(markup).toContain('needs_target');

@@ -103,21 +103,28 @@ function JobItem({
           onRunAction={(key, params) => onRunChoice(key, params)}
         />
       ) : null}
-      {/* 结果里点名了候选账号时，下一步就是选一个再跑一次，不该让人去抄标识。 */}
+      {/* 结果里点名了候选账号时，下一步就是选一个再跑一次，不该让人去抄标识。
+          没有标题的一排按钮看不出是下一步，所以和动作卡一样先给一句话。 */}
       {choices.length > 0 ? (
-        <div className={styles.choices}>
-          {choices.map((choice) => (
-            <div key={`${choice.label}:${JSON.stringify(choice.params)}`} className={styles.choice}>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => onRunChoice(job.key, choice.params)}
+        <div className={styles.links}>
+          <span className={styles.linksTitle}>{t('plugin_actions.choices_title')}</span>
+          <div className={styles.choices}>
+            {choices.map((choice) => (
+              <div
+                key={`${choice.label}:${JSON.stringify(choice.params)}`}
+                className={styles.choice}
               >
-                {choice.label}
-              </Button>
-              {choice.hint ? <span className={styles.choiceHint}>{choice.hint}</span> : null}
-            </div>
-          ))}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onRunChoice(job.key, choice.params)}
+                >
+                  {choice.label}
+                </Button>
+                {choice.hint ? <span className={styles.choiceHint}>{choice.hint}</span> : null}
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
       {job.result !== undefined ? (

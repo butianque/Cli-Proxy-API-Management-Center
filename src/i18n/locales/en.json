@@ -1865,7 +1865,8 @@
     "steps_title": "Next steps",
     "step_state_done": "Done",
     "step_state_todo": "To do",
-    "step_state_blocked": "Waiting"
+    "step_state_blocked": "Waiting",
+    "choices_title": "Pick one to continue"
   },
   "plugin_store": {
     "title": "Plugin Store",
