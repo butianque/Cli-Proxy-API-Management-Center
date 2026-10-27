@@ -42,56 +42,49 @@ describe('routing policy vocabulary', () => {
 });
 
 describe('routing policy sheet presentation contract', () => {
-  const bothPlans = [
-    { key: 'start-plan', label: 'Start Plan (free)' },
-    { key: 'api-key', label: 'Coding Plan (paid)' },
+  // 面板只显示插件上报的通道名；key 与名称都来自账号视图，面板不内置清单。
+  // 插件侧给通道的兜底名称是否还叫 free/paid，是插件的事（见 07 §11.113）。
+  const bothChannels = [
+    { key: 'start-plan', label: 'JWT' },
+    { key: 'api-key', label: 'API Key' },
   ];
 
-  test('shows the current policy in the control', () => {
-    const markup = render({ channels: bothPlans, policy: 'only:start-plan' });
-    expect(markup).toContain(i18n.t('account_pool.policy_only', { name: 'Start Plan (free)' }));
+  test('shows the current channel in the control', () => {
+    const markup = render({ channels: bothChannels, policy: 'only:start-plan' });
+    expect(markup).toContain(i18n.t('account_pool.policy_only', { name: 'JWT' }));
   });
 
-  test('shows the default option when the credential carries no policy', () => {
-    const markup = render({ channels: bothPlans });
+  test('shows the default option when the credential pins no channel', () => {
+    const markup = render({ channels: bothChannels });
     expect(markup).toContain(i18n.t('account_pool.policy_default'));
   });
 
   test('states the effect of the choice without explaining the mechanism', () => {
-    const markup = render({ channels: bothPlans });
+    const markup = render({ channels: bothChannels });
     expect(markup).toContain(i18n.t('account_pool.policy_hint'));
     expect(markup).not.toContain('start-plan-only');
     expect(markup).not.toContain('metadata');
   });
 
-  test('offers nothing to pin when the account reported no plan', () => {
-    // 一个套餐都没上报时，下拉改了也改变不了任何东西：不摆一个死控件，
-    // 直接说清现状并给出下一步。
-    const markup = render({ channels: [] });
-    expect(markup).not.toContain(i18n.t('account_pool.policy_hint'));
-    expect(markup).not.toContain('<select');
-    expect(markup).toContain(i18n.t('account_pool.policy_no_channels_title'));
-    expect(markup).toContain(i18n.t('account_pool.policy_no_channels_desc'));
+  test('offers no channel control unless there is a second channel to choose', () => {
+    // 只有一条通道时「全部通道」和「只用它」行为完全相同，一条都没有更没得选：
+    // 两种情况下整块都不出现——不摆一个改不动任何东西的控件，也不拿说明文字占位。
+    const withoutChoice = [[], undefined, [bothChannels[0]]];
+    for (const channels of withoutChoice) {
+      const markup = render({ channels });
+      expect(markup).not.toContain('aria-expanded');
+      expect(markup).not.toContain(i18n.t('account_pool.policy_default'));
+      expect(markup).not.toContain(i18n.t('account_pool.policy_hint'));
+      expect(markup).toContain(i18n.t('auth_files.routing_policy_concurrency_title'));
+    }
   });
 
-  test('names the only plan instead of offering a choice that changes nothing', () => {
-    // 只带一个套餐的凭证没有第二个选项可固定：说清它带的是哪一个，而不是
-    // 摆一个「全部套餐 / 只用它」的下拉（两者行为完全相同）。
-    const markup = render({ channels: [bothPlans[0]] });
-    expect(markup).toContain(
-      i18n.t('account_pool.policy_single_plan', { name: 'Start Plan (free)' })
-    );
-    expect(markup).not.toContain('<select');
-    expect(markup).not.toContain(i18n.t('account_pool.policy_no_channels_title'));
-  });
-
-  test('keeps the plan area when the credential reported nothing', () => {
-    // `channels` 缺省只说明还没上报套餐，不代表这张凭证没有套餐设置。
-    // 把整块藏掉会让已存的选择看起来「消失了」，所以这里必须退化为说明态。
-    const markup = render();
-    expect(markup).toContain(i18n.t('account_pool.policy_no_channels_title'));
-    expect(markup).not.toContain('<select');
-    expect(markup).toContain(i18n.t('auth_files.routing_policy_concurrency_title'));
+  test('has no channel prose or refresh action left to render', () => {
+    // 空态与「只有一条」的说明都撤掉了：留着文案或回读入口只会让人以为还有东西没出现。
+    expect(source).not.toContain('policy_single_plan');
+    expect(source).not.toContain('policy_no_channels');
+    expect(source).not.toContain('onRefreshChannels');
+    expect(source).not.toContain('EmptyState');
   });
 
   test('offers the same-category sync only when the category has peers', () => {
@@ -116,18 +109,9 @@ describe('routing policy sheet presentation contract', () => {
     expect(source).toContain('syncToCategory: showSync && syncToCategory');
   });
 
-  test('lets the empty state re-check channels when a reload is wired', () => {
-    const withAction = render({ channels: [], onRefreshChannels: () => {} });
-    expect(withAction).toContain(i18n.t('account_pool.policy_no_channels_action'));
-    // 没有回读的地方就不给动作，否则是一个点了没反应的按钮。
-    expect(render({ channels: [] })).not.toContain(
-      i18n.t('account_pool.policy_no_channels_action')
-    );
-  });
-
   test('locks the control and reports progress while saving', () => {
-    const idle = render({ channels: bothPlans });
-    const saving = render({ channels: bothPlans, saving: true });
+    const idle = render({ channels: bothChannels });
+    const saving = render({ channels: bothChannels, saving: true });
     expect(idle).not.toContain(i18n.t('auth_files.routing_policy_saving'));
     expect(saving).toContain(i18n.t('auth_files.routing_policy_saving'));
     expect(saving).toContain('disabled=""');

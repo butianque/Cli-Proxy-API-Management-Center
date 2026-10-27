@@ -700,25 +700,6 @@ export function AuthFilesPage() {
     }
   }, [filtered, quotaRefreshing, refreshQuotas, showNotification, t]);
 
-  /**
-   * 让宿主重新探测这一张凭证的渠道。
-   *
-   * 渠道来自宿主的账号视图（由插件额度通道写入），所以这里与「刷新额度」走同一条路：
-   * 先触发探测，再重读 `/accounts`。没有可探测的通道时也重读一次，否则点了没反应。
-   * 成功不弹通知——渠道到了，抽屉里的空态自己就没了。
-   */
-  const handleRefreshChannels = useCallback(
-    async (file: AuthFileItem) => {
-      try {
-        const { total } = await refreshQuotas([file]);
-        if (total === 0) await loadFiles({ background: true });
-      } catch {
-        showNotification(t('common.unknown_error'), 'error');
-      }
-    },
-    [loadFiles, refreshQuotas, showNotification, t]
-  );
-
   const openExcludedEditor = useCallback(
     (provider?: string) => {
       const providerValue = (provider || (filter !== 'all' ? String(filter) : '')).trim();
@@ -943,7 +924,6 @@ export function AuthFilesPage() {
                 policySyncScope={resolvePolicySyncScope(file)}
                 onLoadModels={loadModelCandidates}
                 onEgressChanged={() => loadFiles({ background: true })}
-                onRefreshChannels={handleRefreshChannels}
                 onOpenPrefixProxyEditor={openPrefixProxyEditor}
                 onDelete={handleDelete}
                 onToggleStatus={handleStatusToggle}

@@ -81,11 +81,6 @@ export type AuthFileCardProps = {
    */
   onLoadModels?: (file: AuthFileItem) => Promise<string[]>;
   /**
-   * 让宿主重新探测这张凭证的渠道。
-   * 缺省时路由策略抽屉的空态只讲现状、不给动作（没有回读的地方）。
-   */
-  onRefreshChannels?: (file: AuthFileItem) => void | Promise<void>;
-  /**
    * 出口改完之后重新读一次账号视图。
    * 缺省时卡片不显示出口下拉框（没有回读的地方，改完行上还是旧值）。
    */
@@ -123,7 +118,6 @@ export function AuthFileCard(props: AuthFileCardProps) {
     policySyncScope,
     onLoadModels,
     onEgressChanged,
-    onRefreshChannels,
     quotaCapable,
     onOpenPrefixProxyEditor,
     onDelete,
@@ -176,7 +170,8 @@ export function AuthFileCard(props: AuthFileCardProps) {
       ? ({ '--card-delay': `${mountEntranceDelayMs}ms` } as CSSProperties)
       : undefined;
 
-  // 路由策略是账号池层面的开关，正文只留状态与额度，所以收进动作行的抽屉里。
+  // 调用通道与逐模型并发上限都是账号池层面的设置，正文只留状态与额度，
+  // 所以收进动作行的抽屉里。
   const [policySheetOpen, setPolicySheetOpen] = useState(false);
   const [policySaving, setPolicySaving] = useState(false);
   const showPolicyButton =
@@ -439,9 +434,6 @@ export function AuthFileCard(props: AuthFileCardProps) {
           }
           syncScope={policySyncScope}
           onLoadModels={onLoadModels ? () => onLoadModels(file) : undefined}
-          onRefreshChannels={
-            onRefreshChannels ? () => onRefreshChannels(file) : undefined
-          }
         />
       )}
     </article>

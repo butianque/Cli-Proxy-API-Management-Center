@@ -5,7 +5,6 @@ import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { AutocompleteInput } from '@/components/ui/AutocompleteInput';
 import { Button } from '@/components/ui/Button';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { IconPlus, IconTrash2 } from '@/components/ui/icons';
@@ -40,11 +39,11 @@ export type AuthFileRoutingPolicySheetProps = {
   open: boolean;
   /** 供标题使用：本次改的是哪个凭证。 */
   fileName: string;
-  /** 当前允许的套餐；缺省 = 全部套餐。 */
+  /** 当前允许的调用通道；缺省 = 全部通道。 */
   policy?: AccountPolicy;
   /**
-   * 这个凭证实际带哪些套餐（插件按账号实时上报）；缺省或空 = 没有可选套餐。
-   * 缺省不代表「没有套餐设置」——套餐区始终渲染，只是退化为说明态。
+   * 这个凭证实际能走哪几条调用通道（插件按账号实时上报）。
+   * 少于两条时没有可选项，通道区整块不出现。
    */
   channels?: readonly AccountChannel[];
   /** 已保存的逐模型并发上限。 */
@@ -61,23 +60,19 @@ export type AuthFileRoutingPolicySheetProps = {
   onSave: (next: AuthFileRoutingPolicySave) => void | Promise<void>;
   /** 打开时拉取候选模型名；失败则只剩手填，不影响保存。 */
   onLoadModels?: () => Promise<string[]>;
-  /** 渠道探测：没有可钉渠道时的空态动作。 */
-  onRefreshChannels?: () => void | Promise<void>;
   /** 同分类可同步的凭证；缺省或 peerCount 为 0 时不出现同步开关。 */
   syncScope?: AuthFileRoutingPolicySyncScope;
 };
 
 /**
- * 路由套餐抽屉。控件属于「账号池」这一层：套餐决定这个凭证允许用哪一档
- * （例如免费的 Start Plan、付费的 Coding Plan），逐模型并发上限决定同一凭证
- * 上各模型各自能同时跑几个请求。
+ * 凭证设置抽屉。调用通道决定这个凭证允许走哪一条（只有真能选时才出现），
+ * 逐模型并发上限决定同一凭证上各模型各自能同时跑几个请求。
  *
  * 抽屉里的改动先落草稿，底部一次保存，避免两个字段分批提交时互相覆盖。
  */
 export function AuthFileRoutingPolicySheet(props: AuthFileRoutingPolicySheetProps) {
   const { t } = useTranslation();
   const labelId = useId();
-  const [refreshing, setRefreshing] = useState(false);
   const [policyDraft, setPolicyDraft] = useState<AccountPolicy>(
     props.policy ?? ACCOUNT_POLICY_AUTO
   );
@@ -138,13 +133,11 @@ export function AuthFileRoutingPolicySheet(props: AuthFileRoutingPolicySheetProp
         ? t('account_pool.policy_default')
         : t('account_pool.policy_only', { name: option.channelLabel }),
   }));
-  // 一个凭证带哪几个套餐，由插件按账号实时上报；面板不内置套餐清单。
-  // 两个以上才需要选：只有一个时选也改变不了任何东西，一个都没有就没有可选项。
-  const reportedPlans = channels.length;
-  const hasChoice = reportedPlans > 1;
-  const onlyChannel = reportedPlans === 1 ? channels[0] : null;
-  // 套餐区始终渲染：`channels` 缺省只说明这张凭证还没上报套餐，不代表它没有套餐
-  // 设置——把它整块藏掉会让已存的选择凭空「消失」。
+  // 一个凭证能走哪几条调用通道，由插件按账号实时上报，面板不内置通道清单。
+  // 两条以上才需要选：只有一条时选也改变不了任何东西，一条都没有更没得选。
+  // 这两种情况下通道区整块不出现——不摆一个改不动任何东西的控件，也不拿
+  // 说明文字占位。
+  const hasChoice = channels.length > 1;
   const syncScope = props.syncScope;
   const showSync = syncScope !== undefined && syncScope.peerCount > 0;
 
@@ -185,16 +178,6 @@ export function AuthFileRoutingPolicySheet(props: AuthFileRoutingPolicySheetProp
     });
   };
 
-  const handleRefreshChannels = async () => {
-    if (refreshing || !props.onRefreshChannels) return;
-    setRefreshing(true);
-    try {
-      await props.onRefreshChannels();
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
   return (
     <Sheet
       open={props.open}
@@ -219,7 +202,7 @@ export function AuthFileRoutingPolicySheet(props: AuthFileRoutingPolicySheetProp
       }
     >
       <div className={styles.body}>
-        {hasChoice ? (
+        {hasChoice && (
           <div className="form-group">
             <label id={labelId}>{t('account_pool.policy_label')}</label>
             <Select
@@ -231,35 +214,6 @@ export function AuthFileRoutingPolicySheet(props: AuthFileRoutingPolicySheetProp
             />
             <div className="hint">{t('account_pool.policy_hint')}</div>
           </div>
-        ) : onlyChannel ? (
-          <section className={styles.section}>
-            <div className={styles.sectionHead}>
-              <span className={styles.sectionTitle}>{t('account_pool.policy_label')}</span>
-            </div>
-            <div className="hint">
-              {t('account_pool.policy_single_plan', {
-                name: onlyChannel.label || onlyChannel.key,
-              })}
-            </div>
-          </section>
-        ) : (
-          <EmptyState
-            title={t('account_pool.policy_no_channels_title')}
-            description={t('account_pool.policy_no_channels_desc')}
-            action={
-              props.onRefreshChannels ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  loading={refreshing}
-                  disabled={props.disabled}
-                  onClick={() => void handleRefreshChannels()}
-                >
-                  {t('account_pool.policy_no_channels_action')}
-                </Button>
-              ) : undefined
-            }
-          />
         )}
 
         <section className={styles.section}>
