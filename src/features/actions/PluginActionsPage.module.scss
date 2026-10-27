@@ -362,21 +362,55 @@
 .pairRow {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   min-width: 0;
 }
 
 .pairLabel {
-  flex: 0 0 auto;
+  flex: 0 0 76px;
   color: var(--text-tertiary);
   font-size: 11.5px;
   font-weight: 650;
+}
+
+/* 账号本身就是这一行要复制的东西，所以复制按钮跟在它后面，而不是另起一行。 */
+.pairAccount {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  min-width: 0;
 }
 
 .pairValue {
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+  cursor: text;
+}
+
+/* UID 与凭证名各占一列：合进账号里就没法单独复制，也看不出哪段是 UID。 */
+.pairAttribute {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pairAttributeLabel {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.pairAttributeValue {
+  max-width: 24ch;
+  overflow: hidden;
+  color: var(--text-secondary);
   font-family: $font-mono;
   font-size: 11.5px;
   text-overflow: ellipsis;

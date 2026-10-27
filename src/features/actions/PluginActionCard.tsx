@@ -11,14 +11,17 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Notice } from '@/components/ui/Notice';
+import { Pagination } from '@/components/ui/Pagination';
 import { Select } from '@/components/ui/Select';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
 import { IconCopy } from '@/components/ui/icons';
+import { usePagination } from '@/hooks/usePagination';
 import { copyToClipboard } from '@/utils/clipboard';
 import { useNotificationStore } from '@/stores';
 import type { PluginAction } from '@/services/api/actions';
 import { buildActionPayload, type ActionFormValue } from './actionPayload';
 import {
+  CHOICE_PAGE_SIZE,
   collectResultChoices,
   collectResultLinks,
   collectResultNotes,
@@ -70,6 +73,8 @@ export function PluginActionCard({
   const notes = result === undefined ? [] : collectResultNotes(result);
   const pair = result === undefined ? undefined : collectResultPair(result);
   const poll = result === undefined ? undefined : collectResultPoll(result);
+  // 候选可能上百条，翻页是页面的事：一次只摆十行，其余留在同一份结果里。
+  const pagedChoices = usePagination(choices, CHOICE_PAGE_SIZE);
 
   // 轮询的身份只由「重跑哪个动作、带什么参数」决定：结果每刷新一次都是新对象，
   // 拿对象本身当依赖会把计时器一直重启。
@@ -96,8 +101,8 @@ export function PluginActionCard({
     return () => window.clearInterval(timer);
   }, [pollSignature, busy]);
 
-  const copyLink = async (link: string) => {
-    const copied = await copyToClipboard(link);
+  const copyText = async (text: string) => {
+    const copied = await copyToClipboard(text);
     showNotification(
       copied
         ? t('notification.link_copied', { defaultValue: 'Copied to clipboard' })
@@ -200,13 +205,33 @@ export function PluginActionCard({
         </div>
 
         {/* 谁邀请、谁被邀请，先说在步骤前面：操作者拿这两行去核对浏览器里登录的
-            到底是哪个号，而不是从 JSON 里自己找。 */}
+            到底是哪个号，而不是从 JSON 里自己找。账号、UID、凭证名各占一列 ——
+            挤进一个字符串里就没法单独复制，也看不出哪个是 UID。 */}
         {pair ? (
           <div className={styles.pair}>
             {pair.items.map((item) => (
               <div key={item.label} className={styles.pairRow}>
                 <span className={styles.pairLabel}>{item.label}</span>
-                <span className={styles.pairValue}>{item.value}</span>
+                <span className={styles.pairAccount}>
+                  <span className={styles.pairValue}>{item.value}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void copyText(item.value)}
+                    aria-label={t('common.copy')}
+                  >
+                    <span className={styles.copyLabel}>
+                      <IconCopy size={13} aria-hidden="true" />
+                      {t('common.copy')}
+                    </span>
+                  </Button>
+                </span>
+                {item.attributes?.map((attribute) => (
+                  <span key={attribute.label} className={styles.pairAttribute}>
+                    <span className={styles.pairAttributeLabel}>{attribute.label}</span>
+                    <span className={styles.pairAttributeValue}>{attribute.value}</span>
+                  </span>
+                ))}
               </div>
             ))}
             {pair.hint ? <p className={styles.pairHint}>{pair.hint}</p> : null}
@@ -236,7 +261,7 @@ export function PluginActionCard({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => void copyLink(link)}
+                  onClick={() => void copyText(link)}
                   aria-label={t('common.copy')}
                 >
                   <span className={styles.copyLabel}>
@@ -250,12 +275,13 @@ export function PluginActionCard({
         ) : null}
 
         {/* 结果点名了候选时，选一个就等于用它的参数重跑本动作。标题必须说清楚
-            「这些是给你点的」，否则一排孤立按钮看不出是下一步。 */}
+            「这些是给你点的」，否则一排孤立按钮看不出是下一步。名单会跟着池子
+            长到上百条，所以按页翻，一页十行。 */}
         {choices.length > 0 ? (
           <div className={styles.links}>
             <span className={styles.linksTitle}>{t('plugin_actions.choices_title')}</span>
             <div className={styles.choices}>
-              {choices.map((choice) => (
+              {pagedChoices.items.map((choice) => (
                 <div
                   key={`${choice.label}:${JSON.stringify(choice.params)}`}
                   className={styles.choice}
@@ -267,6 +293,16 @@ export function PluginActionCard({
                 </div>
               ))}
             </div>
+            {pagedChoices.totalPages > 1 ? (
+              <Pagination
+                page={pagedChoices.page}
+                totalPages={pagedChoices.totalPages}
+                total={pagedChoices.total}
+                from={pagedChoices.from}
+                to={pagedChoices.to}
+                onPageChange={pagedChoices.setPage}
+              />
+            ) : null}
           </div>
         ) : null}
 

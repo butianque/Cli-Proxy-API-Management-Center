@@ -25,9 +25,20 @@ const LINK_PATTERN = /^https?:\/\/[^\s]+$/i;
  *
  * 只认形状不认业务：没有 `pair`、或者条目缺称呼/值，就当没有。
  */
+/** 一行里跟在账号后面的补充事实（UID、凭证名）。 */
+export interface ResultPairAttribute {
+  label: string;
+  value: string;
+}
+
 export interface ResultPairItem {
   label: string;
   value: string;
+  /**
+   * 同一行的其余列。挤进 `value` 里会变成一长串括号，人就没法单独复制账号；
+   * 分开之后页面能把它们各摆一列。
+   */
+  attributes?: ResultPairAttribute[];
 }
 
 export interface ResultPair {
@@ -38,6 +49,9 @@ export interface ResultPair {
 
 /** 一次最多列这么多：再多就不是「两个当事人」了。 */
 const MAX_PAIR_ITEMS = 4;
+
+/** 一行最多带这么多列补充事实：UID 与凭证名之外再多就不是这一行的属性了。 */
+const MAX_PAIR_ATTRIBUTES = 3;
 
 export function collectResultPair(value: unknown): ResultPair | undefined {
   if (!isRecord(value) || !isRecord(value.pair)) return undefined;
@@ -51,12 +65,27 @@ export function collectResultPair(value: unknown): ResultPair | undefined {
     const label = typeof item.label === 'string' ? item.label.trim() : '';
     const text = typeof item.value === 'string' ? item.value.trim() : '';
     if (!label || !text) continue;
-    items.push({ label, value: text });
+    items.push({ label, value: text, attributes: collectPairAttributes(item.attributes) });
   }
   if (items.length === 0) return undefined;
 
   const hint = typeof value.pair.hint === 'string' ? value.pair.hint.trim() : '';
   return { items, hint: hint || undefined };
+}
+
+/** 行内补充列：缺名字或缺值的整列丢掉，不让页面上出现一个空表头。 */
+function collectPairAttributes(value: unknown): ResultPairAttribute[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const attributes: ResultPairAttribute[] = [];
+  for (const item of value) {
+    if (attributes.length >= MAX_PAIR_ATTRIBUTES) break;
+    if (!isRecord(item)) continue;
+    const label = typeof item.label === 'string' ? item.label.trim() : '';
+    const text = typeof item.value === 'string' ? item.value.trim() : '';
+    if (!label || !text) continue;
+    attributes.push({ label, value: text });
+  }
+  return attributes.length > 0 ? attributes : undefined;
 }
 
 /**
@@ -118,8 +147,16 @@ export function collectResultLinks(value: unknown): string[] {
   return links;
 }
 
-/** 一次最多列这么多候选：再多就该看原样 JSON 了。 */
-const MAX_CHOICES = 8;
+/**
+ * 一次最多收这么多候选。
+ *
+ * 池子会长到上百个号，所以这个上限只用来挡住失控的响应，不用来限制阅读 ——
+ * 列表在页面上翻页，一页 10 条。
+ */
+const MAX_CHOICES = 500;
+
+/** 候选名单一页多少条：一屏看十行不用滚，也不会把页面撑长。 */
+export const CHOICE_PAGE_SIZE = 10;
 
 /** 结果里的一条「下一步」：点了就用这些参数重跑同一个动作。 */
 export interface ResultChoice {

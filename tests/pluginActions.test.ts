@@ -245,8 +245,22 @@ describe('collectResultNotes turns the plugin’s sentences into the only explan
 describe('collectResultPair says who the result is about', () => {
   const pair = {
     items: [
-      { label: '邀请账号', value: 'inviter@outlook.com（UID u-1）' },
-      { label: '被邀请账号', value: 'invitee@outlook.com（UID u-2）' },
+      {
+        label: '邀请账号',
+        value: 'inviter@outlook.com',
+        attributes: [
+          { label: 'UID', value: 'u-1' },
+          { label: '凭证名', value: 'zcode-inviter' },
+        ],
+      },
+      {
+        label: '被邀请账号',
+        value: 'invitee@outlook.com',
+        attributes: [
+          { label: 'UID', value: 'u-2' },
+          { label: '凭证名', value: 'zcode-invitee' },
+        ],
+      },
     ],
     hint: '未填写内容，系统自动获取以上信息，请务必保证登录为被邀请账号',
   };
@@ -256,8 +270,27 @@ describe('collectResultPair says who the result is about', () => {
     const partial = collectResultPair({
       pair: { items: [{ label: '邀请账号', value: ' a@b ' }, { label: '', value: 'x' }, { value: 'y' }, 42] },
     });
-    expect(partial?.items).toEqual([{ label: '邀请账号', value: 'a@b' }]);
+    expect(partial?.items).toEqual([{ label: '邀请账号', value: 'a@b', attributes: undefined }]);
     expect(partial?.hint).toBeUndefined();
+  });
+
+  test('keeps the extra columns beside the account and drops empty ones', () => {
+    const columns = collectResultPair({
+      pair: {
+        items: [
+          {
+            label: '邀请账号',
+            value: 'a@b',
+            attributes: [{ label: ' UID ', value: ' u-1 ' }, { label: '凭证名', value: '' }, 7],
+          },
+        ],
+      },
+    });
+    // UID 与凭证名是各占一列的补充事实；名字或值缺一个就整列丢掉，不留空表头。
+    expect(columns?.items[0].attributes).toEqual([{ label: 'UID', value: 'u-1' }]);
+    expect(collectResultPair({ pair: { items: [{ label: 'a', value: 'b', attributes: [] }] } })?.items[0]).toEqual(
+      { label: 'a', value: 'b', attributes: undefined }
+    );
   });
 
   test('a result without a pair adds nothing', () => {
@@ -267,7 +300,7 @@ describe('collectResultPair says who the result is about', () => {
     expect(collectResultPair('not an object')).toBeUndefined();
   });
 
-  test('the card shows both accounts and the hint above the steps', () => {
+  test('the card shows each account with a copy button and its own columns', () => {
     const markup = renderToStaticMarkup(
       createElement(PluginActionCard, {
         action: action({ destructive: false }),
@@ -279,7 +312,7 @@ describe('collectResultPair says who the result is about', () => {
             {
               key: 'bind',
               index: 1,
-              title: '绑定邀请码',
+              title: '打开链接登录',
               state: 'todo',
               detail: '打开下面的链接',
               link: 'https://zcode.z.ai/invite/6WYWVN2M',
@@ -292,12 +325,20 @@ describe('collectResultPair says who the result is about', () => {
     );
     // 两个账号必须点名到邮箱，操作者才能核对浏览器里登录的是谁。
     expect(markup).toContain('邀请账号');
-    expect(markup).toContain('inviter@outlook.com（UID u-1）');
+    expect(markup).toContain('inviter@outlook.com');
     expect(markup).toContain('被邀请账号');
-    expect(markup).toContain('invitee@outlook.com（UID u-2）');
+    expect(markup).toContain('invitee@outlook.com');
     expect(markup).toContain(pair.hint);
     // 先说是谁，再说做什么：配对块排在步骤说明前面。
     expect(markup.indexOf(pair.hint)).toBeLessThan(markup.indexOf('打开下面的链接'));
+    // UID 与凭证名各占一列，既不挤进账号，也不共用同一个值。
+    expect(markup).toContain('u-1');
+    expect(markup).toContain('zcode-inviter');
+    expect(markup).toContain('u-2');
+    expect(markup).toContain('zcode-invitee');
+    expect(markup).not.toContain('（UID u-1）');
+    // 账号旁边跟着复制按钮：UID 是 UUID，手抄一遍就会出错。
+    expect(markup).toContain(i18n.t('common.copy'));
     // 配对的账号是给人核对的文本，不是可点链接。
     expect(markup).not.toContain('href="mailto:');
   });
@@ -453,5 +494,47 @@ describe('the job list stays short until the operator asks for more', () => {
     // 结果的原始 JSON 仍然可查，但要点开才占地方。
     expect(markup).toContain(i18n.t('plugin_actions.job_result'));
     expect(markup).toContain('needs_target');
+  });
+
+  test('a long candidate list is paginated ten rows at a time', () => {
+    // 池子会长到上百个邮箱：全铺出来会把页面撑成一张名单，翻页才是读法。
+    const names = Array.from({ length: 25 }, (_, index) => `Mailbox ${index + 1}`);
+    const markup = renderJobList([
+      job({
+        title: 'Complete onboarding',
+        result: {
+          status: 'needs_target',
+          choices: names.map((label, index) => ({ label, hint: `1/3`, params: { invitee: `idx-${index}` } })),
+        },
+      }),
+    ]);
+
+    expect(markup).toContain('Mailbox 10');
+    // 页面上只摆十行按钮；其余条目留在结果里，靠翻页才出现（原始 JSON 里当然还在）。
+    const rendered = markup.match(/>Mailbox \d+</g) ?? [];
+    expect(rendered).toHaveLength(10);
+    expect(rendered[0]).toBe('>Mailbox 1<');
+    expect(rendered[9]).toBe('>Mailbox 10<');
+    // 一页十条要有出处：分页条说出「现在第 1–10 条，共 25 条」并给出下一页。
+    expect(markup).toContain(i18n.t('pagination.range', { from: 1, to: 10, total: 25 }));
+    expect(markup).toContain(i18n.t('pagination.next'));
+    // 容量由候选名单自己定死，不提供第二个「每页条数」说法。
+    expect(markup).not.toContain(i18n.t('pagination.size_label'));
+
+    // 同一份候选在动作卡里也一样翻页：流水线是同步动作，它的结果落在卡上。
+    const card = renderToStaticMarkup(
+      createElement(PluginActionCard, {
+        action: action({ destructive: false }),
+        busy: false,
+        result: {
+          status: 'needs_target',
+          choices: names.map((label, index) => ({ label, hint: '1/3', params: { invitee: `idx-${index}` } })),
+        },
+        onTrigger: () => {},
+        onRunAction: () => {},
+      })
+    );
+    expect((card.match(/>Mailbox \d+</g) ?? []).length).toBe(10);
+    expect(card).toContain(i18n.t('pagination.range', { from: 1, to: 10, total: 25 }));
   });
 });

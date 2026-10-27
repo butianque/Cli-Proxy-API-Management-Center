@@ -15,7 +15,9 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Notice } from '@/components/ui/Notice';
+import { Pagination } from '@/components/ui/Pagination';
 import { IconCheck, IconPlug } from '@/components/ui/icons';
+import { usePagination } from '@/hooks/usePagination';
 import { pluginsApi } from '@/services/api';
 import { pluginActionsApi } from '@/services/api/actions';
 import type { PluginAction, PluginJob } from '@/services/api/actions';
@@ -25,7 +27,12 @@ import { formatDateTimeValue } from '@/utils/format';
 import { getPluginTitle, resolvePluginAssetURL } from '@/features/plugins/pluginResources';
 import { PluginActionCard } from './PluginActionCard';
 import { ResultStepList } from './ResultStepList';
-import { collectResultChoices, collectResultSteps, formatResultJson } from './actionResultLinks';
+import {
+  CHOICE_PAGE_SIZE,
+  collectResultChoices,
+  collectResultSteps,
+  formatResultJson,
+} from './actionResultLinks';
 import styles from './PluginActionsPage.module.scss';
 
 /** 轮询间隔：动作通常几分钟内完成，2 秒足够且不打扰后端。 */
@@ -73,6 +80,8 @@ function JobItem({
   const { t } = useTranslation();
   const choices = collectResultChoices(job.result);
   const steps = collectResultSteps(job.result);
+  // 候选名单会长到上百条，所以和动作卡一样一页十行。
+  const pagedChoices = usePagination(choices, CHOICE_PAGE_SIZE);
   return (
     <li className={styles.job}>
       <div className={styles.jobHead}>
@@ -109,7 +118,7 @@ function JobItem({
         <div className={styles.links}>
           <span className={styles.linksTitle}>{t('plugin_actions.choices_title')}</span>
           <div className={styles.choices}>
-            {choices.map((choice) => (
+            {pagedChoices.items.map((choice) => (
               <div
                 key={`${choice.label}:${JSON.stringify(choice.params)}`}
                 className={styles.choice}
@@ -125,6 +134,16 @@ function JobItem({
               </div>
             ))}
           </div>
+          {pagedChoices.totalPages > 1 ? (
+            <Pagination
+              page={pagedChoices.page}
+              totalPages={pagedChoices.totalPages}
+              total={pagedChoices.total}
+              from={pagedChoices.from}
+              to={pagedChoices.to}
+              onPageChange={pagedChoices.setPage}
+            />
+          ) : null}
         </div>
       ) : null}
       {job.result !== undefined ? (
