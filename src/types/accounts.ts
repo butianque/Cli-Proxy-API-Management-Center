@@ -64,12 +64,18 @@ export type AccountFailureClass =
  */
 export type AccountQuotaState = 'unknown' | 'query-error' | 'exhausted' | 'entitled';
 
-/** 一个账号的一个额度窗口（`account_view.go:73-82`）。 */
+/** 一个账号的一个额度窗口（`account_view.go:95-105`）。 */
 export interface AccountQuotaBucket {
   /** 分组显示名；缺省 = 该桶不按分组限定。 */
   group?: string;
   /** 该窗口适用的模型；缺省 = 不按模型限定。 */
   model?: string;
+  /**
+   * 行标题。与 `model` 是两件事：不按模型限定的桶（余额、计划总量）在这里给自己
+   * 起名，`model` 留空，于是没有读者需要把余额名当成模型名（`sdk/pluginapi/types.go:2098-2103`）。
+   * 缺省 = 该行用别的字段当标题。
+   */
+  label?: string;
   /** 窗口名，如 `hourly` / `plan`。 */
   window?: string;
   /** 剩余比例。0 是真实值，不是「未知」。 */

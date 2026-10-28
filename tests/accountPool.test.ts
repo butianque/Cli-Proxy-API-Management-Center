@@ -815,4 +815,27 @@ describe('account pool quota rendering', () => {
     // 组内各桶时刻相同 ⇒ 只在组头说一次，四行不再各报一遍。
     expect(markup.split('剩余时间').length - 1).toBe(2);
   });
+
+  /**
+   * 非模型桶（余额、计划总量）的行标题是 `label`，不是 `model`：宿主
+   * `account_view.go:98` 已下发，面板必须显示它，否则读者看到的是一行没有名字的
+   * 额度，或者更糟 —— 把余额画成某个模型。
+   */
+  test('titles a non-model bucket by its label, not by a model it does not have', async () => {
+    const labelAccount = (): AccountView =>
+      account({
+        provider: 'zcode-zai',
+        quotaState: 'entitled',
+        quota: [
+          { group: 'ZCode', label: '账户余额', remainingFraction: 0.4, remaining: 1200 },
+          { group: 'ZCode', model: 'GLM-5.3', remainingFraction: 0.9 },
+        ],
+      });
+    const markup = await renderPool(labelAccount(), 'zh-CN');
+
+    expect(markup).toContain('账户余额');
+    expect(markup).toContain('GLM-5.3');
+    // 余额行没有模型可显示，标签必须来自 label 本身。
+    expect(markup.split('账户余额').length - 1).toBe(1);
+  });
 });

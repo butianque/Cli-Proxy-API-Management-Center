@@ -329,8 +329,9 @@ function QuotaSummary({ account, now }: { account: AccountView; now: number }) {
             )}
             <ul className={styles.bucketList}>
               {group.buckets.map((bucket, index) => {
-                // 渠道名已升为分组标题，行内只留模型名；后端没给就不造标签。
-                const label = bucket.model?.trim() ?? '';
+                // 行标题：`label` 是非模型桶（余额、计划总量）自己起的名字，优先；
+                // 没有就退回模型名；后端两个都没给就不造标签。
+                const label = bucket.label?.trim() || bucket.model?.trim() || '';
                 // remainingFraction 是契约里的必填项：0 表示已用尽，是真实值，不是「未知」。
                 const fraction = Number.isFinite(bucket.remainingFraction)
                   ? Math.min(Math.max(bucket.remainingFraction, 0), 1)

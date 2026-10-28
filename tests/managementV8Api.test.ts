@@ -380,6 +380,7 @@ describe('account view API (GET /v8/management/accounts)', () => {
       {
         group: 'Claude',
         model: '',
+        label: '  Plan credits  ',
         window: 'hourly',
         remaining_fraction: 0,
         remaining: 0,
@@ -458,6 +459,7 @@ describe('account view API (GET /v8/management/accounts)', () => {
       quota: [
         {
           group: 'Claude',
+          label: 'Plan credits',
           window: 'hourly',
           remainingFraction: 0,
           remaining: 0,
@@ -554,6 +556,30 @@ describe('account view API (GET /v8/management/accounts)', () => {
     expect(normalizeAccountView({ quota: [{ remaining_fraction: 0 }] }).quota).toEqual([
       { remainingFraction: 0 },
     ]);
+  });
+
+  /**
+   * `label` 是非模型桶（余额、计划总量）的行标题：契约在
+   * `sdk/pluginapi/types.go:2098-2103`，`account_view.go:98` 已原样下发，
+   * 面板若不认这个字段，读者就会看到一行没有名字的额度。
+   */
+  test('a bucket row title survives the round trip; empty and blank stay absent', () => {
+    const account = normalizeAccountView({
+      quota: [
+        { label: '  Balance  ', remaining_fraction: 0.25 },
+        { label: '   ', remaining_fraction: 0.5 },
+        { model: 'glm-5.3', remaining_fraction: 1 },
+      ],
+    });
+    expect(account.quota).toEqual([
+      { remainingFraction: 0.25, label: 'Balance' },
+      { remainingFraction: 0.5 },
+      { remainingFraction: 1, model: 'glm-5.3' },
+    ]);
+    // 缺省就是缺省：没有标题的桶不造一个空串。
+    expect('label' in account.quota[1]).toBe(false);
+    // 标题也不能漏进 model —— 余额不是模型。
+    expect('model' in account.quota[0]).toBe(false);
   });
 
   test('quota_state and failure_class keep their source value domains', () => {

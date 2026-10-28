@@ -133,6 +133,7 @@ const normalizeQuotaBucket = (value: unknown): AccountQuotaBucket | undefined =>
   const bucket: AccountQuotaBucket = { remainingFraction };
   const group = optionalString(value.group);
   const model = optionalString(value.model);
+  const label = optionalString(value.label);
   const window = optionalString(value.window);
   const remaining = optionalNumber(value.remaining);
   const total = optionalNumber(value.total);
@@ -140,6 +141,7 @@ const normalizeQuotaBucket = (value: unknown): AccountQuotaBucket | undefined =>
   const description = optionalString(value.description);
   if (group !== undefined) bucket.group = group;
   if (model !== undefined) bucket.model = model;
+  if (label !== undefined) bucket.label = label;
   if (window !== undefined) bucket.window = window;
   if (remaining !== undefined) bucket.remaining = remaining;
   if (total !== undefined) bucket.total = total;
