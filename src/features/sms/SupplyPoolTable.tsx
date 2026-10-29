@@ -17,9 +17,12 @@
  *
  * 探活是**只读**的：进页面探一次，探不动就如实显示「未检查」，不把「探不了」说成
  * 「连不上」。
+ *
+ * 表**自己滚**，一次只加载 10 条：渠道一多，整页跟着长会把「添加渠道」和表头推到
+ * 视野外；滚到底自动追加下一批，已加载的行也只渲染看得见的那几段（见 `useRowWindow`）。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -31,16 +34,17 @@ import {
   TableHeader,
   TableRow,
   TableRowGroup,
+  TableSpacer,
 } from '@/components/ui/Table';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { Pagination } from '@/components/ui/Pagination';
 import { IconAlertTriangle, IconPencil, IconPlug, IconTrash2 } from '@/components/ui/icons';
 import { supplyApi, type SupplyChannelInput } from '@/services/api/supply';
 import { EgressBindingSelect } from '@/features/egress/EgressBindingSelect';
-import { PAGE_SIZE_OPTIONS, usePagination } from '@/hooks/usePagination';
 import { useEgressPool } from '@/hooks/useEgressPool';
 import { ChannelStatusStrip } from './ChannelStatusStrip';
+import { PoolLoadMore } from './PoolLoadMore';
 import { useChannelStatus } from './useChannelStatus';
+import { rowIndexProps, useRowWindow } from './useRowWindow';
 import { kindBlockInput } from './channelDraft';
 import {
   toNatureOptions,
@@ -82,13 +86,20 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [busyId, setBusyId] = useState('');
+  /**
+   * 已经问过的渠道。
+   *
+   * 窗口一滑就会换一批可见的行；每次都把看得见的全问一遍，等于把滚动变成请求放大器。
+   * 重新读渠道清单（保存、删除、开关）才清空，那时会重新测一次，结论仍然是新的。
+   */
+  const probedRef = useRef(new Set<string>());
 
   /** 探活：只读，不需要主密码。探不动就当作没探到（显示「未检查」）。 */
   const probe = useCallback(async (list: SupplyChannel[]) => {
     if (list.length === 0) return;
     try {
       const probed = toProbes(await supplyApi.probeChannels(list.map((channel) => channel.id)));
-      // 结论按渠道累积：翻回上一页时不会又退回「未检查」，同一页重进会重新测一次。
+      // 结论按渠道累积：滚回上面时不会又退回「未检查」。
       setProbes((current) => {
         const merged = new Map(current.map((item) => [item.id, item]));
         for (const item of probed) merged.set(item.id, item);
@@ -100,6 +111,7 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
   }, []);
 
   const load = useCallback(async () => {
+    probedRef.current.clear();
     try {
       const result = await supplyApi.listChannels(kind);
       const list = toSupplyChannels(result.channels);
@@ -117,13 +129,25 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
     void load();
   }, [load, reloadKey]);
 
-  const paged = usePagination(channels);
+  const rows = useRowWindow(channels.length);
+  /** 这一屏真正要渲染的那几条。窗口之外的行不进 DOM。 */
+  const visible = useMemo(
+    () => channels.slice(rows.start, rows.end),
+    [channels, rows.start, rows.end]
+  );
 
-  // 探活只问**当前这一页**：一屏之外的渠道没人看，为它们各开一条连接是白花。
+  // 探活只问**看得见的渠道**：一屏之外的渠道没人看，为它们各开一条连接是白花。
+  // 问过谁记在 `probedRef` 里，滚动时窗口一滑不会把同一批再问一遍。
   useEffect(() => {
     if (!loaded) return;
-    void probe(paged.items);
-  }, [loaded, paged.items, probe]);
+    const pending: SupplyChannel[] = [];
+    for (const channel of visible) {
+      if (probedRef.current.has(channel.id)) continue;
+      probedRef.current.add(channel.id);
+      pending.push(channel);
+    }
+    if (pending.length > 0) void probe(pending);
+  }, [loaded, visible, probe]);
 
   /**
    * 启用 / 停用这一条渠道：真写启用位，然后重新拉一次（状态由后端说了算）。
@@ -184,8 +208,10 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
     [probes]
   );
 
-  // 每条渠道的状态带：一次读全，按渠道分派（见 `useChannelStatus`）。读的也只是当前页。
-  const statuses = useChannelStatus(kind, paged.items, reloadKey);
+  // 每条渠道的状态带：一次批量读（一条请求覆盖所有渠道，与渲染了多少行无关），
+  // 按渠道分派（见 `useChannelStatus`）。所以这里给全量，加载下一批时不会把已经
+  // 显示出来的行打回「读取中」。
+  const statuses = useChannelStatus(kind, channels, reloadKey);
 
   const natureLabels = (list: SupplyNature[]) =>
     list.map((nature) => t(NATURE_LABEL[nature])).join(' + ') || '—';
@@ -224,112 +250,116 @@ export function SupplyPoolTable({ kind, reloadKey = 0, onEdit, onNatures }: Supp
           description={t('sms_service.pool_empty_channels_desc')}
         />
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t('sms_service.pool_col_name')}</TableHead>
-              <TableHead>{t('sms_service.pool_col_category')}</TableHead>
-              <TableHead>{t('sms_service.pool_col_natures')}</TableHead>
-              <TableHead>{t('sms_service.pool_col_connection')}</TableHead>
-              <TableHead>{t('sms_service.pool_col_switch')}</TableHead>
-              <TableHead alignRight>{t('sms_service.pool_col_edit')}</TableHead>
-              <TableHead alignRight>{t('sms_service.pool_col_remove')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          {paged.items.map((channel) => {
-            const block = kind === 'phone' ? channel.phone : channel.email;
-            const connection = connectionOf(channel);
-            const categoryLabel = CATEGORY_LABEL[channel.category];
-            const editLabel = t('sms_service.pool_edit_aria', { name: channel.label });
-            const removeLabel = t('sms_service.pool_remove_aria', { name: channel.label });
-            return (
-              <TableRowGroup key={channel.id}>
-                <TableRow className={styles.stripLead}>
-                  <TableCell>
-                    <span className={styles.channelName}>{channel.label}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className={`${styles.tag} ${styles.tagMuted}`}>
-                      {categoryLabel ? t(categoryLabel) : '—'}
-                    </span>
-                  </TableCell>
-                  <TableCell>{natureLabels(block?.natures ?? [])}</TableCell>
-                  <TableCell>
-                    <span className={`${styles.tag} ${styles[connection.tone]}`}>
-                      {t(connection.key, connection.params)}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <ToggleSwitch
-                      checked={block?.enabled ?? false}
-                      onChange={(next) => void setEnabled(channel, next)}
-                      disabled={busyId === channel.id}
-                      ariaLabel={t('sms_service.pool_toggle_aria', { name: channel.label })}
-                    />
-                  </TableCell>
-                  <TableCell alignRight>
-                    <button
-                      type="button"
-                      className={styles.actionPill}
-                      onClick={() => onEdit(channel)}
-                      title={editLabel}
-                      aria-label={editLabel}
-                    >
-                      <IconPencil size={14} />
-                    </button>
-                  </TableCell>
-                  <TableCell alignRight>
-                    <button
-                      type="button"
-                      className={styles.actionPill}
-                      onClick={() => void remove(channel)}
-                      disabled={busyId === channel.id}
-                      title={removeLabel}
-                      aria-label={removeLabel}
-                    >
-                      <IconTrash2 size={14} />
-                    </button>
-                  </TableCell>
-                </TableRow>
-                <TableRow className={styles.stripRow}>
-                  <TableCell colSpan={7}>
-                    <ChannelStatusStrip
-                      kind={kind}
-                      status={statuses.get(channel.id) ?? { kind: 'loading' }}
-                      pooled={channel.pooled[kind]}
-                      egress={
-                        egressAvailable ? (
-                          <EgressBindingSelect
-                            kind="channel"
-                            name={channel.id}
-                            supplyKind={kind}
-                            currentId={blockEgressId(block)}
-                            noneLabel={t('egress_pool.none_direct')}
-                            ariaLabel={t('egress_pool.binding_aria', { name: channel.label })}
-                            onChanged={() => load()}
-                          />
-                        ) : null
-                      }
-                    />
-                  </TableCell>
-                </TableRow>
-              </TableRowGroup>
-            );
-          })}
-        </Table>
-      )}
+        <>
+          <Table
+            maxHeight="var(--sms-pool-max-height)"
+            scrollRef={rows.containerRef}
+            onBodyScroll={rows.onScroll}
+          >
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('sms_service.pool_col_name')}</TableHead>
+                <TableHead>{t('sms_service.pool_col_category')}</TableHead>
+                <TableHead>{t('sms_service.pool_col_natures')}</TableHead>
+                <TableHead>{t('sms_service.pool_col_connection')}</TableHead>
+                <TableHead>{t('sms_service.pool_col_switch')}</TableHead>
+                <TableHead alignRight>{t('sms_service.pool_col_edit')}</TableHead>
+                <TableHead alignRight>{t('sms_service.pool_col_remove')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableSpacer height={rows.topPad} colSpan={7} />
+            {visible.map((channel, offset) => {
+              const index = rows.start + offset;
+              const block = kind === 'phone' ? channel.phone : channel.email;
+              const connection = connectionOf(channel);
+              const categoryLabel = CATEGORY_LABEL[channel.category];
+              const editLabel = t('sms_service.pool_edit_aria', { name: channel.label });
+              const removeLabel = t('sms_service.pool_remove_aria', { name: channel.label });
+              return (
+                <TableRowGroup key={channel.id} {...rowIndexProps(index)}>
+                  <TableRow className={styles.stripLead}>
+                    <TableCell>
+                      <span className={styles.channelName}>{channel.label}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`${styles.tag} ${styles.tagMuted}`}>
+                        {categoryLabel ? t(categoryLabel) : '—'}
+                      </span>
+                    </TableCell>
+                    <TableCell>{natureLabels(block?.natures ?? [])}</TableCell>
+                    <TableCell>
+                      <span className={`${styles.tag} ${styles[connection.tone]}`}>
+                        {t(connection.key, connection.params)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <ToggleSwitch
+                        checked={block?.enabled ?? false}
+                        onChange={(next) => void setEnabled(channel, next)}
+                        disabled={busyId === channel.id}
+                        ariaLabel={t('sms_service.pool_toggle_aria', { name: channel.label })}
+                      />
+                    </TableCell>
+                    <TableCell alignRight>
+                      <button
+                        type="button"
+                        className={styles.actionPill}
+                        onClick={() => onEdit(channel)}
+                        title={editLabel}
+                        aria-label={editLabel}
+                      >
+                        <IconPencil size={14} />
+                      </button>
+                    </TableCell>
+                    <TableCell alignRight>
+                      <button
+                        type="button"
+                        className={styles.actionPill}
+                        onClick={() => void remove(channel)}
+                        disabled={busyId === channel.id}
+                        title={removeLabel}
+                        aria-label={removeLabel}
+                      >
+                        <IconTrash2 size={14} />
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                  <TableRow className={styles.stripRow}>
+                    <TableCell colSpan={7}>
+                      <ChannelStatusStrip
+                        kind={kind}
+                        status={statuses.get(channel.id) ?? { kind: 'loading' }}
+                        pooled={channel.pooled[kind]}
+                        egress={
+                          egressAvailable ? (
+                            <EgressBindingSelect
+                              kind="channel"
+                              name={channel.id}
+                              supplyKind={kind}
+                              currentId={blockEgressId(block)}
+                              noneLabel={t('egress_pool.none_direct')}
+                              ariaLabel={t('egress_pool.binding_aria', { name: channel.label })}
+                              onChanged={() => load()}
+                            />
+                          ) : null
+                        }
+                      />
+                    </TableCell>
+                  </TableRow>
+                </TableRowGroup>
+              );
+            })}
+            <TableSpacer height={rows.bottomPad} colSpan={7} />
+          </Table>
 
-      <Pagination
-        page={paged.page}
-        totalPages={paged.totalPages}
-        total={paged.total}
-        from={paged.from}
-        to={paged.to}
-        onPageChange={paged.setPage}
-        pageSizeOptions={PAGE_SIZE_OPTIONS}
-        pageSize={paged.pageSize}
-        onPageSizeChange={paged.setPageSize}
-      />
+          <PoolLoadMore
+            shown={rows.loaded}
+            total={channels.length}
+            hasMore={rows.hasMore}
+            onLoadMore={rows.loadMore}
+          />
+        </>
+      )}
     </Card>
   );
 }

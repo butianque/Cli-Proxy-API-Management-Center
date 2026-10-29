@@ -1,0 +1,77 @@
+@use '../../styles/mixins' as *;
+
+/* ============================================================
+ * 池子表格底部那条（供应池 / 渠道池共用）
+ *
+ * 它不属于表格：表格自己滚，这条留在卡片里，所以无论滚到第几条都在。
+ * 只有两件事：左边「已显示多少」，右边「还能不能再要」。
+ * ============================================================ */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  margin-top: 10px;
+  padding: 8px 2px 2px;
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+}
+
+.range {
+  color: var(--text-tertiary);
+  font-family: $font-mono;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* 与分页条同一个语汇：安静描边，悬停才着色。 */
+.more {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background $transition-fast,
+    border-color $transition-fast,
+    color $transition-fast;
+
+  &:hover {
+    border-color: var(--border-hover, var(--primary-color));
+    background: color-mix(in srgb, var(--bg-tertiary) 55%, transparent);
+    color: var(--text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+}
+
+/* 全部显示完：说一句就够，不再留一个按下去什么都不会变的按钮。 */
+.done {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@include mobile {
+  .bar {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .more {
+    transition: none;
+  }
+}

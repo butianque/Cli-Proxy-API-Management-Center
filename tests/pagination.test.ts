@@ -80,27 +80,33 @@ describe('pageWindow', () => {
   });
 });
 
-describe('the pools paginate, and only probe what is on screen', () => {
+describe('the pools load in batches, and only probe what is on screen', () => {
   test('page size choices start at a screenful', () => {
     expect(PAGE_SIZE_OPTIONS).toEqual([20, 50, 100]);
     expect(DEFAULT_PAGE_SIZE).toBe(20);
   });
 
-  test('the supply ledger renders and probes the current page only', () => {
+  test('the supply ledger renders a window and probes only what it shows', () => {
+    // 台账不再整页铺开：表格自己滚，一次只加载一批，屏外的行不进 DOM。
     const card = source('features/sms/SupplyPoolCard.tsx');
-    expect(card).toContain('usePagination(entries)');
-    expect(card).toContain('paged.items.map');
-    // 探活取的是当前页的行，不是整本台账。
-    expect(card).toContain('const rows = paged.items;');
-    expect(card).toContain('}, [loaded, paged.items, resolveChannel, kinds]);');
+    expect(card).toContain('useRowWindow(entries.length)');
+    expect(card).toContain('rows.topPad');
+    expect(card).toContain('rows.bottomPad');
+    expect(card).toContain('onBodyScroll={rows.onScroll}');
+    expect(card).toContain('<PoolLoadMore');
+    expect(card).not.toContain('<Pagination');
+    // 探活取的是看得见的那几条，不是整本台账。
+    expect(card).toContain('for (const entry of visible)');
+    expect(card).toContain('}, [loaded, visible, resolveChannel, kinds]);');
   });
 
-  test('the channel table probes and reads status for the current page only', () => {
+  test('the channel table renders a window and probes only what it shows', () => {
     const table = source('features/sms/SupplyPoolTable.tsx');
-    expect(table).toContain('usePagination(channels)');
-    expect(table).toContain('paged.items.map');
-    expect(table).toContain('void probe(paged.items)');
-    expect(table).toContain('useChannelStatus(kind, paged.items, reloadKey)');
+    expect(table).toContain('useRowWindow(channels.length)');
+    expect(table).toContain('rows.topPad');
+    expect(table).toContain('void probe(pending)');
+    expect(table).toContain('useChannelStatus(kind, channels, reloadKey)');
+    expect(table).not.toContain('<Pagination');
   });
 
   test('the egress pool renders the current page only', () => {

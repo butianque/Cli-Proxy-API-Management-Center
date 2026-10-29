@@ -33,7 +33,7 @@ export function SupplyChannelCard() {
   }, []);
 
   return (
-    <div className={styles.page}>
+    <div className={styles.subPage}>
       <header className={styles.pageHeader}>
         <div className={styles.headerActions}>
           <button type="button" className={styles.actionPill} onClick={() => openEditor(null)}>

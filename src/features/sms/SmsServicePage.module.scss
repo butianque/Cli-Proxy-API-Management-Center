@@ -11,6 +11,32 @@
   flex-direction: column;
   gap: $spacing-lg;
   width: 100%;
+
+  /* 池子表格自己滚的高度上限。
+   *
+   * 供应池可能上千条：整页跟着长，页头的「收件箱 / 导入邮箱 / 配置」就被推到视野外，
+   * 复制一个地址要来回滚两趟。所以高度交给表格自己 —— 页头和底部那条「已显示多少」
+   * 一直留在原地，只有行在走。
+   *
+   * 常数是「视口减去页头、卡片标题、表头、底部那条与页面留白」（桌面版页头一行时量得
+   * 390px，这里留 400px）：整套页面刚好一屏，一点不多。下限只保证矮窗口上仍看得见
+   * 一行 —— 再往下压就没有「表」可言了。页头在窄屏上会折成两行，那种窗口本来就要滚，
+   * 不在这个预算里假装一屏。
+   * 配置视图多一行类别切换，由 `.viewContentConfig` 把那一行的高度也扣掉，
+   * 于是两个视图都不滚页面。 */
+  --sms-pool-max-height: clamp(160px, calc(100dvh - 400px), 720px);
+}
+
+/* 配置视图里两个类别视图的根节点。
+ *
+ * 版面与 `.page` 相同，但**不声明** `--sms-pool-max-height`：那份预算是按整页算的，
+ * 这里再声明一次会把外层扣掉类别切换后的值盖回去 —— 配置页就多出一行，整页跟着滚。
+ * 高度预算只由 `.page`（供应池）与 `.viewContentConfig`（配置）两处给出。 */
+.subPage {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-lg;
+  width: 100%;
 }
 
 /* ---------- 页头（对齐 ConfigHeader 语汇） ---------- */
@@ -64,6 +90,11 @@
 
 .viewContent {
   animation: sms-view-enter 220ms ease-out;
+}
+
+/* 配置视图比供应池多一行类别切换，表格上限相应再让出那一行的高度。 */
+.viewContentConfig {
+  --sms-pool-max-height: clamp(160px, calc(100dvh - 442px), 720px);
 }
 
 .panelTransition {
@@ -185,6 +216,13 @@
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+/* 卡片右上角的动作 + 计数：扫活紧挨着「N 个身份」，读起来是一句话。 */
+.poolExtra {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-sm;
 }
 
 /* ---------- 渠道池表 ---------- */

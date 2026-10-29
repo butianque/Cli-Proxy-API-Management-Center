@@ -21,7 +21,12 @@ import { useSecretGateStore } from '@/stores/useSecretGateStore';
 import { ChannelEditorModal } from './ChannelEditorModal';
 import { SupplyPoolTable } from './SupplyPoolTable';
 import { EMPTY_SMS_VIEW, toStatus } from './smsMapping';
-import type { PhoneCredentialState, SmsStatusView, SupplyChannel, SupplyNatureOption } from './types';
+import type {
+  PhoneCredentialState,
+  SmsStatusView,
+  SupplyChannel,
+  SupplyNatureOption,
+} from './types';
 import styles from './SmsServicePage.module.scss';
 
 export function PhoneSupplyView() {
@@ -73,7 +78,7 @@ export function PhoneSupplyView() {
   }, []);
 
   return (
-    <div className={styles.page}>
+    <div className={styles.subPage}>
       <header className={styles.pageHeader}>
         <div className={styles.headerActions}>
           <button type="button" className={styles.actionPill} onClick={() => openEditor(null)}>
@@ -83,7 +88,12 @@ export function PhoneSupplyView() {
         </div>
       </header>
 
-      <SupplyPoolTable kind="phone" reloadKey={reloadKey} onEdit={openEditor} onNatures={setNatures} />
+      <SupplyPoolTable
+        kind="phone"
+        reloadKey={reloadKey}
+        onEdit={openEditor}
+        onNatures={setNatures}
+      />
 
       <ChannelEditorModal
         open={editorOpen}

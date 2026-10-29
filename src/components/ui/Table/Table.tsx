@@ -2,28 +2,72 @@ import type {
   HTMLAttributes,
   PropsWithChildren,
   ReactNode,
+  Ref,
   TableHTMLAttributes,
   TdHTMLAttributes,
   ThHTMLAttributes,
+  UIEventHandler,
 } from 'react';
 import styles from './Table.module.scss';
 
 interface TableProps extends TableHTMLAttributes<HTMLTableElement> {
   className?: string;
   cols?: ReactNode;
+  /**
+   * 纵向滚动的高度上限。设了之后表头固定在顶端，只有行在下面滚。
+   *
+   * 长表用它是为了「页面不动」：整页跟着行数长的时候，页头和页面上的动作会被推到
+   * 视野外，翻到一半想点上面的按钮就得先滚回去。
+   */
+  maxHeight?: string;
+  /** 真正滚动的那一层的 ref：窗口化渲染要读它的 `scrollTop` 与高度。 */
+  scrollRef?: Ref<HTMLDivElement>;
+  /** 同上，滚动回调。 */
+  onBodyScroll?: UIEventHandler<HTMLDivElement>;
 }
 
-export function Table({ children, cols, className, ...rest }: PropsWithChildren<TableProps>) {
+export function Table({
+  children,
+  cols,
+  className,
+  maxHeight,
+  scrollRef,
+  onBodyScroll,
+  ...rest
+}: PropsWithChildren<TableProps>) {
   const tableCls = [styles.table, className].filter(Boolean).join(' ');
+  const scrollCls = [styles.scroll, maxHeight ? styles.scrollBody : null].filter(Boolean).join(' ');
   return (
     <div className={styles.wrap}>
-      <div className={styles.scroll}>
+      <div
+        ref={scrollRef}
+        onScroll={onBodyScroll}
+        className={scrollCls}
+        style={maxHeight ? { maxHeight } : undefined}
+      >
         <table className={tableCls} {...rest}>
           {cols ? <colgroup>{cols}</colgroup> : null}
           {children}
         </table>
       </div>
     </div>
+  );
+}
+
+/**
+ * 一行只为撑高度。
+ *
+ * 窗口化渲染时，没进视口的条目不会渲染，但它们仍占着滚动条上的位置 —— 不占住的话
+ * 滚动条会随着「现在渲染了哪几条」忽长忽短，人一拖就落到别处。
+ */
+export function TableSpacer({ height, colSpan }: { height: number; colSpan: number }) {
+  if (height <= 0) return null;
+  return (
+    <tbody className={styles.spacer} aria-hidden="true">
+      <tr>
+        <td colSpan={colSpan} style={{ height }} />
+      </tr>
+    </tbody>
   );
 }
 

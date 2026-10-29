@@ -35,6 +35,7 @@ import {
   formatReceivedAt,
   orderMailboxAddresses,
   pickDefaultMailbox,
+  prefetchBelow,
   toMailboxReading,
   toMessageDocument,
   toPoolAddresses,
@@ -208,15 +209,10 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
     if (!slot.loading && (slot.reading === null || slot.reading.error !== '')) {
       void readMailbox(address);
     }
-    // 预热后面几个：用户往下点的时候就不用再等。
-    const ordered = orderMailboxAddresses(addresses, slots);
-    const from = ordered.indexOf(address);
-    if (from < 0) return;
-    const ahead = ordered
-      .slice(from + 1)
-      .filter((candidate) => (slots[candidate]?.reading ?? null) === null)
-      .slice(0, PREFETCH);
-    for (const candidate of ahead) void readMailbox(candidate);
+    // 从点的这一行往下预热：只数没读过、也没在读的，数满 PREFETCH 个真正的新请求。
+    for (const candidate of prefetchBelow(addresses, slots, address, PREFETCH)) {
+      void readMailbox(candidate);
+    }
   };
 
   const handleCopyCode = async (code: string) => {
@@ -261,11 +257,6 @@ export function InboxModal({ open, onClose }: InboxModalProps) {
       onClose={onClose}
       width={1080}
       className={styles.modal}
-      footer={
-        <Button variant="secondary" onClick={onClose}>
-          {t('common.close')}
-        </Button>
-      }
     >
       <div className={styles.panes}>
         {phase === 'loading' && (

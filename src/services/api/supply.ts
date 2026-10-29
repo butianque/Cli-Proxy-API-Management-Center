@@ -167,6 +167,22 @@ export interface SupplyLedgerWire {
   mailbox?: SupplyLedgerMailboxWire;
 }
 
+/**
+ * 登记地址回包里的一行（`POST /supply/pool/identities`）。
+ *
+ * 与导入邮箱的回包不同：这里没有凭据，只有「这个地址记下来没有、归哪条渠道」。
+ */
+export interface SupplyIdentityResultWire {
+  /** 这一行在提交内容里的位置（含被跳过的空行与注释行）。 */
+  line?: number;
+  address?: string;
+  /** `imported`（新登记）/ `updated`（已有记录）/ `failed`（不是地址）。 */
+  outcome?: string;
+  detail?: string;
+  /** 覆盖这个域的渠道；没有渠道覆盖时没有这一项。 */
+  channel_id?: string;
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   const data = (error as { data?: unknown })?.data as { error?: string } | undefined;
   return typeof data?.error === 'string' && data.error ? data.error : fallback;
@@ -220,6 +236,42 @@ export const supplyApi = {
       `${SUPPLY_POOL_BASE}?kind=${kind}`
     );
     return Array.isArray(result?.records) ? result.records : [];
+  },
+
+  /**
+   * 登记一批地址：只写台账，不导凭据。
+   *
+   * 自建域名下的地址靠渠道的 catch-all 收信 —— 一个虚拟地址配一份口令没有意义，
+   * 信根本不会落进那个信箱。这里记的是「这个地址用过、它属于哪条渠道」。
+   */
+  async importIdentities(addresses: string[]): Promise<
+    | { ok: true; recorded: number; updated: number; failed: number; unlinked: number }
+    | { ok: false; message: string }
+  > {
+    try {
+      const result = await apiClient.post<{
+        imported?: number;
+        updated?: number;
+        failed?: number;
+        results?: SupplyIdentityResultWire[];
+      }>(`${SUPPLY_POOL_BASE}/identities`, { addresses }, { timeout: 60_000 });
+      const results = Array.isArray(result?.results) ? result.results : [];
+      const count = (value: number | undefined) =>
+        typeof value === 'number' && Number.isFinite(value) ? value : 0;
+      return {
+        ok: true,
+        recorded: count(result?.imported),
+        updated: count(result?.updated),
+        failed: count(result?.failed),
+        // 没有渠道覆盖的地址照样登记，但要说出来：它没有来源可追溯。
+        unlinked: results.filter(
+          (item) =>
+            (item.outcome === 'imported' || item.outcome === 'updated') && !item.channel_id
+        ).length,
+      };
+    } catch (error) {
+      return { ok: false, message: errorMessage(error, 'failed to record the addresses') };
+    }
   },
 
   /**

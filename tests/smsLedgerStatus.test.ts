@@ -199,7 +199,7 @@ describe('a two-row entry hovers as one entry', () => {
       expect(source).toContain('<TableRowGroup key=');
       // 两行在同一个组里：`stripLead` 与 `stripRow` 之间没有闭合标签。
       expect(source).toMatch(
-        /<TableRowGroup key=\{[^}]+\}>\s*<TableRow className=\{styles\.stripLead\}/
+        /<TableRowGroup key=\{[^}]+\}[^>]*>\s*<TableRow className=\{styles\.stripLead\}/
       );
       expect(source).toMatch(/<\/TableRow>\s*<TableRow className=\{styles\.stripRow\}>/);
       // 组已经取代了原先的单个 tbody：再套一层就是两行各归各的。

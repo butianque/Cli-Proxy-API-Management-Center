@@ -172,6 +172,36 @@ export function orderMailboxAddresses(
 }
 
 /**
+ * 点一个邮箱时往下预热哪些地址。
+ *
+ * 从点的这一行下面第一个开始顺着数，只数**真正没读过、也没在读**的，数满 `count`
+ * 个为止：已经在读的行不占名额 —— 拿它们凑数，看着像预热了三个，实际只发出更少的
+ * 请求，用户遇到的就是「点一下只多读两个」。
+ *
+ * 锚点是点击时看到的那个顺序位置。列表会随读到的来信重排，但用户按的是他眼下看到的
+ * 下一行，所以预热也必须按那一刻的顺序往下走。
+ */
+export function prefetchBelow(
+  addresses: string[],
+  slots: Record<string, EmailMailboxSlot>,
+  anchor: string,
+  count: number
+): string[] {
+  const ordered = orderMailboxAddresses(addresses, slots);
+  const from = ordered.indexOf(anchor);
+  if (from < 0 || count <= 0) return [];
+  const picked: string[] = [];
+  for (const candidate of ordered.slice(from + 1)) {
+    if (picked.length >= count) break;
+    const slot = slots[candidate];
+    if (slot?.loading) continue;
+    if ((slot?.reading ?? null) !== null) continue;
+    picked.push(candidate);
+  }
+  return picked;
+}
+
+/**
  * 默认选中哪个邮箱：最新来信的那个；都没有信时退回第一个读到的空邮箱。
  *
  * 一个都没读到时给 `''` —— 此时还没有任何真实答案可选，先让人看到「未读取」，而不是

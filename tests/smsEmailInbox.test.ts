@@ -11,6 +11,7 @@ import {
   formatReceivedAt,
   orderMailboxAddresses,
   pickDefaultMailbox,
+  prefetchBelow,
   toInboxReading,
   toInboxStatus,
   toMailboxReading,
@@ -31,8 +32,7 @@ import {
  * 3. nothing on the page invents a message, a code, or a timestamp.
  */
 
-const read = (path: string) =>
-  readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8');
+const read = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8');
 
 describe('the email category reads the base supply routes', () => {
   test('the base prefix matches the backend mount point', () => {
@@ -212,8 +212,9 @@ describe('each channel row carries its own mail and balance', () => {
     expect(table).toContain('<ChannelStatusStrip');
     expect(table).toContain('<TableCell colSpan={7}>');
     expect(table).toContain('styles.stripRow');
-    // Read for the rows on screen: a page of channels, not the whole pool.
-    expect(table).toContain('useChannelStatus(kind, paged.items, reloadKey)');
+    // 状态带一次批量读（一条请求覆盖所有渠道），所以给全量而不是窗口里的那几条：
+    // 给窗口的话，滚到下一批时已经把显示出来的行打回「读取中」了。
+    expect(table).toContain('useChannelStatus(kind, channels, reloadKey)');
   });
 
   test('the inbox is a dialog, not a third view', () => {
@@ -225,6 +226,11 @@ describe('each channel row carries its own mail and balance', () => {
     expect(page).toContain('<InboxModal');
     expect(page).toContain('open={inboxOpen}');
     expect(read('features/sms/InboxModal.tsx')).not.toContain('probeAddresses');
+  });
+
+  test('the dialog has one close control, not two', () => {
+    // 右上角的 X 就是关闭；底栏再来一个「关闭」是同一个动作做两遍。
+    expect(read('features/sms/InboxModal.tsx')).not.toContain('footer={');
   });
 
   test('the mailbox list is free, the mail is read on demand', () => {
@@ -239,6 +245,8 @@ describe('each channel row carries its own mail and balance', () => {
     expect(modal).toContain('pool.slice(0, FIRST_BATCH)');
     // Clicking a mailbox preloads the next few, so the next click is instant.
     expect(modal).toContain('const PREFETCH = 3;');
+    // 预热按点击位置往下数，而且只数真正没读过、也没在读的。
+    expect(modal).toContain('prefetchBelow(addresses, slots, address, PREFETCH)');
     // A read is a login: the same mailbox must not be opened twice at once.
     expect(modal).toContain('inflightRef');
   });
@@ -300,7 +308,10 @@ describe('each channel row carries its own mail and balance', () => {
 });
 
 describe('the three panes: mailboxes, mail, content', () => {
-  const loaded = (latestAt: string | null, count = latestAt === null ? 0 : 1): EmailMailboxSlot => ({
+  const loaded = (
+    latestAt: string | null,
+    count = latestAt === null ? 0 : 1
+  ): EmailMailboxSlot => ({
     loading: false,
     reading: {
       messages: Array.from({ length: count }, (_, index) => ({
@@ -429,6 +440,49 @@ describe('the three panes: mailboxes, mail, content', () => {
     expect(reading.error).toBe('the mailbox has no credential');
   });
 
+  test('each click starts the whole warm-up batch, not whatever is left of it', () => {
+    // 点一行之后，下面几行正在读、几行读过，都不该占预热的名额：拿它们凑数，看着像
+    // 预热三个，实际只发出更少的请求 —— 用户看到的就是「点一下只多读两个」。
+    const slots = {
+      a: notRead,
+      b: { loading: true, reading: null },
+      c: { loading: true, reading: null },
+      d: loaded('2026-10-26T09:00:00Z'),
+      e: notRead,
+      f: notRead,
+      g: notRead,
+      h: notRead,
+    };
+    const addresses = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    // 顺序：有信的 d 在前，其余按池子顺序；锚点 a 之后依次是 b c e f g h。
+    expect(prefetchBelow(addresses, slots, 'a', 3)).toEqual(['e', 'f', 'g']);
+  });
+
+  test('the warm-up walks down from the row that was clicked', () => {
+    // 锚点决定从哪儿往下数：点在上半截就预热上半截下面那几个，不会永远从池子开头数。
+    const slots = { a: notRead, b: notRead, c: notRead, d: notRead, e: notRead };
+    expect(prefetchBelow(['a', 'b', 'c', 'd', 'e'], slots, 'c', 2)).toEqual(['d', 'e']);
+  });
+
+  test('the clicked row is not part of its own warm-up', () => {
+    const slots = { a: notRead, b: notRead, c: notRead };
+    expect(prefetchBelow(['a', 'b', 'c'], slots, 'a', 3)).toEqual(['b', 'c']);
+  });
+
+  test('nothing below the last row means no request at all', () => {
+    expect(prefetchBelow(['a', 'b'], { a: notRead, b: notRead }, 'b', 3)).toEqual([]);
+  });
+
+  test('a failed row is not re-read as a warm-up', () => {
+    // 失败的行要等用户自己点它或者按重试；预热偷偷再登一次，等于把失败藏起来。
+    expect(prefetchBelow(['a', 'b', 'c'], { b: failed }, 'a', 3)).toEqual(['c']);
+  });
+
+  test('an address that is not in the list warms up nothing', () => {
+    expect(prefetchBelow(['a', 'b'], { a: notRead }, 'gone', 3)).toEqual([]);
+    expect(prefetchBelow(['a', 'b'], { a: notRead }, 'a', 0)).toEqual([]);
+  });
+
   test('the content pane carries every field the base gives, and nothing invented', () => {
     const [mail] = toMessages([
       {
@@ -490,8 +544,8 @@ describe('the category is what says "a domain of my own that catches everything"
     expect([...PHONE_CATEGORY_OPTIONS]).toEqual(['third-party']);
     const editor = read('features/sms/ChannelEditorModal.tsx');
     // No select at all for phone: a one-option dropdown cannot change anything.
-    expect(editor).toContain('{kind === \'email\' ? (');
-    expect(editor).toContain("t(CATEGORY_LABEL[phoneCategory])");
+    expect(editor).toContain("{kind === 'email' ? (");
+    expect(editor).toContain('t(CATEGORY_LABEL[phoneCategory])');
   });
 
   test('a channel mailbox speaks one way: an authorization code', () => {

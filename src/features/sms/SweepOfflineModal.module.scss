@@ -1,0 +1,259 @@
+@use '../../styles/mixins' as *;
+
+/* ============================================================
+ * 扫活弹窗。
+ *
+ * 版面只有一个任务：哪些号现在收不到信，选中之后怎么处置。
+ *
+ * 结构与收件箱同一套语言：弹窗撑满高度、清单自己滚、抬头是一条 1px 分割线、
+ * 选中用的还是 `SelectionCheckbox`。区别只在「一条」表示一个待处理的号，
+ * 所以每一行左边是等宽地址、右边是原因，说明压到第二行、单行截断。
+ *
+ * 文字最低 `--text-secondary`：这个暖灰底上 `--text-tertiary` 只有 2.2:1，
+ * 73 行读下来眼睛受不了。`--text-tertiary` 不在这张弹窗里用。
+ * ============================================================ */
+
+.modal {
+  height: min(80vh, 720px);
+
+  /* 基座给 body 的是「padding + 65vh + overflow:auto」，那是给短表单用的；
+     这里要的是「撑满剩下的高度、清单内部滚」。 */
+  :global(.modal-body) {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    padding: 0;
+    overflow: hidden;
+  }
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ---------- 抬头：这次查出什么 ---------- */
+
+/* 抬头与「全选」合成一块：两行说明 + 一排选择，下面只画一条分割线。 */
+.summary {
+  flex-shrink: 0;
+  padding: 14px 16px 0;
+}
+
+.lead {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* 同一批号常常一起过期：73 行写 73 遍同一句报错，人只会读第一行。 */
+.shared {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.sharedLabel {
+  margin-right: 4px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ---------- 正在检查 ---------- */
+
+.scan {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 没有连不上的 ---------- */
+
+.clearBox {
+  display: flex;
+  align-items: flex-start;
+  gap: $spacing-sm;
+  margin: 16px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--success-color) 24%, var(--border-color));
+  border-radius: $radius-md;
+  background: color-mix(in srgb, var(--success-color) 7%, var(--bg-primary));
+  color: var(--success-color);
+
+  > svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+}
+
+.clearTitle {
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.clearDesc {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------- 出错 ---------- */
+
+.noticeWrap {
+  flex-shrink: 0;
+  padding: 12px 16px 0;
+}
+
+/* ---------- 全选 / 已选 ---------- */
+
+.toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-sm;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.count {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 清单 ---------- */
+
+.list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 8px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-color) 55%, transparent);
+  transition: background-color $transition-fast;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  &:hover {
+    background: var(--bg-tertiary);
+  }
+}
+
+/* 地址一行、说明一行；原因固定在右边成一列，73 行扫下来不用来回找。 */
+.rowBody {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.address {
+  min-width: 0;
+  color: var(--text-primary);
+  font-family: $font-mono;
+  font-size: 12.5px;
+  @include text-ellipsis;
+}
+
+/* 原因是这一行的结论，用一个小角标；两种原因的下一步不同，所以颜色也分开。 */
+.cause {
+  flex-shrink: 0;
+  padding: 0 7px;
+  border-radius: $radius-full;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.causeUnreachable {
+  background: color-mix(in srgb, var(--error-color) 10%, transparent);
+  color: var(--error-color);
+}
+
+.causeMissing {
+  background: color-mix(in srgb, var(--warning-color) 14%, transparent);
+  color: var(--warning-color);
+}
+
+/* 后端给的那句话：单行截断，全文在 title 里。它是依据，不是正文。 */
+.detail {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  @include text-ellipsis;
+}
+
+/* ---------- 清单下面的一句说明 ---------- */
+
+.footnotes {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 4px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.note {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------- 底栏：三个处置靠右 ---------- */
+
+.footerActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.buttonLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@include mobile {
+  .footerActions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .footerActions :global(.btn) {
+    width: 100%;
+  }
+}

@@ -104,6 +104,15 @@ describe('every locale carries the new copy', () => {
     'import_mode_paste_note',
     'import_mode_signin',
     'import_mode_signin_note',
+    'import_mode_note',
+    'import_mode_note_note',
+    'import_note_lead',
+    'import_note_field_list',
+    'import_note_placeholder',
+    'import_note_count',
+    'import_note_start',
+    'import_note_summary',
+    'import_note_unlinked',
     'import_signin_lead',
     'import_signin_field_list',
     'import_signin_placeholder',
@@ -282,5 +291,44 @@ describe('a locked store does not throw the sign-in away', () => {
     expect(modal).toContain('stored_as');
     expect(modal).toContain('import_signin_alias_title');
     expect(modal).not.toContain('import_signin_status_mismatch');
+  });
+});
+
+/**
+ * 登记地址：自建域下的地址只写台账，不配口令。
+ *
+ * 那类域的信全落进渠道的 catch-all 信箱 —— 给一个虚拟地址配一份口令，读信时用不上，
+ * 却会让人以为它自己收信。所以这条路只记「池子里有这个号」，不写凭据。
+ */
+describe('a self-hosted address is recorded, never given its own password', () => {
+  const supply = read('services/api/supply.ts');
+
+  test('the record route is the pool identities route', () => {
+    expect(supply).toContain('${SUPPLY_POOL_BASE}/identities');
+    expect(supply).toContain('importIdentities');
+  });
+
+  test('the three routes are offered side by side', () => {
+    expect(modal).toContain(
+      "const IMPORT_MODES: readonly ImportMode[] = ['paste', 'signin', 'note'];"
+    );
+  });
+
+  test('recording sends addresses only, in backend-sized batches', () => {
+    expect(modal).toContain('NOTE_CHUNK_LINES');
+    expect(modal).toContain('supplyApi.importIdentities');
+    const record = modal.slice(
+      modal.indexOf('const handleRecord'),
+      modal.indexOf('const handleStartSignin')
+    );
+    // 这条路没有可输的口令，也不碰令牌：它写的是台账，不是密钥库。
+    expect(record).not.toContain('passphrase');
+    expect(record).not.toContain('refresh_token');
+  });
+
+  test('an address no channel covers is still recorded, and said out loud', () => {
+    // 登记了但收不到信，和「能收信」是两件事：摘要之外要单独说一句。
+    expect(modal).toContain('noteSummary.unlinked > 0');
+    expect(modal).toContain('import_note_unlinked');
   });
 });

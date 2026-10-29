@@ -6,4 +6,5 @@ export {
   TableHeader,
   TableRow,
   TableRowGroup,
+  TableSpacer,
 } from './Table';

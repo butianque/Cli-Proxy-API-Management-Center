@@ -7,18 +7,21 @@
  *
  * - **粘贴导入**：卖家给了刷新令牌。整段文本发给基座，基座解析、验证、写库，回包里
  *   只有账号与结局。面板既不解析凭据，也不缓存它。
+ * - **登记地址**：手上已经有一个在用的地址（多半是自建域下现编的），只要能查得到
+ *   「它注册过什么」就够了。这条只写台账，不写凭据 —— 那个域的信全落进渠道的
+ *   catch-all 信箱，给一个虚拟地址配一份口令，没人用得上。
  * - **授权导入**：卖家只给了账号。刷新令牌只能由账号本人在微软页面上登录一次换来，
  *   所以基座给出 8 位码，操作者逐个登录，凭据自动落库。
  *
- * 两条路共同的约定：
+ * 三条路共同的约定：
  *
  * 1. **值不经过面板**：面板从不持有、不解析、不落盘任何凭据；授权导入里它连凭据都
  *    见不到 —— 令牌从微软直接进基座的密钥库。
  * 2. **先说明白导入的是哪种邮箱，再问怎么收信**：同一份凭据通常只带一种访问权 —— 微软
  *    邮件接口、邮箱服务器、或者邮箱自己的密码。收信方式是使用者的答案，不是基座能猜
  *    的；选错时基座会说「令牌没有被授予这条路的权限」，换另一个再导一次即可。授权导入
- *    拿到的令牌只覆盖微软邮件接口，所以那一条不问。自有域名邮箱只有「邮箱密码」这一条
- *    路可用：它的服务器不认识微软，也没有人会为它签发刷新令牌。
+ *    拿到的令牌只覆盖微软邮件接口，所以那一条不问。自建域名下的地址也没有自己的信箱 ——
+ *    它走「登记地址」，读信交给渠道。
  * 3. **验证默认打开**：验证不通过的邮箱不会入库 —— 一条连不上的渠道只会在表里多一
  *    行永远读不到信的东西，还得有人手工清。
  * 4. **分批发送**：一批里每个邮箱都要做一次令牌交换和一次登录，默认的 30 秒请求超时
@@ -36,21 +39,25 @@ import { SelectionCheckbox } from '@/components/ui/SelectionCheckbox';
 import { IconAlertTriangle, IconCheckCircle2 } from '@/components/ui/icons';
 import { emailApi, type EmailAuthorizeFlowWire, type EmailImportLineWire } from '@/services/api/email';
 import { touchSession } from '@/services/api/session';
+import { supplyApi } from '@/services/api/supply';
 import { copyToClipboard } from '@/utils/clipboard';
 import styles from './ImportMailboxesModal.module.scss';
 
 /** 一次请求最多带多少行。基座在这批里并发验证，一片正好落在一次请求的超时之内。 */
 const IMPORT_CHUNK_LINES = 20;
 
+/** 登记地址一次最多带多少行，与基座的上限一致。 */
+const NOTE_CHUNK_LINES = 500;
+
 /**
  * 一批邮箱是怎么来的。
  *
- * 这不是排版上的花样：两条路的输入、基座做的事、操作者要做的事全都不同，混在一个
+ * 这不是排版上的花样：每条路的输入、基座做的事、操作者要做的事全都不同，混在一个
  * 输入框里只会让「粘了账号却提示格式不对」变成常态。
  */
-type ImportMode = 'paste' | 'signin';
+type ImportMode = 'paste' | 'signin' | 'note';
 
-const IMPORT_MODES: readonly ImportMode[] = ['paste', 'signin'];
+const IMPORT_MODES: readonly ImportMode[] = ['paste', 'signin', 'note'];
 
 /**
  * 收信方式。同一个信箱只走一条路，所以是单选。
@@ -114,6 +121,14 @@ interface ImportMailboxesModalProps {
   onClose: () => void;
   /** 关闭时调用，且只有真的导入过才调用 —— 页面据此把结果露出来。 */
   onImported: () => void;
+  /**
+   * 打开时停在哪条路、框里先放什么。
+   *
+   * 扫活里点「重新授权导入」就是这样进来的：那批号已经知道是哪些，让人再粘一遍
+   * 等于把同一份清单抄两次。不传 = 从粘贴导入空着开始。
+   */
+  initialMode?: ImportMode | null;
+  initialText?: string;
 }
 
 type Phase = 'idle' | 'busy' | 'done';
@@ -124,7 +139,21 @@ interface Summary {
   failed: number;
 }
 
-export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailboxesModalProps) {
+/** 登记地址的结论：登记了几条、更新了几条、几条不是地址、几条没有渠道覆盖。 */
+interface NoteSummary {
+  recorded: number;
+  updated: number;
+  failed: number;
+  unlinked: number;
+}
+
+export function ImportMailboxesModal({
+  open,
+  onClose,
+  onImported,
+  initialMode = null,
+  initialText = '',
+}: ImportMailboxesModalProps) {
   const { t } = useTranslation();
 
   const [mode, setMode] = useState<ImportMode>('paste');
@@ -151,11 +180,16 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
   const [commitError, setCommitError] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
 
+  // 登记地址
+  const [notePhase, setNotePhase] = useState<Phase>('idle');
+  const [noteSummary, setNoteSummary] = useState<NoteSummary | null>(null);
+  const [noteError, setNoteError] = useState<string | null>(null);
+
   // 每次打开都是一次新的导入：上一批的结论留在上一批。
   useEffect(() => {
     if (!open) return;
-    setMode('paste');
-    setText('');
+    setMode(initialMode ?? 'paste');
+    setText(initialText);
     setVerify(true);
     setMethod('graph');
     setImapHost('');
@@ -172,7 +206,10 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
     setPassphrase('');
     setCommitError(null);
     setCommitting(false);
-  }, [open]);
+    setNotePhase('idle');
+    setNoteSummary(null);
+    setNoteError(null);
+  }, [open, initialMode, initialText]);
 
   // 打开时先看一眼有没有还没走完的那一批。登录是人工的，一次可能等十几分钟，中途
   // 关掉弹窗或刷新页面都不该让它丢掉 —— 它还在基座那边等着，接上就行。
@@ -299,6 +336,42 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
     }
   };
 
+  /**
+   * 登记已有的一批地址：只写台账，不碰凭据。
+   *
+   * 基座一次最多收 500 行，所以这里按同一个数切片 —— 超过的部分要么被整批拒掉，
+   * 要么得让操作者自己分批，两种都比面板自己切开差。
+   */
+  const handleRecord = async () => {
+    if (lines.length === 0) {
+      setNoteError(t('sms_service.import_err_empty'));
+      return;
+    }
+    setNotePhase('busy');
+    setNoteError(null);
+    setNoteSummary(null);
+    let recorded = 0;
+    let updated = 0;
+    let failed = 0;
+    let unlinked = 0;
+    for (let start = 0; start < lines.length; start += NOTE_CHUNK_LINES) {
+      const result = await supplyApi.importIdentities(
+        lines.slice(start, start + NOTE_CHUNK_LINES)
+      );
+      if (!result.ok) {
+        setNotePhase('done');
+        setNoteError(t('sms_service.import_err_generic', { message: result.message }));
+        return;
+      }
+      recorded += result.recorded;
+      updated += result.updated;
+      failed += result.failed;
+      unlinked += result.unlinked;
+    }
+    setNotePhase('done');
+    setNoteSummary({ recorded, updated, failed, unlinked });
+  };
+
   const handleStartSignin = async () => {
     if (lines.length === 0) {
       setSigninError(t('sms_service.import_err_empty'));
@@ -367,7 +440,9 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
   const importedSomething =
     mode === 'signin'
       ? savedCount > 0
-      : (summary?.imported ?? 0) + (summary?.updated ?? 0) > 0;
+      : mode === 'note'
+        ? (noteSummary?.recorded ?? 0) + (noteSummary?.updated ?? 0) > 0
+        : (summary?.imported ?? 0) + (summary?.updated ?? 0) > 0;
 
   const handleClose = () => {
     if (importedSomething) onImported();
@@ -391,6 +466,23 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
                 total: progress.total,
               })
             : t('sms_service.import_start')}
+        </Button>
+      </>
+    );
+
+  // 登记地址：一批一请求，没有逐个进行的步骤，所以底栏只有「取消 / 登记」。
+  const noteFooter =
+    notePhase === 'done' ? (
+      <Button variant="secondary" onClick={handleClose}>
+        {t('sms_service.import_close')}
+      </Button>
+    ) : (
+      <>
+        <Button variant="ghost" onClick={handleClose} disabled={notePhase === 'busy'}>
+          {t('sms_service.config_cancel')}
+        </Button>
+        <Button onClick={handleRecord} loading={notePhase === 'busy'} disabled={lineCount === 0}>
+          {t('sms_service.import_note_start')}
         </Button>
       </>
     );
@@ -421,11 +513,13 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
       open={open}
       title={t('sms_service.import_title')}
       onClose={handleClose}
-      footer={mode === 'signin' ? signinFooter : pasteFooter}
+      footer={
+        mode === 'signin' ? signinFooter : mode === 'note' ? noteFooter : pasteFooter
+      }
       width={640}
     >
       <div className={styles.body}>
-        {/* 先问手上是什么，再问怎么走：两条路的输入完全不同，混在一起只会互相拖累。 */}
+        {/* 先问手上是什么，再问怎么走：每条路的输入完全不同，混在一起只会互相拖累。 */}
         <div className={styles.choiceGroup}>
           <span className={styles.fieldLabel}>{t('sms_service.import_mode_label')}</span>
           <div className={styles.choiceCards}>
@@ -436,7 +530,7 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
                   name="mailbox-import-mode"
                   checked={mode === value}
                   onChange={() => setMode(value)}
-                  disabled={running || phase === 'busy'}
+                  disabled={running || phase === 'busy' || notePhase === 'busy'}
                 />
                 <span className={styles.choiceTitle}>{t(`sms_service.import_mode_${value}`)}</span>
                 <span className={styles.choiceNote}>
@@ -450,9 +544,11 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
         <p className={styles.lead}>
           {mode === 'signin'
             ? t('sms_service.import_signin_lead')
-            : method === 'imap'
-              ? t('sms_service.import_lead_imap')
-              : t('sms_service.import_lead')}
+            : mode === 'note'
+              ? t('sms_service.import_note_lead')
+              : method === 'imap'
+                ? t('sms_service.import_lead_imap')
+                : t('sms_service.import_lead')}
         </p>
 
         {mode === 'paste' && (
@@ -504,7 +600,9 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
         <label className={styles.fieldLabel} htmlFor="mailbox-import-list">
           {mode === 'signin'
             ? t('sms_service.import_signin_field_list')
-            : t('sms_service.import_field_list')}
+            : mode === 'note'
+              ? t('sms_service.import_note_field_list')
+              : t('sms_service.import_field_list')}
         </label>
         <textarea
           id="mailbox-import-list"
@@ -515,16 +613,22 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
           placeholder={
             mode === 'signin'
               ? t('sms_service.import_signin_placeholder')
-              : method === 'imap'
-                ? t('sms_service.import_imap_placeholder')
-                : t('sms_service.import_placeholder')
+              : mode === 'note'
+                ? t('sms_service.import_note_placeholder')
+                : method === 'imap'
+                  ? t('sms_service.import_imap_placeholder')
+                  : t('sms_service.import_placeholder')
           }
           value={text}
           onChange={(event) => setText(event.target.value)}
-          disabled={phase === 'busy' || running}
+          disabled={phase === 'busy' || notePhase === 'busy' || running}
         />
         {lineCount > 0 && (
-          <span className={styles.note}>{t('sms_service.import_count', { count: lineCount })}</span>
+          <span className={styles.note}>
+            {mode === 'note'
+              ? t('sms_service.import_note_count', { count: lineCount })
+              : t('sms_service.import_count', { count: lineCount })}
+          </span>
         )}
 
         {mode === 'paste' && (
@@ -585,6 +689,45 @@ export function ImportMailboxesModal({ open, onClose, onImported }: ImportMailbo
                   </span>
                 )}
               </>
+            )}
+          </div>
+        )}
+
+        {mode === 'note' && noteError && (
+          <div className={styles.errorRow}>
+            <IconAlertTriangle size={15} />
+            <span>{noteError}</span>
+          </div>
+        )}
+
+        {mode === 'note' && notePhase === 'done' && noteSummary && (
+          <div className={styles.resultBlock}>
+            <div
+              className={`${styles.summary} ${
+                noteSummary.failed > 0 || noteSummary.unlinked > 0
+                  ? styles.summaryWarn
+                  : styles.summaryOk
+              }`}
+            >
+              {noteSummary.failed > 0 || noteSummary.unlinked > 0 ? (
+                <IconAlertTriangle size={15} />
+              ) : (
+                <IconCheckCircle2 size={15} />
+              )}
+              <span>
+                {t('sms_service.import_note_summary', {
+                  recorded: noteSummary.recorded,
+                  updated: noteSummary.updated,
+                  failed: noteSummary.failed,
+                })}
+              </span>
+            </div>
+            {/* 没有渠道覆盖的地址照样登记了，但它的信没有归属 —— 这件事要说出来，
+                否则「已登记」会被读成「能收信」。 */}
+            {noteSummary.unlinked > 0 && (
+              <span className={styles.note}>
+                {t('sms_service.import_note_unlinked', { count: noteSummary.unlinked })}
+              </span>
             )}
           </div>
         )}

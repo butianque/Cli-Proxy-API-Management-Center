@@ -42,6 +42,9 @@ export function SmsServicePage() {
   const [inboxOpen, setInboxOpen] = useState(false);
   // 导入写的是台账，而台账只在挂载时读一次：靠这个计数器叫它重读。
   const [poolReloadKey, setPoolReloadKey] = useState(0);
+  // 扫活里选了「重新授权导入」：把地址直接带进导入弹窗。那批号已经知道是哪些，
+  // 让人再粘一遍等于把同一份清单抄两次。
+  const [importPrefill, setImportPrefill] = useState<{ mode: 'signin'; text: string } | null>(null);
 
   const categories: { id: SupplyKind; label: string }[] = [
     { id: 'phone', label: t('sms_service.tab_phone') },
@@ -67,11 +70,7 @@ export function SmsServicePage() {
         </div>
         {view === 'pool' && (
           <div className={styles.headerActions}>
-            <button
-              type="button"
-              className={styles.ghostAction}
-              onClick={() => setInboxOpen(true)}
-            >
+            <button type="button" className={styles.ghostAction} onClick={() => setInboxOpen(true)}>
               <IconInbox size={14} />
               {t('sms_service.inbox_button')}
             </button>
@@ -91,8 +90,19 @@ export function SmsServicePage() {
         )}
       </header>
 
-      <div key={view} className={styles.viewContent}>
-        {view === 'pool' && <SupplyPoolCard reloadKey={poolReloadKey} />}
+      <div
+        key={view}
+        className={`${styles.viewContent} ${view === 'config' ? styles.viewContentConfig : ''}`}
+      >
+        {view === 'pool' && (
+          <SupplyPoolCard
+            reloadKey={poolReloadKey}
+            onReauthorize={(addresses) => {
+              setImportPrefill({ mode: 'signin', text: addresses.join('\n') });
+              setImportOpen(true);
+            }}
+          />
+        )}
         {view === 'config' && (
           <>
             <div className={styles.tabs} role="tablist" aria-label={t('sms_service.tabs_label')}>
@@ -122,7 +132,12 @@ export function SmsServicePage() {
       {/* 导入完成就停在台账：导进来的号就在这一页上，跳到配置页等于让人自己再找回来。 */}
       <ImportMailboxesModal
         open={importOpen}
-        onClose={() => setImportOpen(false)}
+        initialMode={importPrefill?.mode ?? null}
+        initialText={importPrefill?.text ?? ''}
+        onClose={() => {
+          setImportOpen(false);
+          setImportPrefill(null);
+        }}
         onImported={() => {
           setView('pool');
           setPoolReloadKey((value) => value + 1);

@@ -12,6 +12,26 @@
   overflow-x: auto;
 }
 
+/* 表格自己滚（而不是整页滚）时：表头钉在顶端，行在下面走。
+ * 表头必须自己带底色，否则滚过去的行会从它下面透出来。 */
+.scrollBody {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+
+  .head th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--muted-bg);
+  }
+}
+
+/* 窗口化渲染的占位行：只为撑高度，不画线、不留白。 */
+.spacer td {
+  padding: 0;
+  border: 0;
+}
+
 .table {
   width: 100%;
   border-collapse: separate;
