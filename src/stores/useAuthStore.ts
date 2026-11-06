@@ -50,11 +50,15 @@ let restoreSessionPromise: Promise<boolean> | null = null;
  * 这件事就没有凭据可依，下一次刷新又要密钥。
  */
 /**
- * 把服务端给的会话窗口装进空闲守卫。
+ * 把服务端给的会话窗口装进空闲守卫，并把这轮会话的空闲时钟归零。
  *
  * 用 `panel_idle_seconds`（浏览器会话的窗口），而不是 `idle_seconds`（凭据授权
  * 的窗口）：守卫到点要做的是**结束会话**，所以它必须跟会话的时钟走。两者默认
  * 相同，但可以分开配置。
+ *
+ * 归零这一步不能省：空闲时钟是跨会话、跨标签页共享的（`cpa.session.lastActivity`），
+ * 上一个会话留下的时间戳可能已经超过窗口。不归零的话，新会话在登录后的第一次
+ * 鼠标移动就会被判成「空闲超时」而登出。
  */
 function applySessionClock(session: {
   idle_seconds?: number;
@@ -64,6 +68,7 @@ function applySessionClock(session: {
   if (seconds) {
     useSecretGateStore.getState().setIdleTimeout(seconds * 1000);
   }
+  useSecretGateStore.getState().beginSession();
 }
 
 async function establishSession(persistent = false, fresh = false): Promise<void> {

@@ -362,6 +362,10 @@ describe('idle expiry is shared across tabs and keeps the newest activity', () =
     'utf8'
   );
   const idleActivity = readFileSync(new URL('../src/utils/idleActivity.ts', import.meta.url), 'utf8');
+  const authStoreSource = readFileSync(
+    new URL('../src/stores/useAuthStore.ts', import.meta.url),
+    'utf8'
+  );
 
   test('the activity clock is origin-wide, not per tab', () => {
     // `lastActivityAt` is in-memory state, so a reload resets it to "now" — that
@@ -380,7 +384,23 @@ describe('idle expiry is shared across tabs and keeps the newest activity', () =
   test('the newest activity wins, so one active tab keeps the session alive', () => {
     // max(), not min(): min() would let an idle tab's stale stamp log out a tab
     // the operator is actively using. "Idle" means no tab has been touched.
-    expect(idleGuard).toContain('Math.max(inMemory, shared ?? 0)');
+    expect(idleGuard).toContain('Math.max(lastActivityAt, sessionStartedAt, shared ?? 0)');
+  });
+
+  test('a new session starts with a fresh clock, not the previous one', () => {
+    // The shared clock survives logout only when the previous session never ran
+    // its own logout (browser closed, server restarted, session expired). A
+    // leftover stamp older than the window made the very first mouse move after
+    // signing in look like an idle expiry: the operator was sent back to the
+    // login page with a correct key and had to type it again. The session start
+    // is the floor of the clock, so a stale stamp cannot decide anything.
+    expect(idleGuard).toContain('sessionStartedAt');
+    expect(gateStore).toContain('sessionStartedAt: number;');
+    const begin = actionBody('beginSession', 'reset:');
+    expect(begin).toContain('writeSharedActivity(now)');
+    expect(begin).toContain('lastActivityAt: now, sessionStartedAt: now');
+    // Every path that (re)establishes a session must restart the clock.
+    expect(authStoreSource).toContain('useSecretGateStore.getState().beginSession();');
   });
 
   test('activity is recorded when it happens', () => {

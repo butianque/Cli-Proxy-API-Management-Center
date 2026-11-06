@@ -49,6 +49,7 @@ import { readSharedActivity, writeSharedActivity } from '@/utils/idleActivity';
 const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
   'mousemove',
   'mousedown',
+  'pointerdown',
   'wheel',
   'keydown',
   'touchstart',
@@ -60,11 +61,14 @@ const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
 /** 检查间隔取超时的 1/4 与 15s 中的较小者，保证短超时也能及时触发。 */
 const CHECK_INTERVAL_FLOOR_MS = 5_000;
 
-/** 最近一次真实活动：内存值与共享值取**最大**（跨标签页时以别人写的为准）。 */
+/** 最近一次真实活动：内存值、本轮会话起点与共享值取**最大**（跨标签页时以别人写的为准）。 */
 function newestActivity(): number {
-  const inMemory = useSecretGateStore.getState().lastActivityAt;
+  const { lastActivityAt, sessionStartedAt } = useSecretGateStore.getState();
   const shared = readSharedActivity();
-  return Math.max(inMemory, shared ?? 0);
+  // `sessionStartedAt` 是地板：上一个会话留在 localStorage 里的时间戳不能把
+  // 一个刚建立的会话判成「已经空闲超时」（否则登录后的第一次鼠标移动就会登出，
+  // 操作者看到的是「密钥输对了又被弹回登录页」）。
+  return Math.max(lastActivityAt, sessionStartedAt, shared ?? 0);
 }
 
 export function SessionIdleGuard() {
@@ -96,11 +100,13 @@ export function SessionIdleGuard() {
     };
 
     for (const event of ACTIVITY_EVENTS) {
-      window.addEventListener(event, onActivity, { passive: true });
+      // capture: `scroll` 不冒泡，挂在 window 的冒泡阶段收不到弹窗/表格这类
+      // 内部容器的滚动；捕获阶段能收到，于是「在表格里翻页看日志」也算活动。
+      window.addEventListener(event, onActivity, { passive: true, capture: true });
     }
     return () => {
       for (const event of ACTIVITY_EVENTS) {
-        window.removeEventListener(event, onActivity);
+        window.removeEventListener(event, onActivity, { capture: true });
       }
     };
   }, [isAuthenticated, idleTimeoutMs, logout, touch]);

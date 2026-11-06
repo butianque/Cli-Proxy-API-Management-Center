@@ -26,7 +26,11 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { clearSharedActivity, readSharedActivity } from '@/utils/idleActivity';
+import {
+  clearSharedActivity,
+  readSharedActivity,
+  writeSharedActivity,
+} from '@/utils/idleActivity';
 
 /** 空闲超时默认 10 分钟（用户拍板）。 */
 export const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
@@ -58,6 +62,11 @@ interface SecretGateState {
   idleTimeoutMs: number;
   /** 空闲计时器的最后活动时间戳（内存，不持久化）。 */
   lastActivityAt: number;
+  /**
+   * 本轮登录会话开始的时刻（内存）。它是空闲时钟的**地板**：上一个会话留在
+   * `localStorage` 里的时间戳不得让新会话一登录就被判成「已经空闲超时」。
+   */
+  sessionStartedAt: number;
 
   /** 查询并返回密钥库是否能被本面板使用；同时刷新 passphraseSet/storeAvailable。 */
   refreshStoreState: (status: {
@@ -76,6 +85,8 @@ interface SecretGateState {
   adoptPassphrase: (passphrase: string) => void;
   /** 记录一次用户主动活动，重置空闲计时器。 */
   touch: () => void;
+  /** 会话（重新）建立：把空闲时钟归零，并把本轮会话的起点钉在现在。 */
+  beginSession: () => void;
   /** 完全重置（登出时调用）。 */
   reset: () => void;
   setIdleTimeout: (ms: number) => void;
@@ -94,6 +105,7 @@ export const useSecretGateStore = create<SecretGateState>()(
       // 时钟必须接着上一次的算，否则每刷一次就把 10 分钟重新计一遍，空闲登出
       // 永远不会触发。
       lastActivityAt: readSharedActivity() ?? Date.now(),
+      sessionStartedAt: Date.now(),
 
       refreshStoreState: (status) => {
         set({
@@ -145,6 +157,20 @@ export const useSecretGateStore = create<SecretGateState>()(
         set({ lastActivityAt: Date.now() });
       },
 
+      // 会话（重新）建立 = 空闲计时从这一刻重新开始。
+      //
+      // 时钟本身是跨标签页共享的（见 idleActivity.ts），所以登录时 `localStorage`
+      // 里往往还留着**上一次会话**的时间戳：浏览器被关掉、服务端重启、空闲超时后
+      // 直接重新打开页面，都会走到「时钟很旧 + 新会话」这个组合。若直接拿它判定，
+      // 新会话在登录后的第一次鼠标移动就会被当成「空闲超时」而登出——正是「密钥
+      // 输对了却又被弹回登录页、得再输一次」的成因。把起点钉在现在，旧时间戳就
+      // 再也解释不了任何一次空闲。
+      beginSession: () => {
+        const now = Date.now();
+        writeSharedActivity(now);
+        set({ lastActivityAt: now, sessionStartedAt: now });
+      },
+
       // 登出 = 门回到「未询问」：连「库是否可用 / 是否装了主密码」也要清掉。
       // 否则登录页会拿着上一次会话的 storeAvailable/passphraseSet 把弹窗又弹出来。
       // 解锁状态本身不用清：它是会话的属性，下次登录是新会话，后端会如实报告未解锁。
@@ -157,6 +183,7 @@ export const useSecretGateStore = create<SecretGateState>()(
           storeAvailable: false,
           storeEnabled: false,
           lastActivityAt: Date.now(),
+          sessionStartedAt: Date.now(),
         });
       },
 
