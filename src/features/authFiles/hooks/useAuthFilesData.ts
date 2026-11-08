@@ -2,12 +2,18 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type RefObj
 import { useTranslation } from 'react-i18next';
 import { apiClient, authFilesApi } from '@/services/api';
 import { accountsApi } from '@/services/api/accounts';
-import { findQuotaPluginId, loadQuotaPluginIndex } from '@/services/api/accountQuota';
+import { loadQuotaPluginIndex } from '@/services/api/accountQuota';
 import { pluginsApi } from '@/services/api/plugins';
 import type { AuthFileRefreshResult } from '@/services/api/authFiles';
 import { getAuthFileRefreshKey } from '@/features/authFiles/manualRefresh';
 import { notifyAuthFilesChanged } from '@/features/authFiles/authFilesEvents';
 import { buildAccountIndex } from '@/features/authFiles/accountPool';
+import {
+  buildQuotaRefreshJobs,
+  createConcurrencyLimiter,
+  QUOTA_BATCH_CONCURRENCY,
+  withQuotaRetry,
+} from '@/features/quota/batchConcurrency';
 import { useNotificationStore } from '@/stores';
 import type { AuthFileItem } from '@/types';
 import type { ModelConcurrencyEntry } from '@/types/authFile';
@@ -369,7 +375,8 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
       const names = new Set<string>();
       for (const file of files) {
         if (isRuntimeOnlyAuthFile(file) || file.name === excludeName) continue;
-        if (normalizeProviderKey(String(file.type ?? file.provider ?? '')) !== categoryKey) continue;
+        if (normalizeProviderKey(String(file.type ?? file.provider ?? '')) !== categoryKey)
+          continue;
         names.add(file.name);
       }
       const targets = [...names];
@@ -408,24 +415,27 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
   const refreshQuotas = useCallback(
     async (targets: readonly AuthFileItem[]) => {
       const connectionRevision = apiClient.getConnectionRevision();
-      const requests: Array<Promise<unknown>> = [];
-      for (const file of targets) {
-        // 候选键的先后即优先级；取不到插件 id 或宿主没给 authIndex 的凭据不参与，
-        // 不计入 total——宿主无处落快照，算进分母只会让结果看起来更差。
-        const pluginId = findQuotaPluginId(quotaPluginIndex, [
-          String(file.provider ?? ''),
-          String(file.type ?? ''),
-        ]);
-        const authIndex = String(file.authIndex ?? '').trim();
-        if (!pluginId || !authIndex) continue;
-        requests.push(pluginsApi.fetchQuota(pluginId, authIndex));
-      }
+
+      // 一次刷新到底该发哪些请求：解析额度通道（候选键优先级见 buildQuotaRefreshJobs）
+      // 并按「插件 + authIndex」去重。取不到通道的凭据不参与，也不计入 total——
+      // 宿主无处落快照，算进分母只会让结果看起来更差。
+      const jobs = buildQuotaRefreshJobs(quotaPluginIndex, targets);
 
       // 一个目标都没命中就什么都不发：宿主快照不会变，重读也读不出新东西。
       // 自动探测因此不会在「没有可探测目标」时产生任何请求。
-      if (requests.length === 0) return { ok: 0, total: 0 };
+      if (jobs.length === 0) return { ok: 0, total: 0 };
 
-      const results = await Promise.allSettled(requests);
+      // 闸门 + 退避：一次刷新可能覆盖上百个凭据，绝不能把它们同时压给后端——
+      // 那会触发 nginx 限流并大量 503（自伤式并发）。所有请求共享一个闸门，
+      // 在途数不超过 QUOTA_BATCH_CONCURRENCY；被限流（429/503）的请求有限次退避重试。
+      const limiter = createConcurrencyLimiter(QUOTA_BATCH_CONCURRENCY);
+      const results = await Promise.allSettled(
+        jobs.map((job) =>
+          limiter.run(() =>
+            withQuotaRetry(() => pluginsApi.fetchQuota(job.pluginId, job.authIndex))
+          )
+        )
+      );
       const ok = results.filter((result) => result.status === 'fulfilled').length;
 
       // 无论成败都重读一次：成功的那部分已经把额度写进宿主快照，只有重读才看得见。
@@ -434,7 +444,7 @@ export function useAuthFilesData(options?: UseAuthFilesDataOptions): UseAuthFile
         applyAccounts(files, accountsResult);
       }
 
-      return { ok, total: requests.length };
+      return { ok, total: jobs.length };
     },
     [applyAccounts, files, quotaPluginIndex]
   );
