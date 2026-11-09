@@ -97,6 +97,19 @@ export interface AccountHeatBucket {
   successRate?: number;
 }
 
+/**
+ * 一个模型的在途请求读数（后端契约新增 `in_flight_by_model` 的元素）。
+ * 缺省即「后端未下发」，绝不回落成 0。
+ */
+export interface AccountModelInFlight {
+  /** 模型名；后端给空名的条目在归一化层丢弃。 */
+  model: string;
+  /** 该模型当前活跃在途请求数。 */
+  inFlight: number;
+  /** 该模型的并发上限；缺省 = 未设上限（不是 0）。 */
+  limit?: number;
+}
+
 /** 一个账号（`account_view.go:34-68`）。 */
 export interface AccountView {
   provider: string;
@@ -161,6 +174,16 @@ export interface AccountView {
   failureCount: number;
   /** 无历史时后端下发 null ⇒ 归一化为空数组。 */
   heatmap: AccountHeatBucket[];
+  /**
+   * 该凭证当前活跃在途请求合计（后端 `in_flight`）。
+   * 缺省 = 后端未下发（例如尚未上线该字段），**不回落成 0**。
+   */
+  inFlight?: number;
+  /**
+   * 逐模型的在途明细（后端 `in_flight_by_model`）。
+   * 缺省 = 后端未下发；与「下发了一个空数组」可区分，前者不显示、后者无行可列。
+   */
+  inFlightByModel?: AccountModelInFlight[];
 }
 
 /** 过滤后的计数（`account_view.go:140-148`）。 */

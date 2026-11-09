@@ -309,6 +309,17 @@ export function AuthFileCard(props: AuthFileCardProps) {
             </span>
           </>
         )}
+        {account?.inFlight !== undefined && (
+          <>
+            <span className={styles.metaDivider} aria-hidden="true">
+              ·
+            </span>
+            <span className={styles.metaInFlight} title={t('auth_files.in_flight_hint')}>
+              <span className={styles.metaMetricLabel}>{t('auth_files.in_flight_display')}</span>
+              <span>{account.inFlight}</span>
+            </span>
+          </>
+        )}
       </div>
 
       {showQuotaLayout && quotaType && (

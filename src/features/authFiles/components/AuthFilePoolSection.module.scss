@@ -82,6 +82,13 @@
   border-top: 1px solid var(--border-color);
 }
 
+/* 逐模型在途：一列读数，沿用额度块的 bucket 语汇（模型名 + 读数），不另造样式。 */
+.inFlightBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 .quotaHead {
   display: flex;
   align-items: baseline;

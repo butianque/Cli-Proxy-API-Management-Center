@@ -80,6 +80,8 @@ export function AuthFilePoolSection({
   // 开通日期只按「能格式化成日期」才出现：宿主与归一化层都会丢掉非法值，这里再兜一次，
   // 免得出现一个只有标签、没有值的空行。
   const openedAt = account.openedAt ? formatDateValue(account.openedAt, i18n.language) : '';
+  // 逐模型的在途明细：后端没下发就没有可列的模型，整块不出现（空数组同样无行可列）。
+  const inFlightModels = account.inFlightByModel ?? [];
   const stateClass = {
     eligible: styles.stateEligible,
     cooling: styles.stateCooling,
@@ -138,6 +140,33 @@ export function AuthFilePoolSection({
         <div className={styles.row}>
           <span className={styles.fieldLabel}>{t('account_pool.opened_at_label')}</span>
           <span className={styles.openedAtValue}>{openedAt}</span>
+        </div>
+      )}
+
+      {/* 逐模型在途：后端报了几个模型在跑、各跑多少，就在这儿列几行；
+          没报（未下发或空数组）就整块不出现，不摆空表。 */}
+      {inFlightModels.length > 0 && (
+        <div className={styles.inFlightBlock}>
+          <span className={styles.fieldLabel}>{t('account_pool.in_flight_label')}</span>
+          <ul className={styles.bucketList}>
+            {inFlightModels.map((entry, index) => (
+              <li className={styles.bucket} key={`${entry.model}:${index}`}>
+                <div className={styles.bucketHead}>
+                  <span className={styles.bucketLabel} title={entry.model}>
+                    {entry.model}
+                  </span>
+                  <span className={styles.bucketAmount}>
+                    {entry.limit !== undefined
+                      ? t('account_pool.in_flight_with_limit', {
+                          inFlight: entry.inFlight,
+                          limit: entry.limit,
+                        })
+                      : entry.inFlight.toLocaleString(i18n.language)}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

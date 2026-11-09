@@ -120,6 +120,8 @@
     "plugin_actions": "Thao tác plugin"
   },
   "account_pool": {
+    "in_flight_label": "Đang xử lý",
+    "in_flight_with_limit": "{{inFlight}} / {{limit}}",
     "state_label": "Trạng thái",
     "site_label": "Trang",
     "opened_at_label": "Kích hoạt lần đầu",
@@ -320,6 +322,8 @@
     "routing_strategy_fill_first": "fill-first (ưu tiên lấp đầy)"
   },
   "auth_files": {
+    "in_flight_display": "Đang hoạt động",
+    "in_flight_hint": "Số yêu cầu thông tin xác thực này đang xử lý ngay bây giờ.",
     "title": "Nhóm tài khoản",
     "meta_total": "{{count}} credential",
     "meta_active": "{{count}} đang hoạt động",

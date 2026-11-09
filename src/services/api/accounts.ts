@@ -20,6 +20,7 @@ import type {
   AccountChannel,
   AccountFailureClass,
   AccountHeatBucket,
+  AccountModelInFlight,
   AccountPolicy,
   AccountQuotaBucket,
   AccountQuotaState,
@@ -150,6 +151,30 @@ const normalizeQuotaBucket = (value: unknown): AccountQuotaBucket | undefined =>
   return bucket;
 };
 
+/**
+ * 归一化一条「逐模型在途」读数（后端 `in_flight_by_model` 的元素）。
+ * 缺 `model` 或 `in_flight` 非有限数的条目作废：没有模型名就没有展示的键，
+ * 没有读数就没有可显示的东西，两者都不臆造。
+ */
+const normalizeModelInFlight = (value: unknown): AccountModelInFlight | undefined => {
+  if (!isRecord(value)) return undefined;
+  const model = trimString(value.model);
+  const inFlight = optionalNumber(value.in_flight);
+  if (!model || inFlight === undefined) return undefined;
+  const entry: AccountModelInFlight = { model, inFlight };
+  const limit = optionalNumber(value.limit);
+  if (limit !== undefined) entry.limit = limit;
+  return entry;
+};
+
+/** 缺省 = 后端未下发 `in_flight_by_model`（未知），与「下发了一个空数组」是两件事。 */
+const normalizeModelInFlights = (value: unknown): AccountModelInFlight[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .map(normalizeModelInFlight)
+    .filter((entry): entry is AccountModelInFlight => entry !== undefined);
+};
+
 const normalizeHeatBucket = (value: unknown): AccountHeatBucket | undefined => {
   if (!isRecord(value)) return undefined;
   const bucket: AccountHeatBucket = {
@@ -231,6 +256,8 @@ export const normalizeAccountView = (value: unknown): AccountView => {
   const fetchedAt = optionalString(entry.fetched_at);
   const egressId = optionalNumber(entry.egress_id);
   const egress = optionalString(entry.egress);
+  const inFlight = optionalNumber(entry.in_flight);
+  const inFlightByModel = normalizeModelInFlights(entry.in_flight_by_model);
 
   if (accountId !== undefined) account.accountId = accountId;
   if (site !== undefined) account.site = site;
@@ -252,6 +279,10 @@ export const normalizeAccountView = (value: unknown): AccountView => {
     account.egressId = egressId;
   }
   if (egress !== undefined) account.egress = egress;
+  // 在途读数是「后端这一轮报出来的活流量」：缺省即未知，绝不回落成 0。
+  if (inFlight !== undefined) account.inFlight = inFlight;
+  // 逐模型明细：缺省（未下发）与空数组在数据上可区分，但都无行可列 ⇒ 都不渲染整块。
+  if (inFlightByModel !== undefined) account.inFlightByModel = inFlightByModel;
 
   return account;
 };

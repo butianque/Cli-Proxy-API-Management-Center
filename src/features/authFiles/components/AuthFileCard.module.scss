@@ -361,7 +361,8 @@
 }
 
 .metaPriority,
-.metaWeight {
+.metaWeight,
+.metaInFlight {
   display: inline-flex;
   align-items: baseline;
   gap: 4px;
@@ -373,7 +374,9 @@
   white-space: nowrap;
 }
 
-.metaPriority {
+/* 优先级与在途读数共用同一副中性 pill：都是凭证自己的次级读数，不抢主任务。 */
+.metaPriority,
+.metaInFlight {
   color: var(--text-secondary);
   background: color-mix(in srgb, var(--text-quaternary) 10%, transparent);
   border-color: color-mix(in srgb, var(--text-quaternary) 24%, transparent);

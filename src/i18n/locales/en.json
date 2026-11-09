@@ -141,6 +141,8 @@
     "plugin_actions": "Trigger plugin operations and track progress"
   },
   "account_pool": {
+    "in_flight_label": "In-flight",
+    "in_flight_with_limit": "{{inFlight}} / {{limit}}",
     "state_label": "State",
     "site_label": "Site",
     "opened_at_label": "First opened",
@@ -320,6 +322,8 @@
     "routing_strategy_fill_first": "fill-first (prioritize)"
   },
   "auth_files": {
+    "in_flight_display": "Active",
+    "in_flight_hint": "Requests this credential is handling right now.",
     "title": "Account pool",
     "meta_total": "{{count}} credentials",
     "meta_active": "{{count}} active",

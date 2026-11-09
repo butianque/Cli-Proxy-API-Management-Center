@@ -120,6 +120,8 @@
     "plugin_actions": "Действия плагинов"
   },
   "account_pool": {
+    "in_flight_label": "В обработке",
+    "in_flight_with_limit": "{{inFlight}} / {{limit}}",
     "state_label": "Состояние",
     "site_label": "Сайт",
     "opened_at_label": "Впервые активирован",
@@ -319,6 +321,8 @@
     "routing_strategy_fill_first": "fill-first (приоритет)"
   },
   "auth_files": {
+    "in_flight_display": "Активно",
+    "in_flight_hint": "Запросы, которые эта учётная запись обрабатывает сейчас.",
     "title": "Пул аккаунтов",
     "meta_total": "{{count}} учётных данных",
     "meta_active": "{{count}} активно",

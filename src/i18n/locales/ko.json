@@ -120,6 +120,8 @@
     "plugin_actions": "플러그인 작업"
   },
   "account_pool": {
+    "in_flight_label": "처리 중",
+    "in_flight_with_limit": "{{inFlight}} / {{limit}}",
     "state_label": "상태",
     "site_label": "사이트",
     "opened_at_label": "최초 개설",
@@ -320,6 +322,8 @@
     "routing_strategy_fill_first": "fill-first (우선 채우기)"
   },
   "auth_files": {
+    "in_flight_display": "활성",
+    "in_flight_hint": "이 자격 증명이 지금 처리 중인 요청 수입니다.",
     "title": "계정 풀",
     "meta_total": "자격 증명 {{count}}개",
     "meta_active": "활성 {{count}}개",

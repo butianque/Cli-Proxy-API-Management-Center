@@ -141,6 +141,8 @@
     "plugin_actions": "觸發外掛宣告的操作並追蹤進度"
   },
   "account_pool": {
+    "in_flight_label": "在途請求",
+    "in_flight_with_limit": "{{inFlight}} / {{limit}}",
     "state_label": "狀態",
     "site_label": "站點",
     "opened_at_label": "首次開通",
@@ -320,6 +322,8 @@
     "routing_strategy_fill_first": "fill-first（優先填充）"
   },
   "auth_files": {
+    "in_flight_display": "活躍",
+    "in_flight_hint": "此憑證目前正在處理的請求數。",
     "title": "帳號池",
     "meta_total": "{{count}} 個憑證",
     "meta_active": "{{count}} 個啟用",

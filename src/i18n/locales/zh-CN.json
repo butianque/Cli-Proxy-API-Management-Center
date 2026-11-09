@@ -141,6 +141,8 @@
     "plugin_actions": "触发插件声明的操作并跟踪进度"
   },
   "account_pool": {
+    "in_flight_label": "在途请求",
+    "in_flight_with_limit": "{{inFlight}} / {{limit}}",
     "state_label": "状态",
     "site_label": "站点",
     "opened_at_label": "首次开通",
@@ -320,6 +322,8 @@
     "routing_strategy_fill_first": "fill-first (优先填充)"
   },
   "auth_files": {
+    "in_flight_display": "活跃",
+    "in_flight_hint": "该凭证当前正在处理的请求数。",
     "title": "账号池",
     "meta_total": "{{count}} 个凭证",
     "meta_active": "{{count}} 个启用",
