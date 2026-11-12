@@ -3,6 +3,7 @@
  *
  * > **10 分钟没有真实操作 → 结束会话。**
  * > **不管开了多少标签页，只管前端交互。**
+ * > **服务端把窗口配成 0 = 关掉空闲时钟，这里就整条不参与。**
  *
  * 结束会话 = 服务端令牌作废、cookie 清掉、凭据授权撤销，回来时管理密钥和主密码
  * 都要重新过一遍。这是本面板对「人离开了」的判定：不是锁一下凭据库，而是这个人
@@ -34,8 +35,14 @@
  * ## 服务端那份计时也要一起续
  *
  * 主动操作除了写本地时钟，还要 `POST /session/touch` 去续服务端那一份——否则
- * 前端以为自己还在活动，服务端那边已经判死了。续期请求自身失败（401）会由
- * `apiClient` 统一转成登出，这里不重复处理。
+ * 前端以为自己还在活动，服务端那边已经判死了。
+ *
+ * 续期被拒（401）**不**等于登出：`touchSession` 按服务端给的原因分流——「不认识
+ * 这个令牌」（服务端重启过、会话被清）会先试着把会话悄悄接回来（cookie 优先，
+ * 其次内存里的管理密钥），接上了就返回 `renewed`，这里把空闲时钟重新起算；
+ * 而「空闲超时 / 绝对上限 / 地址绑定拒绝」是真的该下线，直接登出。只有重建也
+ * 接不上时才结束登录态。把任何一条续期的 401 都当成登出，正是「人一直在操作却被
+ * 弹回登录页」的成因；反过来，把「你该下线了」也悄悄接上，就等于废掉了这条规则。
  *
  * 无 UI；挂在 RootShell 里，只在已登录时生效。
  */
@@ -82,13 +89,18 @@ export function SessionIdleGuard() {
   // 活动监听：本地时钟与服务端会话一起续。
   useEffect(() => {
     if (!isAuthenticated) return undefined;
+    // 空闲时钟被关掉（`idleTimeoutMs <= 0`，服务端把窗口配成 0）时，这里不能只
+    // 跳过比较：`now - last >= 0` 恒真，第一次鼠标移动就会登出 —— 比原来的 10 秒
+    // 兜底更糟。整条守卫在这档下不参与。
+    if (idleTimeoutMs <= 0) return undefined;
 
     const onActivity = () => {
       const now = Date.now();
       if (now - lastThrottleRef.current < ACTIVITY_THROTTLE_MS) return;
       lastThrottleRef.current = now;
-      // 越过窗口之后的第一下「活动」不是活动，是有人回来了。这时服务端那份会话
-      // 也已经判死，续期会把它悄悄接上 —— 那正好绕开了这条规则。按超时处理。
+      // 越过窗口之后的第一下「活动」不是活动，是有人回来了。这条判断必须排在续期
+      // 之前：`touchSession` 现在会自己把被判死的会话悄悄接上，如果让它先跑，「回来
+      // 了」就会被当成「一直在用」，这条规则也就永远不会触发。
       const last = newestActivity();
       if (last > 0 && now - last >= idleTimeoutMs) {
         void logout();
@@ -96,7 +108,15 @@ export function SessionIdleGuard() {
       }
       writeSharedActivity(now);
       touch();
-      void touchSession();
+      // A refused touch is recovered inside touchSession: the cookie first, then
+      // the management key. A session that came back is a new session, so its idle
+      // floor starts now; a recovery that also failed has already dispatched the
+      // global sign-out.
+      void touchSession({ persistent: useAuthStore.getState().rememberPassword }).then(
+        (outcome) => {
+          if (outcome === 'renewed') useSecretGateStore.getState().beginSession();
+        }
+      );
     };
 
     for (const event of ACTIVITY_EVENTS) {
@@ -114,6 +134,8 @@ export function SessionIdleGuard() {
   // 判定是否超时
   useEffect(() => {
     if (!isAuthenticated) return undefined;
+    // 同上：关掉空闲时钟时连定时器都不该起。
+    if (idleTimeoutMs <= 0) return undefined;
     const interval = Math.max(
       CHECK_INTERVAL_FLOOR_MS,
       Math.min(15_000, Math.floor(idleTimeoutMs / 4))

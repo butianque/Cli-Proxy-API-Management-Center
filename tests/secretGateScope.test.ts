@@ -213,7 +213,7 @@ describe('a management session carries the credential authorization', () => {
       new URL('../src/components/SessionIdleGuard.tsx', import.meta.url),
       'utf8'
     );
-    expect(idleGuard).toContain('void touchSession()');
+    expect(idleGuard).toContain('void touchSession(');
   });
 
   test('a reload resumes the browser session instead of asking for the key again', () => {
@@ -256,7 +256,48 @@ describe('a management session carries the credential authorization', () => {
     // working got signed out when the window ran out.
     const body = sessionApi.slice(sessionApi.indexOf('export async function touchSession'));
     expect(body).not.toContain('if (!readSessionToken()) return;');
-    expect(body).toContain('await sessionApi.touch()');
+    expect(body).toContain('await sessionApi.touch(');
+  });
+
+  test('a refused touch rebuilds the session instead of signing out', () => {
+    // The 401 on /session/touch says "this token is dead", not "you were signed
+    // out". The panel asks the browser's cookie first (same session, credential
+    // unlock intact), then the management key, and only signs out when neither
+    // can produce a session. Before this, the touch 401 went straight to
+    // `unauthorized` and returned an operator who was actively working to the
+    // login page.
+    const body = sessionApi.slice(sessionApi.indexOf('async function recoverRefusedTouch'));
+    const cookieAt = body.indexOf('await sessionApi.describe({ adapter, renewal: true })');
+    const keyAt = body.indexOf('await sessionApi.start(persistent, { adapter, renewal: true })');
+    // lastIndexOf: the refusal branch signs out early on purpose, so the ordering
+    // that matters is the fallback at the end of the recovery.
+    const signOutAt = body.lastIndexOf("window.dispatchEvent(new Event('unauthorized'))");
+    expect(cookieAt).toBeGreaterThan(-1);
+    expect(keyAt).toBeGreaterThan(cookieAt);
+    expect(signOutAt).toBeGreaterThan(keyAt);
+
+    // The touch route is excluded from the client's global sign-out, otherwise the
+    // recovery never gets a chance to run.
+    expect(client).toContain('isSessionTouch(error.config?.method, error.config?.url)');
+  });
+
+  test('a session the server ended is not quietly revived', () => {
+    // Rebuilding an `idle`/`absolute` refusal would defeat the rule that produced
+    // it: with the key still in memory, one background poll would bring back a
+    // session the server had already ended, and "ten quiet minutes" would stop
+    // meaning anything. Only "this token is unknown" (restart, swept session) is
+    // worth rebuilding.
+    const body = sessionApi.slice(sessionApi.indexOf('async function recoverRefusedTouch'));
+    const refusalAt = body.indexOf(
+      "if (reason === 'idle' || reason === 'absolute' || reason === 'ip')"
+    );
+    expect(refusalAt).toBeGreaterThan(-1);
+    // The branch returns before any rebuild call.
+    const branch = body.slice(refusalAt, body.indexOf('// 1) The browser'));
+    expect(branch).toContain("window.dispatchEvent(new Event('unauthorized'))");
+    expect(branch).toContain("return 'ended'");
+    expect(branch).not.toContain('sessionApi.describe');
+    expect(branch).not.toContain('sessionApi.start');
   });
 });
 
@@ -403,24 +444,59 @@ describe('idle expiry is shared across tabs and keeps the newest activity', () =
     expect(authStoreSource).toContain('useSecretGateStore.getState().beginSession();');
   });
 
+  test('the server window reaches the store unchanged, zero included', () => {
+    // `if (seconds)` treated 0 as "not provided" and left the previous window in
+    // place, so a server configured for "no idle window" still signed the panel
+    // out after ten minutes. Only an absent field may leave the value alone.
+    const start = authStoreSource.indexOf('function applySessionClock');
+    const end = authStoreSource.indexOf('async function establishSession');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const body = authStoreSource.slice(start, end);
+    expect(body).toContain("typeof seconds === 'number'");
+    expect(body).not.toContain('if (seconds)');
+  });
+
   test('activity is recorded when it happens', () => {
     expect(idleGuard).toContain('writeSharedActivity(now)');
   });
 
   test('activity after the window ends the session instead of renewing it', () => {
-    // The first touch after ten quiet minutes gets a 401, and the client answers a
-    // 401 on /session/touch by quietly opening a new session. That would make the
-    // rule unenforceable in the one case it exists for — coming back to an
-    // abandoned tab. Stale activity is therefore an expiry, not a renewal.
+    // The first touch after ten quiet minutes gets a 401, and the client now
+    // answers a 401 on /session/touch by quietly opening a new session. That would
+    // make the rule unenforceable in the one case it exists for — coming back to an
+    // abandoned tab — so the guard has to decide *before* it touches: stale
+    // activity is an expiry, not a renewal.
     const body = idleGuard.slice(idleGuard.indexOf('const onActivity'));
     const expiredAt = body.indexOf('now - last >= idleTimeoutMs');
     expect(expiredAt).toBeGreaterThan(-1);
     expect(body.indexOf('void logout()')).toBeGreaterThan(expiredAt);
-    expect(body.indexOf('void logout()')).toBeLessThan(body.indexOf('void touchSession()'));
+    expect(body.indexOf('void logout()')).toBeLessThan(body.indexOf('void touchSession('));
   });
 
   test('ending a session clears the shared clock', () => {
     // Otherwise the next session inherits the previous session's stamp.
     expect(gateStore).toContain('clearSharedActivity()');
+  });
+
+  test('a disabled idle clock is not clamped into a ten-second one', () => {
+    // The server reports 0 for "no idle window". The store used to raise every
+    // value to a 10s floor, which turned "never sign out" into "sign out after
+    // ten seconds" — the opposite of the configuration, and worse than the
+    // default it replaced.
+    const body = actionBody('setIdleTimeout', 'adoptPassphrase:');
+    expect(body).toContain('ms > 0');
+    expect(body).toContain(': 0 }');
+  });
+
+  test('a disabled idle clock stops the guard instead of expiring at once', () => {
+    // `now - last >= idleTimeoutMs` is true for any elapsed time when the window
+    // is 0, so a guard that only skipped the clamp would sign the operator out on
+    // the first mouse move. Both effects have to bail out before they compare.
+    const bailOuts = idleGuard.split('idleTimeoutMs <= 0').length - 1;
+    expect(bailOuts).toBeGreaterThanOrEqual(2);
+    expect(idleGuard.indexOf('idleTimeoutMs <= 0')).toBeLessThan(
+      idleGuard.indexOf('Math.min(15_000')
+    );
   });
 });

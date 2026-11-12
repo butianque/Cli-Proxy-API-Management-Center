@@ -16,6 +16,7 @@ import {
 import { computeApiUrl } from '@/utils/connection';
 import { parseApiErrorResponse } from './apiError';
 import {
+  clearSessionToken,
   isSessionEstablished,
   readSessionToken,
   SESSION_HEADER,
@@ -71,6 +72,26 @@ function isSessionProbe(method: string | undefined, url: string | undefined): bo
 }
 
 /**
+ * 续期请求（`POST /session/touch`）的 401 不是「你被踢了」，是「这个令牌不能用了」。
+ *
+ * 这条请求只由空闲守卫在真实操作时发出。它的 401 意味着服务端不认识手上这个令牌
+ * （服务端重启过、会话被清掉、面板存的令牌和浏览器 cookie 不是同一个）。处理它的
+ * 正确方式是就地重建会话再继续（`touchSession` 负责，cookie 优先、其次内存里的
+ * 管理密钥），而不是把正在操作的人弹回登录页 —— 那正是「一直在操作却被踢」的
+ * 直接成因之一。
+ *
+ * 所以这里既不走拦截器的自动换会话（那是给普通请求用的，失败即登出），也不派发
+ * `unauthorized`：这条路由的失败由 `session.ts` 消化。
+ */
+const SESSION_TOUCH_ROUTE = '/session/touch';
+
+function isSessionTouch(method: string | undefined, url: string | undefined): boolean {
+  if (!url) return false;
+  const verb = (method || 'get').toLowerCase();
+  return verb === 'post' && url.split('?')[0].endsWith(SESSION_TOUCH_ROUTE);
+}
+
+/**
  * 会话令牌会随后端进程一起消失，但打开的标签页不会：重启之后，页面上每个请求
  * 都带着一个服务端已经不认识的令牌，于是每一条都 401。
  *
@@ -84,6 +105,14 @@ type SessionAwareConfig = AxiosRequestConfig & {
   cpaSessionRetried?: boolean;
   /** 这是面板自己发的换会话请求，它的 401 由调用方消化。 */
   cpaSessionRenewal?: boolean;
+  /**
+   * 这条请求**发出时**的连接世代（`setConfig` 每次真的换连接就 +1）。
+   *
+   * 迟到的 401 只属于它出发时那条连接。连接已经换过（切服务器、重新登录）之后
+   * 再按它登出，被清掉的是**新**连接 —— 操作者刚登录就被踢回登录页，而报错
+   * 说的是上一次连接的事。面板里其它所有异步收尾都比对这个世代，这里也必须比。
+   */
+  cpaConnectionRevision?: number;
 };
 
 function sentSessionToken(config: AxiosRequestConfig | undefined): boolean {
@@ -217,6 +246,10 @@ class ApiClient {
           }
         }
 
+        // 记下这条请求属于哪个连接世代：迟到的 401 只能对**它**负责，不能对
+        // 之后换上的连接负责（见 SessionAwareConfig.cpaConnectionRevision）。
+        (config as SessionAwareConfig).cpaConnectionRevision = this.connectionRevision;
+
         return config;
       },
       (error) => Promise.reject(this.handleError(error))
@@ -263,6 +296,18 @@ class ApiClient {
     );
   }
 
+  /**
+   * 这条请求是否属于**当前**连接。
+   *
+   * 请求拦截器把发出时的世代写在 `cpaConnectionRevision` 上，所以这里比一下就知道
+   * 它是不是上一套 apiBase/密钥的遗留。没有标记的请求（不经过拦截器，例如测试里
+   * 直接构造的）按当前连接算，保持原有行为。
+   */
+  private belongsToCurrentConnection(config: SessionAwareConfig | undefined): boolean {
+    if (!config || config.cpaConnectionRevision === undefined) return true;
+    return config.cpaConnectionRevision === this.connectionRevision;
+  }
+
   /** 这次 401 是「令牌过期」而不是「密钥不对」，值得就地换一个会话。 */
   private shouldRenewSession(error: unknown): boolean {
     if (!axios.isAxiosError(error)) return false;
@@ -271,37 +316,64 @@ class ApiClient {
     if (!config || config.cpaSessionRetried) return false;
     if (!sentSessionToken(config)) return false;
     if (isPassphraseRoute(config.url) || isSessionProbe(config.method, config.url)) return false;
+    // 续期自己的失败由 session.ts 处理（它知道 reason，也能先试 cookie）。
+    if (isSessionTouch(config.method, config.url)) return false;
+    // 上一套连接的 401 不该在**新**连接上开一个新会话。
+    if (!this.belongsToCurrentConnection(config)) return false;
     return true;
   }
 
   /**
-   * 用当前管理密钥换一个新会话。
+   * 找回一个可用会话。
    *
-   * 并发的多个 401 共用同一次换会话：三个请求同时过期时不该开三个会话。换失败
-   * 只返回 false，让调用方照常走登出；这里不抛错，免得把 401 变成别的样子。
+   * 顺序是刻意的：
+   *
+   * 1. **先问浏览器自己的 cookie**（`GET /session`）。它由浏览器自动携带，是
+   *    HttpOnly 的，也是「这台浏览器还签着」的凭据。走这一条复用**同一个会话**，
+   *    于是它解开的凭据库还开着 —— 操作者不必因为一次令牌过期重新输主密码。
+   * 2. 再退回管理密钥新建会话。新建出来的是一个**锁着**的会话，所以它是兜底，
+   *    不是首选。
+   *
+   * 并发的多个 401 共用同一次找回：三个请求同时过期时不该开三个会话。失败只返回
+   * false，让调用方照常走登出；这里不抛错，免得把 401 变成别的样子。
    */
   private renewSession(adapter: AxiosRequestConfig['adapter']): Promise<boolean> {
     if (this.sessionRenewal) return this.sessionRenewal;
     const revision = this.connectionRevision;
-    const renewal = this.instance
-      .post<{ token?: string }>(
-        '/session',
-        undefined,
-        { cpaSessionRenewal: true, ...(adapter ? { adapter } : {}) } as SessionAwareConfig
-      )
-      .then((response) => {
-        const token = response.data?.token;
-        // 换会话期间连接被换掉（重新登录/切服务器）：新令牌不属于这次请求。
-        if (!token || this.connectionRevision !== revision) return false;
-        writeSessionToken(token);
-        return true;
-      })
+    const renewal = this.recoverSession(revision, adapter)
       .catch(() => false)
       .finally(() => {
         if (this.sessionRenewal === renewal) this.sessionRenewal = null;
       });
     this.sessionRenewal = renewal;
     return renewal;
+  }
+
+  private async recoverSession(
+    revision: number,
+    adapter: AxiosRequestConfig['adapter']
+  ): Promise<boolean> {
+    const options = { cpaSessionRenewal: true, ...(adapter ? { adapter } : {}) } as SessionAwareConfig;
+
+    // 1) The browser's own cookie. A 200 means this browser is still signed in as
+    //    the session the cookie names; dropping the dead token is enough, because
+    //    the browser authenticates the following requests on its own.
+    try {
+      await this.instance.get<{ id?: string }>('/session', options);
+      if (this.connectionRevision !== revision) return false;
+      clearSessionToken();
+      return true;
+    } catch {
+      // No usable cookie (cleared, expired, or never issued): fall through to the key.
+    }
+
+    // 2) The management key, which opens a new — and locked — session.
+    const response = await this.instance.post<{ token?: string }>('/session', undefined, options);
+    const token = response.data?.token;
+    // 换会话期间连接被换掉（重新登录/切服务器）：新令牌不属于这次请求。
+    if (!token || this.connectionRevision !== revision) return false;
+    writeSessionToken(token);
+    return true;
   }
 
   /**
@@ -342,11 +414,21 @@ class ApiClient {
       //
       // 换会话那条请求的 401 也不在此列：它由 renewSession 自己消化，随后原来
       // 那条请求会带着「仍然失败」的结果走到这里，登出只发生一次。
+      //
+      // 续期请求（`/session/touch`）同样不在此列：它的 401 由 `touchSession` 消化
+      // ——先试 cookie、再试管理密钥重建会话，只有两条路都走不通才由它派发登出。
+      // 把这条 401 直接当登出，就是「人一直在操作、却被打回登录页」的成因。
+      //
+      // 最后一条：迟到的 401 不能登出新连接。请求发出时的连接世代与现在的不同，
+      // 说明这条请求属于上一个 apiBase/密钥，它失败与当前登录无关；按它登出会
+      // 把刚登录的新会话一起清掉（`logout()` 用的是**当前** apiBase）。
       if (
         error.response?.status === 401 &&
         !isPassphraseRoute(error.config?.url) &&
         !isSessionProbe(error.config?.method, error.config?.url) &&
-        !(error.config as SessionAwareConfig | undefined)?.cpaSessionRenewal
+        !isSessionTouch(error.config?.method, error.config?.url) &&
+        !(error.config as SessionAwareConfig | undefined)?.cpaSessionRenewal &&
+        this.belongsToCurrentConnection(error.config as SessionAwareConfig | undefined)
       ) {
         window.dispatchEvent(new Event('unauthorized'));
       }

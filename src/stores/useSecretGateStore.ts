@@ -58,7 +58,7 @@ interface SecretGateState {
   storeAvailable: boolean;
   /** 密钥库功能是否启用（安全分区据此决定是否展示主密码管理）。 */
   storeEnabled: boolean;
-  /** 空闲超时（毫秒），可配。 */
+  /** 空闲超时（毫秒），可配。0 = 不设空闲时钟（服务端把窗口配成 0 时的语义）。 */
   idleTimeoutMs: number;
   /** 空闲计时器的最后活动时间戳（内存，不持久化）。 */
   lastActivityAt: number;
@@ -189,7 +189,13 @@ export const useSecretGateStore = create<SecretGateState>()(
 
       // Floor is 10s so the guard can be exercised end-to-end; the shipped
       // default remains the user-approved 10 minutes.
-      setIdleTimeout: (ms) => set({ idleTimeoutMs: Math.max(10_000, ms) }),
+      //
+      // Zero and below mean "no idle clock", not "the shortest clock": the server
+      // answers the same value in `panel_idle_seconds` when the operator disables
+      // the window, and clamping it here turned "never sign out" into "sign out
+      // after ten seconds". Anything positive keeps the 10s floor.
+      setIdleTimeout: (ms) =>
+        set({ idleTimeoutMs: ms > 0 ? Math.max(10_000, ms) : 0 }),
 
       // Placed last on purpose: source-contract tests slice an action's body up
       // to the next action's name, so this must not sit between two actions they

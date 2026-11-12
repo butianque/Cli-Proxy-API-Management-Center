@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { AxiosAdapter } from 'axios';
 import { apiClient } from '../src/services/api/client';
+import { touchSession } from '../src/services/api/session';
 import { readSessionToken, SESSION_HEADER, writeSessionToken, clearSessionToken } from '../src/services/api/sessionToken';
 
 const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
@@ -145,8 +146,45 @@ describe('v8 management transport', () => {
     };
 
     await expect(apiClient.get('/config', { adapter })).resolves.toEqual({ status: 'ok' });
-    expect(seen).toEqual(['get:/config', 'post:/session', 'get:/config']);
+    // The cookie probe comes first: reusing the browser's session keeps whatever it
+    // had unlocked, while a fresh session would ask for the master password again.
+    expect(seen).toEqual(['get:/config', 'get:/session', 'post:/session', 'get:/config']);
     expect(readSessionToken()).toBe('fresh-token');
+    expect(events.map((event) => event.type)).toEqual([]);
+  });
+
+  // A browser that still holds its session cookie does not need a new session at
+  // all: the probe answers 200 and the dead token is simply dropped.
+  test('keeps the same session when the cookie still resolves it', async () => {
+    const events: Event[] = [];
+    stubWindow(events);
+    writeSessionToken('token-from-a-previous-process');
+    apiClient.setConfig({ apiBase: 'http://proxy.invalid', managementKey: 'fixture-only' });
+
+    const seen: string[] = [];
+    const adapter: AxiosAdapter = async (config) => {
+      seen.push(`${config.method}:${config.url}`);
+      if (config.url === '/session' && config.method === 'get') {
+        return { data: { id: 'same-session' }, status: 200, statusText: 'OK', headers: {}, config };
+      }
+      if (config.url === '/config') {
+        const token = String(config.headers?.[SESSION_HEADER] ?? '');
+        if (token) {
+          throw Object.assign(new Error('unauthorized'), {
+            isAxiosError: true,
+            config,
+            response: { data: { error: 'management session expired' }, status: 401, statusText: 'Unauthorized', headers: {}, config },
+          });
+        }
+        return { data: { status: 'ok' }, status: 200, statusText: 'OK', headers: {}, config };
+      }
+      throw new Error(`unexpected call ${config.method}:${config.url}`);
+    };
+
+    await expect(apiClient.get('/config', { adapter })).resolves.toEqual({ status: 'ok' });
+    expect(seen).toEqual(['get:/config', 'get:/session', 'get:/config']);
+    // No new session was created, so the browser's own cookie carries the rest.
+    expect(readSessionToken()).toBeNull();
     expect(events.map((event) => event.type)).toEqual([]);
   });
 
@@ -166,6 +204,175 @@ describe('v8 management transport', () => {
       });
     const adapter: AxiosAdapter = async (config) => {
       throw unauthorized(config);
+    };
+
+    await expect(apiClient.get('/config', { adapter })).rejects.toBeDefined();
+    expect(events.map((event) => event.type)).toEqual(['unauthorized']);
+  });
+});
+
+// The reported bug: an operator who was actively working kept being returned to
+// the login page. A refused `/session/touch` was one of the causes — the 401 was
+// treated as "you were signed out" even though the browser still held a valid
+// session cookie and the request could simply be retried on it.
+describe('a refused session touch does not end a live session', () => {
+  const refusal = (config: unknown, reason: string) =>
+    Object.assign(new Error('management session expired'), {
+      isAxiosError: true,
+      config,
+      response: {
+        data: { error: 'management session expired', reason },
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config,
+      },
+    });
+
+  test('rebuilds from the browser cookie and keeps the operator signed in', async () => {
+    const events: Event[] = [];
+    stubWindow(events);
+    apiClient.setConfig({ apiBase: 'http://proxy.invalid', managementKey: '' });
+    writeSessionToken('token-the-server-forgot');
+
+    const seen: string[] = [];
+    const adapter: AxiosAdapter = async (config) => {
+      seen.push(`${config.method}:${config.url}`);
+      if (config.url === '/session/touch') throw refusal(config, 'expired');
+      // The cookie is still valid: GET /session resolves it without a token.
+      expect(config.headers?.[SESSION_HEADER]).toBeUndefined();
+      return { data: { id: 'same-session' }, status: 200, statusText: 'OK', headers: {}, config };
+    };
+
+    expect(await touchSession({ force: true, adapter })).toBe('renewed');
+    // Cookie first: a new session would have dropped the credential unlock.
+    expect(seen).toEqual(['post:/session/touch', 'get:/session']);
+    expect(readSessionToken()).toBeNull();
+    expect(events.map((event) => event.type)).toEqual([]);
+  });
+
+  test('falls back to the management key when there is no usable cookie', async () => {
+    const events: Event[] = [];
+    stubWindow(events);
+    apiClient.setConfig({ apiBase: 'http://proxy.invalid', managementKey: 'fixture-only' });
+    writeSessionToken('token-the-server-forgot');
+
+    const seen: string[] = [];
+    const adapter: AxiosAdapter = async (config) => {
+      seen.push(`${config.method}:${config.url}`);
+      if (config.url === '/session/touch') throw refusal(config, 'expired');
+      if (config.method === 'get' && config.url === '/session') throw refusal(config, 'missing');
+      return { data: { id: 'fresh', token: 'fresh-token' }, status: 200, statusText: 'OK', headers: {}, config };
+    };
+
+    expect(await touchSession({ force: true, adapter })).toBe('renewed');
+    expect(seen).toEqual(['post:/session/touch', 'get:/session', 'post:/session']);
+    expect(readSessionToken()).toBe('fresh-token');
+    expect(events.map((event) => event.type)).toEqual([]);
+  });
+
+  test('signs out only when neither the cookie nor the key can rebuild it', async () => {
+    const events: Event[] = [];
+    stubWindow(events);
+    apiClient.setConfig({ apiBase: 'http://proxy.invalid', managementKey: '' });
+    writeSessionToken('token-the-server-forgot');
+
+    const adapter: AxiosAdapter = async (config) => {
+      throw refusal(config, 'expired');
+    };
+
+    expect(await touchSession({ force: true, adapter })).toBe('ended');
+    expect(events.map((event) => event.type)).toEqual(['unauthorized']);
+  });
+
+  // The service kills a session on its own clocks; that verdict is not a stale
+  // token to be papered over. Rebuilding an `idle`/`absolute` refusal would let a
+  // background poll silently revive a session the server had already ended —
+  // "ten quiet minutes" would stop meaning anything as soon as the key was still
+  // in memory.
+  for (const reason of ['idle', 'absolute', 'ip'] as const) {
+    test(`a ${reason} refusal ends the session instead of rebuilding it`, async () => {
+      const events: Event[] = [];
+      stubWindow(events);
+      apiClient.setConfig({ apiBase: 'http://proxy.invalid', managementKey: 'fixture-only' });
+      writeSessionToken('token-the-server-forgot');
+
+      const seen: string[] = [];
+      const adapter: AxiosAdapter = async (config) => {
+        seen.push(`${config.method}:${config.url}`);
+        throw refusal(config, reason);
+      };
+
+      expect(await touchSession({ force: true, adapter })).toBe('ended');
+      // No cookie probe, no new session: the refusal stands.
+      expect(seen).toEqual(['post:/session/touch']);
+      expect(events.map((event) => event.type)).toEqual(['unauthorized']);
+      expect(readSessionToken()).toBeNull();
+    });
+  }
+
+  test('a network failure is not a sign-out', async () => {
+    const events: Event[] = [];
+    stubWindow(events);
+    apiClient.setConfig({ apiBase: 'http://proxy.invalid', managementKey: 'fixture-only' });
+
+    const adapter: AxiosAdapter = async () => {
+      throw Object.assign(new Error('socket hang up'), { isAxiosError: true, code: 'ECONNRESET' });
+    };
+
+    expect(await touchSession({ force: true, adapter })).toBe('ok');
+    expect(events.map((event) => event.type)).toEqual([]);
+  });
+});
+
+// Every other async tail in the panel compares `apiClient.getConnectionRevision()`
+// before it writes state. The 401 → `unauthorized` dispatch did not, so a request
+// that belonged to the previous connection signed the operator out of the new one:
+// `logout()` ends whatever session is current.
+describe('a late 401 cannot sign out a newer connection', () => {
+  test('drops the sign-out from a request issued under the previous connection', async () => {
+    const events: Event[] = [];
+    stubWindow(events);
+    apiClient.setConfig({ apiBase: 'http://first.invalid', managementKey: 'first-key' });
+
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let leftTheClient = false;
+    // The request leaves under the first connection (the interceptor stamps it
+    // there), then the operator switches while it is still in flight.
+    const adapter: AxiosAdapter = async (config) => {
+      leftTheClient = true;
+      await gate;
+      throw Object.assign(new Error('unauthorized'), {
+        isAxiosError: true,
+        config,
+        response: { data: { error: 'unauthorized' }, status: 401, statusText: 'Unauthorized', headers: {}, config },
+      });
+    };
+
+    const pending = apiClient.get('/config', { adapter });
+    while (!leftTheClient) await new Promise((resolve) => setTimeout(resolve, 0));
+    apiClient.setConfig({ apiBase: 'http://second.invalid', managementKey: 'second-key' });
+    release?.();
+    await expect(pending).rejects.toBeDefined();
+
+    // The new connection survives: no sign-out was dispatched on its behalf.
+    expect(events.map((event) => event.type)).toEqual([]);
+  });
+
+  test('still signs out when the 401 belongs to the current connection', async () => {
+    const events: Event[] = [];
+    stubWindow(events);
+    apiClient.setConfig({ apiBase: 'http://proxy.invalid', managementKey: 'fixture-only' });
+
+    const adapter: AxiosAdapter = async (config) => {
+      throw Object.assign(new Error('unauthorized'), {
+        isAxiosError: true,
+        config,
+        response: { data: { error: 'unauthorized' }, status: 401, statusText: 'Unauthorized', headers: {}, config },
+      });
     };
 
     await expect(apiClient.get('/config', { adapter })).rejects.toBeDefined();

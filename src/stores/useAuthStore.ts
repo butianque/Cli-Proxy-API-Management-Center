@@ -65,7 +65,9 @@ function applySessionClock(session: {
   panel_idle_seconds?: number;
 }): void {
   const seconds = session.panel_idle_seconds ?? session.idle_seconds;
-  if (seconds) {
+  // 0 是「关掉空闲时钟」，不是「没给值」：服务端把窗口配成 0 时必须照办，否则
+  // 守卫会退回它自己的默认 10 分钟，前后端对同一个配置给出两种行为。
+  if (typeof seconds === 'number') {
     useSecretGateStore.getState().setIdleTimeout(seconds * 1000);
   }
   useSecretGateStore.getState().beginSession();
